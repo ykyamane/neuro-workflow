@@ -1,0 +1,9 @@
+VITE_API_BASE_URL="http://localhost:3000/api"
+VITE_SUPABASE_URL=https://rexhbnagqwoygewdiaom.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJleGhibmFncXdveWdld2RpYW9tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxNTU4NjAsImV4cCI6MjA1OTczMTg2MH0.C1E8OAApbCDqb_cDMpD9-pND_U70yeib5ST_vPbKa88
+
+
+HOST_PROJECT_PATH=/<your_dir>/workflow_backend/django-project
+PROJECTS_BASE_PATH=/<your_dir>/workflow_backend/django-project/projects
+UPLOAD_NODES_PATH=/<your_dir>/workflow_backend/django-project/upload_nodes
+NEURO_PATH=/<your_dir>/workflow_backend/django-project/neuroworkflow/neuro

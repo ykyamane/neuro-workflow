@@ -90,6 +90,10 @@ class ParameterDefinition:
     constraints: Dict[str, Any] = field(default_factory=dict)
     optimizable: bool = False
     optimization_range: Optional[List[Any]] = None
+    # Metadata connection fields
+    metadata_sources: List[str] = field(default_factory=list)  # e.g., ["allen_brain", "neuromorpho", "custom_db"]
+    species_specific: bool = False  # Whether parameter values vary by species
+    suggested_values: List[Dict[str, Any]] = field(default_factory=list)  # AI/metadata suggestions with source info
 
 
 @dataclass
@@ -98,6 +102,32 @@ class MethodDefinition:
     description: str = ""
     inputs: List[str] = field(default_factory=list)
     outputs: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ResourceRequirements:
+    """Resource requirements for HPC job execution."""
+    cpus: int = 1
+    memory_gb: float = 4.0
+    gpus: int = 0
+    walltime_hours: float = 1.0
+    queue: Optional[str] = None
+    account: Optional[str] = None
+    nodes: int = 1  # Number of compute nodes
+    tasks_per_node: int = 1  # Tasks per node (for MPI)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'cpus': self.cpus,
+            'memory_gb': self.memory_gb,
+            'gpus': self.gpus,
+            'walltime_hours': self.walltime_hours,
+            'queue': self.queue,
+            'account': self.account,
+            'nodes': self.nodes,
+            'tasks_per_node': self.tasks_per_node
+        }
 
 
 @dataclass

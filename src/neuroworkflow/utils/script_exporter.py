@@ -9,6 +9,8 @@ import os
 import json
 import time
 from typing import Dict, List, Any, Optional
+from ..core.schema import ResourceRequirements
+from .snakemake_generator import generate_snakemake_workflow
 
 
 def export_workflow_scripts(
@@ -16,9 +18,11 @@ def export_workflow_scripts(
     output_dir: str = "./output",
     export_python: bool = True,
     export_notebook: bool = True,
+    export_snakemake: bool = False,
     filename_base: str = "workflow_script",
     deduplicate_imports: bool = True,
-    add_metadata: bool = True
+    add_metadata: bool = True,
+    resource_requirements: Optional[ResourceRequirements] = None
 ) -> Dict[str, str]:
     """
     Independent function to export workflow scripts based on execution sequence dictionary.
@@ -28,9 +32,11 @@ def export_workflow_scripts(
         output_dir: Directory for output files
         export_python: Whether to export Python script
         export_notebook: Whether to export Jupyter notebook
+        export_snakemake: Whether to export SnakeMake workflow
         filename_base: Base filename for exports
         deduplicate_imports: Remove duplicate imports
         add_metadata: Add workflow metadata as comments
+        resource_requirements: Resource requirements for HPC jobs (used for SnakeMake)
     
     Returns:
         Dictionary with paths to exported files
@@ -113,6 +119,20 @@ def export_workflow_scripts(
         
         exported_files['jupyter_notebook'] = notebook_file
         print(f"  Jupyter notebook exported to: {notebook_file}")
+    
+    # Export SnakeMake workflow
+    if export_snakemake:
+        try:
+            snakemake_files = generate_snakemake_workflow(
+                execution_sequence,
+                output_dir=output_dir,
+                workflow_name=execution_sequence.get('workflow_name'),
+                resource_requirements=resource_requirements,
+                add_metadata=add_metadata
+            )
+            exported_files.update(snakemake_files)
+        except Exception as e:
+            print(f"  Warning: Failed to generate SnakeMake workflow: {e}")
     
     if not exported_files:
         print("   No script fragments found to export")

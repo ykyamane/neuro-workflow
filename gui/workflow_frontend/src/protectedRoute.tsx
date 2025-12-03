@@ -11,8 +11,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
+  // Development mode: bypass authentication if Supabase is not configured
+  const isDevelopmentMode = !import.meta.env.VITE_SUPABASE_URL || 
+                          import.meta.env.VITE_SUPABASE_URL.includes('<your') ||
+                          import.meta.env.VITE_SUPABASE_URL.includes('your_');
+
   // ローディング中
-  if (loading) {
+  if (loading && !isDevelopmentMode) {
     return (
       <Box
         minH="100vh"
@@ -23,6 +28,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         <Spinner size="xl" color="brand.500" />
       </Box>
     );
+  }
+
+  // Development mode: allow access without authentication
+  if (isDevelopmentMode) {
+    return <>{children}</>;
   }
 
   // 未認証の場合はログインページにリダイレクト
