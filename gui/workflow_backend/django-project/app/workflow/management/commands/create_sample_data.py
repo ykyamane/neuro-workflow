@@ -18,7 +18,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         username = options["username"]
 
-        # ユーザーを取得または作成
+        # Get or create user
         user, created = User.objects.get_or_create(
             username=username,
             defaults={
@@ -36,10 +36,10 @@ class Command(BaseCommand):
             self.stdout.write(f"Using existing user: {username}")
 
         with transaction.atomic():
-            # サンプルプロジェクトを作成
+            # Create a sample project
             project = self.create_sample_project(user)
 
-            # 四則演算フローを作成
+            # Create a flow of arithmetic operations
             self.create_arithmetic_flow(project)
 
         self.stdout.write(
@@ -47,19 +47,19 @@ class Command(BaseCommand):
         )
 
     def create_sample_project(self, user):
-        """サンプルプロジェクトを作成"""
+        """Create a sample project"""
         project, created = FlowProject.objects.get_or_create(
-            name="四則演算フロー",
+            name="Arithmetic operation flow",
             owner=user,
             defaults={
-                "description": "基本的な四則演算を行うReact Flowのサンプルプロジェクト"
+                "description": "React Flow sample project for basic arithmetic operations"
             },
         )
 
         if created:
             self.stdout.write(f"Created project: {project.name}")
         else:
-            # 既存プロジェクトの場合、既存ノードとエッジを削除
+            # For existing projects, delete existing nodes and edges
             FlowNode.objects.filter(project=project).delete()
             FlowEdge.objects.filter(project=project).delete()
             self.stdout.write(f"Updated existing project: {project.name}")
@@ -67,11 +67,11 @@ class Command(BaseCommand):
         return project
 
     def create_arithmetic_flow(self, project):
-        """四則演算フローを作成"""
+        """Create a flow of arithmetic operations"""
 
-        # ノードを作成
+        # Create node
         nodes = [
-            # 入力ノード
+            # Input node
             FlowNode(
                 id="input-a",
                 project=project,
@@ -86,7 +86,7 @@ class Command(BaseCommand):
                         {
                             "title": "value",
                             "type": "number",
-                            "description": "入力する数値A",
+                            "description": "Number A to enter",
                             "isOutput": True,
                         }
                     ],
@@ -106,13 +106,13 @@ class Command(BaseCommand):
                         {
                             "title": "value",
                             "type": "number",
-                            "description": "入力する数値B",
+                            "description": "Number B to enter",
                             "isOutput": True,
                         }
                     ],
                 },
             ),
-            # 四則演算ノード
+            # Arithmetic operation node
             FlowNode(
                 id="addition",
                 project=project,
@@ -241,7 +241,7 @@ class Command(BaseCommand):
                     ],
                 },
             ),
-            # 結果表示ノード
+            # Result display node
             FlowNode(
                 id="result-display",
                 project=project,
@@ -290,9 +290,9 @@ class Command(BaseCommand):
         FlowNode.objects.bulk_create(nodes)
         self.stdout.write(f"Created {len(nodes)} nodes")
 
-        # エッジを作成
+        # Create edge
         edges = [
-            # 入力から各演算ノードへの接続
+            # Connections from inputs to each operation node
             FlowEdge(
                 id="input-a-to-add",
                 project=project,
@@ -357,7 +357,7 @@ class Command(BaseCommand):
                 source_handle="value",
                 target_handle="b",
             ),
-            # 各演算結果から結果表示ノードへの接続
+            # Connection from each calculation result to the result display node
             FlowEdge(
                 id="add-to-result",
                 project=project,

@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# カテゴリの選択肢 => 動的に変更
+# Category options => Dynamically change
 NODE_CATEGORIES = [
     ['analysis', 'Analysis'],
     ['io', 'I/O'],
@@ -20,7 +20,7 @@ NODE_CATEGORIES = [
 ]
 
 def get_categories():
-    """カテゴリディレクトリをリストで取得"""
+    """Get the category directory as a list"""
     sub_directories = []
     nodes_path = Path(settings.MEDIA_ROOT)
     #if not os.path.isdir(nodes_path):
@@ -34,16 +34,16 @@ def get_categories():
 
 
 def get_upload_path(instance, filename):
-    """カテゴリに基づいてアップロード先を決定"""
+    """Upload destination determined by category"""
     category = getattr(instance, 'category', 'uncategorized')
     return os.path.join(category, filename)
 
 
 class PythonFile(models.Model):
-    """アップロードされたPythonファイルモデル"""
+    """Uploaded Python File Model"""
     
     node_categories = get_categories()
-    logger.info(f"動的カテゴリ：{node_categories}")
+    logger.info(f"Dynamic categories:{node_categories}")
     logger.info(f"MEDIA_ROOT：{settings.MEDIA_ROOT}")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -66,17 +66,17 @@ class PythonFile(models.Model):
         blank=True,
     )
 
-    # ノード解析結果
+    # Node analysis results
     node_classes = models.JSONField(
         default=dict, blank=True
-    )  # 解析されたノードクラス情報
-    is_analyzed = models.BooleanField(default=False)  # 解析済みフラグ
-    analysis_error = models.TextField(blank=True, null=True)  # 解析エラー情報
+    )  # Parsed node class information
+    is_analyzed = models.BooleanField(default=False)  # parsed flag
+    analysis_error = models.TextField(blank=True, null=True)  # Parsing error information
 
-    # メタデータ
-    file_size = models.IntegerField(default=0)  # ファイルサイズ（バイト）
+    # metadata
+    file_size = models.IntegerField(default=0)  # File size (bytes)
     file_hash = models.CharField(
-        max_length=64, unique=True, default="default"  # 一時的なデフォルト値
+        max_length=64, unique=True, default="default"  # Temporary default value
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -90,14 +90,13 @@ class PythonFile(models.Model):
         return self.name
 
     def get_node_classes_for_frontend(self):
-        """フロントエンド用のノードクラス情報を返す"""
+        """Returns node class information for the frontend"""
         if not self.node_classes:
             return []
 
         frontend_nodes = []
         for class_name, class_info in self.node_classes.items():
-            logger.debug(f"保存処理中: {class_name}")
-            # 元の構造を保持したままフロントエンド用に整形
+            # Preserving the original structure and shaping it for the front end
             frontend_node = {
                 "id": f"uploaded_{self.id}_{class_name}",
                 "type": "uploadedNode",
@@ -107,7 +106,7 @@ class PythonFile(models.Model):
                 "file_id": str(self.id),
                 "class_name": class_name,
                 "file_name": self.name,
-                # schemaにすべての情報を含める
+                # Include all information in the schema
                 "schema": self._convert_to_full_schema(class_info),
             }
 
@@ -116,7 +115,7 @@ class PythonFile(models.Model):
         return frontend_nodes
 
     def _convert_to_full_schema(self, class_info):
-        """すべての情報をschemaに含める（オブジェクト形式）"""
+        """Include all information in the schema (object format)"""
         schema = {
             "inputs": {},
             "outputs": {},
@@ -124,7 +123,7 @@ class PythonFile(models.Model):
             "methods": class_info.get("methods", {}),
         }
 
-        # inputs を変換
+        # Convert inputs
         if "inputs" in class_info:
             for input_name, input_info in class_info["inputs"].items():
                 schema["inputs"][input_name] = {
@@ -137,18 +136,18 @@ class PythonFile(models.Model):
                     "required": input_info.get("required", False),
                     "optional": input_info.get("optional", False),
                 }
-                # default_valueがある場合のみ追加
+                # Add only if default_value exists
                 if "default_value" in input_info:
                     schema["inputs"][input_name]["default_value"] = input_info[
                         "default_value"
                     ]
-                # constraintsがある場合のみ追加
+                # Add only if there are constraints
                 if "constraints" in input_info:
                     schema["inputs"][input_name]["constraints"] = input_info[
                         "constraints"
                     ]
 
-        # outputs を変換
+        # Convert outputs
         if "outputs" in class_info:
             for output_name, output_info in class_info["outputs"].items():
                 schema["outputs"][output_name] = {
@@ -161,7 +160,7 @@ class PythonFile(models.Model):
                     "optional": output_info.get("optional", False),
                 }
 
-        # parameters を変換
+        # Convert parameters
         if "parameters" in class_info:
             schema["parameters"] = self._convert_parameters(
                 class_info.get("parameters", {})
@@ -170,7 +169,7 @@ class PythonFile(models.Model):
         return schema
 
     def _convert_parameters(self, parameters):
-        """parametersを変換（元の構造を保持しつつ、必要な情報を追加）"""
+        """Convert parameters (preserve the original structure and add necessary information)"""
         converted_params = {}
 
         for param_name, param_info in parameters.items():
@@ -181,15 +180,15 @@ class PythonFile(models.Model):
                 "description": param_info.get("description", ""),
             }
 
-            # default_valueがある場合のみ追加
+            # Add only if default_value exists
             if "default_value" in param_info:
                 param_data["default_value"] = param_info["default_value"]
 
-            # constraintsがある場合のみ追加（そのまま保持）
+            # Add only if constraints exist (keep as is)
             if "constraints" in param_info:
                 param_data["constraints"] = param_info["constraints"]
 
-            # widget_typeなどの追加メタデータがある場合
+            # If there is additional metadata such as widget_type
             if "widget_type" in param_info:
                 param_data["widget_type"] = param_info["widget_type"]
 
@@ -198,7 +197,7 @@ class PythonFile(models.Model):
         return converted_params
 
     def _map_port_type_to_frontend(self, port_type):
-        """PortTypeをフロントエンド用の型に変換"""
+        """Converting PortType to a type for the front end"""
         type_mapping = {
             "int": "int",
             "float": "float",

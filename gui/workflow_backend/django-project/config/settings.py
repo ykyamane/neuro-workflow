@@ -21,7 +21,7 @@ SECRET_KEY = SECRET_KEY
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "*",  # 開発環境のみ、本番では具体的なドメインを指定
+    "*",  # Development environment only, specify a specific domain in production
     "localhost",
     "127.0.0.1",
 ]
@@ -49,8 +49,8 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
-    "app.box.apps.BoxConfig",  # ← 正しいConfig名を指定
-    "app.workflow.apps.WorkflowConfig",  # ← もしworkflowもあれば
+    "app.box.apps.BoxConfig",  
+    "app.workflow.apps.WorkflowConfig",  
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -116,7 +116,7 @@ REST_FRAMEWORK = {
     #     "rest_framework.permissions.IsAuthenticated",
     # ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",  # 一時的に変更
+        "rest_framework.permissions.AllowAny",  
     ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -175,14 +175,14 @@ CSRF_TRUSTED_ORIGINS = [
 # SECURITY SETTINGS
 # ==============================================================================
 
-# セキュリティヘッダー
+# security header
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
-# HTTPS設定（本番環境用）
+# HTTPS settings (for production environments)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-# 開発環境ではSSLリダイレクトを無効化
+# Disable SSL redirects in development environments
 # SECURE_SSL_REDIRECT = True
 
 # ==============================================================================
@@ -199,7 +199,7 @@ USE_TZ = True
 # ==============================================================================
 
 STATIC_URL = "static/"
-# STATIC_ROOT = BASE_DIR / "staticfiles"  # 本番環境用
+# STATIC_ROOT = BASE_DIR / "staticfiles"  # For production environment
 
 MEDIA_URL = "nodes/"
 
@@ -242,19 +242,47 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # LOGGING (開発用)
 # ==============================================================================
 
+#LOGGING = {
+#    "version": 1,
+#    "disable_existing_loggers": False,
+#    "handlers": {
+#        "console": {
+#            "class": "logging.StreamHandler",
+#        },
+#    },
+#    "loggers": {
+#        "app.auth.authentication": {
+#            "handlers": ["console"],
+#            "level": "DEBUG",
+#            "propagate": True,
+#        },
+#    },
+#}
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
         },
     },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
     "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
         "app.auth.authentication": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "INFO",
             "propagate": True,
         },
     },
 }
+

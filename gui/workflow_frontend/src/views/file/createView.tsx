@@ -15,7 +15,7 @@ import {
   Spinner,
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
-import { createAuthHeaders } from '../../api/authHeaders'; // 認証ヘッダー用
+import { createAuthHeaders } from '../../api/authHeaders'; // for authentication header
 
 interface CreateFlowProjectRequest {
   name: string;
@@ -23,7 +23,7 @@ interface CreateFlowProjectRequest {
 }
 
 interface CreateFlowProjectResponse {
-  id: string;  // UUIDなのでstring
+  id: string;  // UUID is a string
   name: string;
   description: string;
   created_at: string;
@@ -44,20 +44,20 @@ const CreateFlowPj: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
 
-  // バックエンドのワークフローAPIエンドポイント
+  // Backend Workflow API endpoints
   const API_ENDPOINT = `/api/workflow/`;
 
-  // ワークフロープロジェクト作成API呼び出し
+  // Workflow project creation API call
   const createFlowProject = async (data: CreateFlowProjectRequest): Promise<CreateFlowProjectResponse> => {
     try {
       console.log('Creating flow project with data:', data);
       
-      // 認証ヘッダーを取得
+      // Get authentication header
       const authHeaders = await createAuthHeaders();
       
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
-        credentials: 'include',  // Cookie（セッション）を含める
+        credentials: 'include',  // Include Cookies (Sessions)
         headers: {
           ...authHeaders,
           'Content-Type': 'application/json',
@@ -98,15 +98,15 @@ const CreateFlowPj: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // API呼び出し用のデータを準備
+      // Prepare data for API calls
       const requestData: CreateFlowProjectRequest = {
         name: projectName.trim(),
-        description: note.trim() || '', // 空文字列をデフォルトに
+        description: note.trim() || '', // Default to empty string
       };
 
       const response = await createFlowProject(requestData);
 
-      // 成功時の処理
+      // Processing on success
       toast({
         title: 'Creation Success',
         description: `"${response.name}" has been created successfully`,
@@ -115,12 +115,12 @@ const CreateFlowPj: React.FC = () => {
         isClosable: true,
       });
 
-      // フォームをリセット
+      // reset form
       setProjectName('');
       setNote('');
 
-      // 作成されたワークフローの詳細画面に遷移（UUIDを使用）
-      //navigate(`/workflow/${response.id}`);
+      // Go to the details screen of the created workflow (using UUID)
+      // navigate(`/workflow/${response.id}`);
       navigate(`/`);
 
     } catch (error) {
@@ -132,7 +132,7 @@ const CreateFlowPj: React.FC = () => {
         errorMessage = error.message;
       }
       
-      // 特定のエラーに対する詳細メッセージ
+      // Detailed message for the specific error
       if (errorMessage.includes('401')) {
         errorMessage = 'Authentication required. Please login first.';
       } else if (errorMessage.includes('403')) {

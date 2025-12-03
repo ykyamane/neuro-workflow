@@ -75,6 +75,14 @@ const Header: React.FC = () => {
           Neuro-workflow
       </Heading>
       
+      <Box 
+          marginLeft={5}
+          fontSize="sm"
+      >
+        <Text>Brain/MINDS 2.0</Text>
+        <Text>Okinawa Institute of Science and Technology / RIKEN CBS</Text>
+      </Box>
+
       <Spacer />
       
       <Flex alignItems="center">
@@ -88,7 +96,7 @@ const Header: React.FC = () => {
             mx={2}
             rightIcon={<ChevronDownIcon />}
           >
-            File
+            Project
           </MenuButton>
           <MenuList bg="gray.800" borderColor="gray.700">
             <MenuItem as={RouterLink} to="/file/new" bg="gray.800" _hover={{ bg: "gray.700" }}>New</MenuItem>
@@ -108,27 +116,10 @@ const Header: React.FC = () => {
             mx={2}
             rightIcon={<ChevronDownIcon />}
           >
-            Box
+            Nodes
           </MenuButton>
           <MenuList bg="gray.800" borderColor="gray.700">
             <MenuItem as={RouterLink} to="/box/upload" bg="gray.800" _hover={{ bg: "gray.700" }}>Upload</MenuItem>        
-          </MenuList>
-        </Menu>
-
-        {/* Settings Menu */}
-        <Menu>
-          <MenuButton 
-            as={Button}
-            variant="ghost" 
-            colorScheme="white" 
-            size="md" 
-            mx={2}
-            rightIcon={<ChevronDownIcon />}
-          >
-            Settings
-          </MenuButton>
-          <MenuList bg="gray.800" borderColor="gray.700">
-            <MenuItem as={RouterLink} to="/settings/server" bg="gray.800" _hover={{ bg: "gray.700" }}>Server</MenuItem>
           </MenuList>
         </Menu>
 

@@ -30,7 +30,7 @@ interface NodeDetailsContentProps {
   convertToStrIncFloat: (obj: any) => any; 
 }
 
-// Jupyterを別タブで開く
+// Open Jupyter in a new tab
 const OpenJupyter = (filename : string, category : string) => {
     window.open("http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.toLowerCase()+"/"+filename+".py", "_blank");
 };
@@ -43,19 +43,19 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   const [localNodeData, setLocalNodeData] = useState<Node<CalculationNodeData> | null>(nodeData);
   const toast = useToast();
 
-  // nodeDataが変更されたときにローカル状態を更新し、編集状態をリセット
+  // Update local state and reset edit state when nodeData changes
   useEffect(() => {
     console.log('NodeDetailsContent: nodeData changed', nodeData);
     setLocalNodeData(nodeData);
     
-    // 編集状態をリセット（パラメーター更新後に古い編集状態が残らないように）
+    // Reset edit state (so that old edit state does not remain after parameter update)
     setEditingInstance('');
     setEditingParam(null);
     setEditingField(null);
     setEditValue('');
   }, [nodeData]);
 
-  // インスタンス名の更新API呼び出し
+  // Update Instance Name API Call
   const updateInstanceName = async (instanceName: string) => {
     try {
       console.log('=== Parameter Update Debug Info ===');
@@ -65,8 +65,10 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
 
       let response;
       let requestBody;
+      
+      localNodeData.data.instanceName = instanceName;
 
-      // ワークフロー内のノード - ワークフローパラメーター更新エンドポイントを使用
+      // Node in a workflow - Use the workflow parameter update endpoint
       const endpoint = `/api/workflow/${workflowId}/nodes/${localNodeData.id}/instance_name/`;
       console.log('Using workflow instance_name endpoint:', endpoint);
 
@@ -92,18 +94,18 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
       }
 
-      // 成功レスポンスのボディもログに出力
+      // The body of a successful response is also output to the log.
       const responseText = await response.text();
       console.log('Success response body:', responseText);
 
-      // DBから最新データを再取得またはローカル状態を更新
+      // Re-acquire the latest data from the DB or update the local state
       if (localNodeData && onNodeUpdate) {
         console.log('Starting post-update refresh process for node:', localNodeData.id);
         console.log('onRefreshNodeData available:', !!onRefreshNodeData);
 
         let updatedInstanceName: string | undefined;
 
-        // ワークフロー内のノード - instanceNameを直接更新
+        // Node in workflow - Update instanceName directly
         updatedInstanceName = localNodeData.data.instanceName;
 
         console.log('Updating workflow node instance name:', {
@@ -111,7 +113,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           instanceName
         });
 
-        // ローカル状態を即座に更新
+        // Update local state immediately
         const updatedNodeData = {
           ...localNodeData,
           data: {
@@ -122,7 +124,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         };
         setLocalNodeData(updatedNodeData);
 
-        // 親コンポーネントの状態も更新
+        // Also updates the parent component's state
         onNodeUpdate(localNodeData.id, {
           instanceName: updatedInstanceName,
           __timestamp: Date.now()
@@ -151,10 +153,10 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     }
   };
 
-  // パラメータの更新API呼び出し
+  // Update parameters API call
   const updateParameter = async (parameterKey: string, parameterValue: any, parameterField: 'default_value' | 'constraints') => {
     try {
-      // ワークフロー内のノードかどうかを判定
+      // Determine if this is a node in a workflow
       const isWorkflowNode = localNodeData && !localNodeData.id.startsWith('sidebar_');
 
       console.log('=== Parameter Update Debug Info ===');
@@ -169,7 +171,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       let requestBody;
 
       if (isWorkflowNode) {
-        // ワークフロー内のノード - ワークフローパラメーター更新エンドポイントを使用
+        // Node in a workflow - Use the workflow parameter update endpoint
         const endpoint = `/api/workflow/${workflowId}/nodes/${localNodeData.id}/parameters/`;
         console.log('Using workflow parameters endpoint:', endpoint);
 
@@ -188,7 +190,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           body: JSON.stringify(requestBody),
         });
       } else {
-        // サイドバーのノード - 既存のエンドポイントを使用
+        // Sidebar Node - Use an Existing Endpoint
         const endpoint = '/api/box/parameters/update/';
         console.log('Using sidebar endpoint:', endpoint);
 
@@ -218,11 +220,11 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
       }
 
-      // 成功レスポンスのボディもログに出力
+      // The body of a successful response is also output to the log.
       const responseText = await response.text();
       console.log('Success response body:', responseText);
 
-      // レスポンスが空でなければJSONとしてパース
+      // If the response is not empty, parse it as JSON
       let responseData = null;
       if (responseText.trim()) {
         try {
@@ -233,7 +235,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         }
       }
 
-      // DBから最新データを再取得またはローカル状態を更新
+      // Re-acquire the latest data from the DB or update the local state
       if (localNodeData && onNodeUpdate) {
         console.log('Starting post-update refresh process for node:', localNodeData.id);
         console.log('onRefreshNodeData available:', !!onRefreshNodeData);
@@ -241,7 +243,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         let updatedSchema: SchemaFields | undefined;
 
         if (isWorkflowNode) {
-          // ワークフロー内のノード - schemaを直接更新
+          // Node in workflow - Update schema directly
           updatedSchema = { ...localNodeData.data.schema };
           if (updatedSchema.parameters && updatedSchema.parameters[parameterKey]) {
             updatedSchema.parameters[parameterKey] = {
@@ -256,7 +258,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               parameterValue
             });
 
-            // ローカル状態を即座に更新
+            // Update local state immediately
             const updatedNodeData = {
               ...localNodeData,
               data: {
@@ -267,15 +269,15 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             };
             setLocalNodeData(updatedNodeData);
 
-            // 親コンポーネントの状態も更新
+            // Also updates the parent component's state
             onNodeUpdate(localNodeData.id, {
               schema: updatedSchema,
               __timestamp: Date.now()
             });
           }
         } else {
-          // サイドバーのノード - スキーマを更新
-          // まずローカル状態を即座に更新（即時反映のため）
+          // Sidebar node - Update Schema
+          // First, update the local state immediately (for immediate reflection)
           updatedSchema = { ...localNodeData.data.schema };
           if (updatedSchema.parameters && updatedSchema.parameters[parameterKey]) {
             updatedSchema.parameters[parameterKey] = {
@@ -290,7 +292,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               parameterValue
             });
 
-            // ローカル状態を即座に更新（モーダル内の表示も更新される）
+            // Updates local state immediately (and updates the display in the modal)
             const updatedNodeData = {
               ...localNodeData,
               data: {
@@ -301,7 +303,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             };
             setLocalNodeData(updatedNodeData);
 
-            // 親コンポーネントの状態も更新
+            // Also updates the parent component's state
             onNodeUpdate(localNodeData.id, {
               schema: updatedSchema,
               __timestamp: Date.now()
@@ -309,7 +311,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           }
         }
 
-        // サイドバーノードの場合のみサーバーから最新データを取得（データ整合性のため）
+        // Only sidebar nodes get the latest data from the server (for data integrity)
         if (onRefreshNodeData && !isWorkflowNode) {
           try {
             console.log('Attempting to refresh data for sidebar node file:', localNodeData.data.file_name);
@@ -320,7 +322,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               console.log('Updating sidebar node with refreshed schema from server:', refreshedData.schema);
               updatedSchema = refreshedData.schema;
 
-              // ローカル状態も更新
+              // Local state is also updated
               const finalUpdatedNodeData = {
                 ...localNodeData,
                 data: {
@@ -331,7 +333,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               };
               setLocalNodeData(finalUpdatedNodeData);
 
-              // 親コンポーネントの状態も更新
+              // Also updates the parent component's state
               onNodeUpdate(localNodeData.id, {
                 schema: updatedSchema,
                 __timestamp: Date.now()
@@ -339,11 +341,11 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             }
           } catch (error) {
             console.error('Failed to refresh sidebar node data from server:', error);
-            // サーバーからの取得に失敗してもローカル更新は既に済んでいる
+            // Even if retrieval from the server fails, local updates have already been completed
           }
         }
         
-        // 同期処理は削除 - サイドバーとワークフローノードは独立して扱う
+        // Synchronization removed - Sidebar and workflow nodes are now separate
       }
 
       toast({
@@ -368,31 +370,31 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     }
   };
 
-  // 編集開始 (インスタンス名)
+  // Start Editing (Instance Name)
   const startInstanceEditing = (currentValue: string) => {
     setEditingInstance(currentValue);
   };
 
-  // 編集保存 (インスタンス名)
+  // Edit Save (Instance Name)
   const saveInstanceEdit = async () => {
     const success = await updateInstanceName(editingInstance);
     if (success) {
-      // 編集状態をクリア
+      // Clear Editing State
       setEditingInstance('');
     }
   };
 
-  // 編集キャンセル (インスタンス名)
+  // Edit Cancel (Instance Name)
   const cancelInstanceEdit = () => {
     setEditingInstance('');
   };
 
-  // 編集開始
+  // Start editing
   const startEditing = (paramKey: string, field: 'default_value' | 'constraints', currentValue: any) => {
     setEditingParam(paramKey);
     setEditingField(field);
     
-    // 配列や複雑なオブジェクトを適切にフォーマット
+    // Properly format arrays and complex objects
     if (Array.isArray(currentValue)) {
       setEditValue(JSON.stringify(currentValue, null, 2));
     } else if (typeof currentValue === 'object' && currentValue !== null) {
@@ -404,35 +406,35 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     }
   };
 
-  // 編集保存
+  // edit save
   const saveEdit = async () => {
     if (!editingParam || !editingField) return;
 
     let parsedValue: any;
     try {
-      // まずJSONとして解析を試行
+      // First try parsing as JSON
       parsedValue = JSON.parse(editValue);
       
-      // 配列の場合の検証
+      // Validation for arrays
       if (Array.isArray(parsedValue)) {
         console.log('Parsed array value:', parsedValue);
       }
     } catch (error) {
-      // JSON解析に失敗した場合、文字列として扱う
+      // If JSON parsing fails, treat it as a string
       console.log('JSON parse failed, treating as string:', editValue);
       parsedValue = editValue;
     }
 
     const success = await updateParameter(editingParam, parsedValue, editingField);
     if (success) {
-      // 編集状態をクリア
+      // Clear Editing State
       setEditingParam(null);
       setEditingField(null);
       setEditValue('');
     }
   };
 
-  // 編集キャンセル
+  // edit cancel
   const cancelEdit = () => {
     setEditingParam(null);
     setEditingField(null);
@@ -449,7 +451,6 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     );
   }
 
-  console.log("これデータ", localNodeData);
   console.log("NodeData timestamp in modal:", localNodeData.data.__timestamp || 'no timestamp');
 
   const schema: SchemaFields = localNodeData.data.schema || { inputs: {}, outputs: {}, parameters: {}, methods: {} };
@@ -471,9 +472,9 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     return colorMap[type.toUpperCase()] || 'gray';
   };
 
-  // ノード固有のパラメーター値を取得するヘルパー関数
+  // Helper function to get node-specific parameter values
   const getNodeParameterValue = (parameterKey: string, field: 'default_value' | 'constraints'): any => {
-    // 全てのノードでschemaから最新の値を取得（DBの最新状態を反映）
+    // Get the latest value from the schema on all nodes (reflects the latest state of the DB)
     const param = localNodeData?.data.schema.parameters?.[parameterKey];
     if (param && param[field] !== undefined) {
       //if (field == 'default_value') {
@@ -485,15 +486,15 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     return undefined;
   };
 
-  // データをクリーンに表示するためのヘルパー関数
+  // Helper functions for displaying data cleanly
   const formatDataForDisplay = (data: any) => {
     if (Array.isArray(data)) {
-      // 配列の場合、各要素を簡潔に表示
+      // For arrays, briefly display each element
       if (data.length === 0) {
         return '[]';
       }
       
-      // 配列の長さが5を超える場合は省略表示
+      // Sequences longer than 5 are omitted
       if (data.length > 5) {
         const firstFew = data.slice(0, 3).map(item => {
           if (typeof item === 'object' && item !== null) {
@@ -506,7 +507,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       
       return `[${data.map(item => {
         if (typeof item === 'object' && item !== null) {
-          // オブジェクトの場合、キーのみまたは重要なプロパティのみを表示
+          // For objects, show only keys or only important properties
           if (item.name) return `"${item.name}"`;
           if (item.type) return `"${item.type}"`;
           return JSON.stringify(item);
@@ -528,7 +529,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         {editingInstance != '' ? (
           <VStack flex="1" spacing={1} align="stretch">                      
             <Input
-              value={editingInstance }
+              value={editingInstance}
               onChange={(e) => setEditingInstance(e.target.value)}
               size="xs"
               bg="gray.600"
@@ -611,7 +612,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               )}
               
               <VStack align="stretch" spacing={2}>
-                {/* Default Value - 編集可能 */}
+                {/* Default Value - editable */}
                 {(param.default_value !== undefined || getNodeParameterValue(key, 'default_value') !== undefined) && (
                   <HStack align="start" spacing={2}>
                     <Text fontSize="xs" color="gray.400" minW="80px">default_value:</Text>
@@ -627,7 +628,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                             fontSize="xs"
                             minH="80px"
                             resize="vertical"
-                            placeholder="配列の場合: [1, 2, 3] または ['a', 'b', 'c']"
+                            placeholder="For arrays: [1, 2, 3] or ['a', 'b', 'c']"
                           />
                         ) : (
                           <Input
@@ -661,12 +662,14 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                         <Code colorScheme="gray" fontSize="xs" bg="gray.600" color="white" flex="1" maxW="360">
                           {(() => {
                             var currentValue = getNodeParameterValue(key, 'default_value');
-                            //return convertToStrIncFloat(currentValue);
+                            return currentValue ? formatDataForDisplay(convertToStrIncFloat(currentValue)) : 'None';
+                            /*
                             return Array.isArray(currentValue) || typeof currentValue === 'object'
                               ? formatDataForDisplay(currentValue)
                               : typeof currentValue === 'string'
                                 ? `"${currentValue}"`
                                 : String(currentValue);
+                            */
                           })()}
                         </Code>
                         <Tooltip label="Edit default value" hasArrow>
@@ -684,7 +687,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   </HStack>
                 )}
                 
-                {/* Constraints - 編集可能 */}
+                {/* Constraints - editable */}
                 <HStack align="start" spacing={2}>
                   <Text fontSize="xs" color="gray.400" minW="80px">constraints:</Text>
                   {editingParam === key && editingField === 'constraints' ? (
@@ -699,7 +702,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                           fontSize="xs"
                           minH="80px"
                           resize="vertical"
-                          placeholder="制約条件 (JSON形式): {'min': 0, 'max': 100} または ['option1', 'option2']"
+                          placeholder="Constraints (JSON format): {'min': 0, 'max': 100} or ['option1', 'option2']"
                         />
                       ) : (
                         <Input
@@ -709,7 +712,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                           bg="gray.600"
                           color="white"
                           fontSize="xs"
-                          placeholder="制約条件 (JSON形式)"
+                          placeholder="Constraints (JSON format)"
                         />
                       )}
                       <HStack spacing={1}>
@@ -735,7 +738,6 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                         {(() => {
                           const currentConstraints = getNodeParameterValue(key, 'constraints');
                           return currentConstraints ? formatDataForDisplay(convertToStrIncFloat(currentConstraints)) : 'None';
-                          //return currentConstraints ? formatDataForDisplay(currentConstraints) : 'None';
                         })()}
                       </Code>
                       <Tooltip label="Edit constraints" hasArrow>
@@ -860,7 +862,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       <Box p={6} h="100%" overflowY="auto" maxW="none" w="100%">
         <VStack spacing={6} align="stretch" maxW="none">
           {/* Node Info Header */}
-          <Box bg="gray.800" borderRadius="lg" boxShadow="md" marginTop={-5} p={4}>
+          <Box bg="gray.800" borderRadius="lg" boxShadow="md" marginTop={-10} p={4}>
             <Flex justify="space-between" align="start">
               <VStack align="start" spacing={1}>
                 {renderInstanceNameSection()}
@@ -876,12 +878,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             </Flex>
           </Box>
 
-          {/* 4つのセクションを2x2グリッドで配置 */}
+          {/* Four sections arranged in a 2x2 grid */}
           <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6} w="100%" templateColumns={{ lg: "1fr 1fr" }}>
             <Box>
               {/* Inputs */}
               <Box>
-                <Text fontWeight="bold" fontSize="lg" mb={4} color="blue.300">
+                <Text fontWeight="bold" fontSize="lg" mb={2} color="blue.300">
                   ・Inputs
                 </Text>
                 <Box
@@ -890,7 +892,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   borderRadius="lg"
                   border="2px"
                   borderColor="blue.500"
-                  h="220px"
+                  h="200px"
                   overflowY="auto"
                   boxShadow="lg"
                 >
@@ -900,7 +902,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
 
               {/* Outputs */}
               <Box marginTop={4}>
-                <Text fontWeight="bold" fontSize="lg" mb={4} color="green.300">
+                <Text fontWeight="bold" fontSize="lg" mb={2} color="green.300">
                   ・Outputs
                 </Text>
                 <Box
@@ -909,7 +911,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   borderRadius="lg"
                   border="2px"
                   borderColor="green.500"
-                  h="220px"
+                  h="200px"
                   overflowY="auto"
                   boxShadow="lg"
                 >
@@ -919,7 +921,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             </Box>
             {/* Methods */}
             <Box>
-              <Text fontWeight="bold" fontSize="lg" mb={4} color="purple.300">
+              <Text fontWeight="bold" fontSize="lg" mb={2} color="purple.300">
                 ・Methods
               </Text>
               <Box
@@ -928,7 +930,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                 borderRadius="lg"
                 border="2px"
                 borderColor="purple.500"
-                h="500px"
+                h="460px"
                 overflowY="auto"
                 boxShadow="lg"
               >
@@ -938,7 +940,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           </SimpleGrid>
           {/* Parameters */}
           <Box>
-            <Text fontWeight="bold" fontSize="lg" mb={4} color="orange.300">
+            <Text fontWeight="bold" fontSize="lg" mb={2} color="orange.300">
               ・Parameters
             </Text>
             <Box
@@ -947,7 +949,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               borderRadius="lg"
               border="2px"
               borderColor="orange.500"
-              h="500px"
+              h="420px"
               overflowY="auto"
               boxShadow="lg"
             >

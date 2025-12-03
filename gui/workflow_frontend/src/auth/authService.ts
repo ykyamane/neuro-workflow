@@ -18,7 +18,7 @@ export interface AuthResult {
 }
 
 class AuthService {
-  // サインアップ
+  // sign up
   async signUp({ email, password, name }: SignUpData): Promise<AuthResult> {
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -56,7 +56,7 @@ class AuthService {
     }
   }
 
-  // サインイン
+  // Sign in
   async signIn({ email, password }: SignInData): Promise<AuthResult> {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -88,7 +88,7 @@ class AuthService {
     }
   }
 
-  // サインアウト
+  // sign out
   async signOut(): Promise<AuthResult> {
     try {
       const { error } = await supabase.auth.signOut();
@@ -115,7 +115,7 @@ class AuthService {
     }
   }
 
-  // パスワードリセット
+  // password reset
   async resetPassword(email: string): Promise<AuthResult> {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -144,7 +144,7 @@ class AuthService {
     }
   }
 
-  // パスワード更新
+  // Password update
   async updatePassword(password: string): Promise<AuthResult> {
     try {
       const { error } = await supabase.auth.updateUser({
@@ -173,7 +173,7 @@ class AuthService {
     }
   }
 
-  // 現在のユーザー取得
+  // Get current user
   async getCurrentUser() {
     try {
       const {
@@ -191,24 +191,24 @@ class AuthService {
     }
   }
 
-  // 認証状態の監視
+  // Authentication status monitoring
   onAuthStateChange(callback: (event: string, session: any) => void) {
     return supabase.auth.onAuthStateChange(callback);
   }
 
-  // エラーメッセージの翻訳
+  // Error message translation
   private getErrorMessage(errorMessage: string): string {
     const errorMessages: { [key: string]: string } = {
       "Invalid login credentials":
-        "メールアドレスまたはパスワードが正しくありません",
-      "User already registered": "このメールアドレスは既に登録されています",
-      "Email not confirmed": "メールアドレスが確認されていません",
-      "Signup requires a valid password": "パスワードが無効です",
+        "Incorrect email address or password",
+      "User already registered": "This email address is already registered",
+      "Email not confirmed": "Email address not verified",
+      "Signup requires a valid password": "Invalid password",
       "Password should be at least 6 characters":
-        "パスワードは6文字以上で入力してください",
-      "Invalid email": "メールアドレスの形式が正しくありません",
+        "Please enter a password of at least 6 characters",
+      "Invalid email": "Email address format is incorrect",
       "Email rate limit exceeded":
-        "メール送信の制限に達しました。しばらく待ってから再試行してください",
+        "Email sending limit reached. Please wait a while and try again",
     };
 
     return errorMessages[errorMessage] || errorMessage;

@@ -2,17 +2,17 @@
 import { ApiClientManager, withErrorHandling } from "./apiManager";
 import { useState } from "react";
 
-// HTTP メソッドの型定義
+// HTTP Method type definition
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
-// API呼び出しのオプション
+// API call options
 export interface ApiOptions {
   headers?: Record<string, string>;
   timeout?: number;
-  params?: Record<string, any>; // クエリパラメータ
+  params?: Record<string, any>; // query parameters
 }
 
-// API レスポンスの型
+// API response type
 export interface ApiResponse<T = any> {
   data: T | null;
   error: {
@@ -23,7 +23,7 @@ export interface ApiResponse<T = any> {
   success: boolean;
 }
 
-// HTTPメソッドからAspidaメソッド名へのマッピング
+// Mapping HTTP methods to Aspida method names
 const HTTP_METHOD_MAP = {
   GET: "$get",
   POST: "$post",
@@ -32,7 +32,7 @@ const HTTP_METHOD_MAP = {
   PATCH: "$patch",
 } as const;
 
-// メインのAPI呼び出し関数
+// Main API calling function
 export const apiCall = async <T = any>(
   method: HttpMethod,
   path: string,
@@ -42,26 +42,26 @@ export const apiCall = async <T = any>(
   try {
     const client = await ApiClientManager.getInstance();
 
-    // パスの処理
+    // Handling paths
     let processedPath = path.startsWith("/") ? path.substring(1) : path;
 
-    // パラメータ付きパスの処理（例: users/123 -> users._id(123)）
+    // Handling paths with parameters (e.g.: users/123 -> users._id(123)）
     const pathParts = processedPath.split("/");
     let currentApi = client;
 
     for (let i = 0; i < pathParts.length; i++) {
       const part = pathParts[i];
 
-      // 数字または文字列IDの場合
+      // For numeric or string IDs
       if (i > 0 && /^[a-zA-Z0-9-_]+$/.test(part) && !currentApi[part]) {
-        // 前のパートが配列的なリソースの場合、IDとして扱う
+        // If the previous part is an array-like resource, treat it as an ID.
         const prevPart = pathParts[i - 1];
         if (currentApi[`_${prevPart.slice(0, -1)}`]) {
-          // 複数形から単数形への変換を試行（例: users -> user）
+          // Attempts to convert plurals to singulars (e.g.: users -> user）
           currentApi = currentApi[`_${prevPart.slice(0, -1)}`](part);
           continue;
         } else if (currentApi._id) {
-          // 汎用的な _id メソッドを使用
+          // Use the generic _id method
           currentApi = currentApi._id(part);
           continue;
         }
@@ -74,13 +74,13 @@ export const apiCall = async <T = any>(
       }
     }
 
-    // HTTPメソッドに対応するaspidaメソッドを取得
+    // Get the aspida method corresponding to the HTTP method
     const aspidaMethod = HTTP_METHOD_MAP[method];
     if (!currentApi[aspidaMethod]) {
       throw new Error(`Method ${method} not supported for path: ${path}`);
     }
 
-    // aspidaの呼び出しパラメータを構築
+    // Build aspida's call parameters
     const aspidaParams: any = {};
 
     if (options?.params && Object.keys(options.params).length > 0) {
@@ -91,7 +91,7 @@ export const apiCall = async <T = any>(
       aspidaParams.body = data;
     }
 
-    // API呼び出し実行
+    // API call execution
     const { data: responseData, error } = await withErrorHandling(async () => {
       return await currentApi[aspidaMethod](
         Object.keys(aspidaParams).length > 0 ? aspidaParams : undefined
@@ -130,7 +130,7 @@ export const apiCall = async <T = any>(
   }
 };
 
-// 便利なヘルパー関数
+// Useful Helper Functions
 export const api = {
   get: <T = any>(path: string, options?: ApiOptions) =>
     apiCall<T>("GET", path, undefined, options),
@@ -148,7 +148,7 @@ export const api = {
     apiCall<T>("DELETE", path, undefined, options),
 };
 
-// カスタムフック
+// custom hooks
 export const useApiCall = () => {
   const [loading, setLoading] = useState(false);
 
@@ -169,20 +169,20 @@ export const useApiCall = () => {
   return { callApi, loading };
 };
 
-// 認証関連のヘルパー
+// Authentication-related helpers
 export const authApi = {
-  // トークンリフレッシュ後にAPIクライアントをリセット
+  // Reset API client after token refresh
   refreshClient: async () => {
     ApiClientManager.resetInstance();
     return await ApiClientManager.getInstance();
   },
 
-  // 強制的にクライアントを更新
+  // Force client update
   forceRefresh: async () => {
     return await ApiClientManager.forceRefresh();
   },
 
-  // 現在のクライアントの状態確認
+  // Check current client status
   hasClient: () => {
     return ApiClientManager.hasInstance();
   },

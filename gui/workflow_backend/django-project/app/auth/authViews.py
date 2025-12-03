@@ -5,14 +5,14 @@ from rest_framework.response import Response
 
 @api_view(["GET"])
 def health_check(request):
-    """認証不要のヘルスチェック"""
+    """Authentication-free health checks"""
     return Response({"status": "ok", "message": "Django server is running"})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def protected_view(request):
-    """認証が必要なエンドポイント"""
+    """Endpoints that require authentication"""
     return Response(
         {
             "message": "Hello authenticated user!",
@@ -29,7 +29,7 @@ def protected_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def user_profile(request):
-    """ユーザー情報取得"""
+    """User information acquisition"""
     return Response(
         {
             "user": {
@@ -52,7 +52,7 @@ def user_profile(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def test_post(request):
-    """POST リクエストのテスト"""
+    """POST Testing the request"""
     return Response(
         {
             "message": "POST request successful",

@@ -27,6 +27,7 @@ services:
       - db
     networks:
       - workflow
+      - jupyterhub-network
 
   jupyterhub:
     build: ./workflow_backend/django-project/neuroworkflow
@@ -42,7 +43,7 @@ services:
       - jupyterhub-data:/srv/jupyterhub
     restart: unless-stopped
     networks:
-      - workflow
+      - jupyterhub-network
 
   frontend:
     build: ./workflow_frontend
@@ -78,3 +79,5 @@ volumes:
 
 networks:
   workflow:
+  jupyterhub-network:
+    name: jupyterhub-network

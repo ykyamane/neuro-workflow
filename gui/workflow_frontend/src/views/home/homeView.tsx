@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  Viewport,
   MiniMap,
   Controls,
   Background,
@@ -53,29 +56,67 @@ import NodeDetailsContent from './components/nodeDetailModal';
 import { DeleteConfirmDialog } from './components/deleteConfirmDialog';
 import { useTabContext } from '../../components/tabs/TabManager';
 import { FiMenu } from 'react-icons/fi';
+import { create } from "zustand";
+
+// Viewport for each projectId
+type Viewport = {
+    projectId: string;
+    x: number;
+    y: number;
+    zoom: number;
+};
+
+// Common State
+type FlowStore = {
+  sharedNodes: Node<CalculationNodeData>[];
+  sharedEdges: Edge[];
+  setSharedNodes: (nodes: Node<CalculationNodeData>[]) => void;
+  setSharedEdges: (edges: Edge[]) => void;
+};
+
+// Common State Export
+const useFlowStore = create<FlowStore>((set) => ({
+  sharedNodes: [],
+  sharedEdges: [],
+  //setSharedNodes: (sharedNodes) => set({ sharedNodes }),
+  //setSharedEdges: (sharedEdges) => set({ sharedEdges }),
+  setSharedNodes: (valueOrFn) =>
+    set((state) => ({
+      sharedNodes: typeof valueOrFn === 'function'
+        ? (valueOrFn as (prev: Node<CalculationNodeData>[]) => Node<CalculationNodeData>[])(state.sharedNodes)
+        : valueOrFn
+    })),
+  setSharedEdges: (valueOrFn) =>
+    set((state) => ({
+      sharedEdges: typeof valueOrFn === 'function'
+        ? (valueOrFn as (prev: Edge[]) => Edge[])(state.sharedEdges)
+        : valueOrFn
+    })),
+}));
+
+const FLOW_STATE_KEY = 'reactflow-viewport';
+const PROJECT_ID_KEY = 'projectId';
 
 const HomeView = () => {
   const toast = useToast();
   const { data: uploadedNodes, isLoading: isNodesLoading, error, refetch: refetchNodes } = useUploadedNodes();
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
   const { isOpen: isCodeOpen, onOpen: onCodeOpen, onClose: onCodeClose } = useDisclosure();
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CalculationNodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState<boolean>(false);
 
-  // 自動保存関連の状態
+  // Autosave related status
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ノードメニュー関連の状態
+  // Node menu related status
   const [nodeMenuPosition, setNodeMenuPosition] = useState<{ x: number, y: number } | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // エッジメニュー関連の状態
+  // Edge menu related status
   const [edgeMenuPosition, setEdgeMenuPosition] = useState<{ x: number, y: number } | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
@@ -86,9 +127,12 @@ const HomeView = () => {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
 
-  //const { setViewport, getViewport } = useReactFlow();
-  const FLOW_STATE_KEY = 'reactflow-viewport';
-
+  // Comon Selector
+  const sharedNodes = useFlowStore(state => state.sharedNodes);
+  const setSharedNodes = useFlowStore(state => state.setSharedNodes);
+  const sharedEdges = useFlowStore(state => state.sharedEdges);
+  const setSharedEdges = useFlowStore(state => state.setSharedEdges);
+  
   /*
   const enterTimer = useRef<number | null>(null);
   const leaveTimer = useRef<number | null>(null);
@@ -96,13 +140,13 @@ const HomeView = () => {
   const closeDelay = 180; // ms
   */
 
-  // タブシステムのコンテキストを使用
+  // Use the tab system context
   const { addJupyterTab } = useTabContext();
 
-  // アイランドメニュー開閉管理
+  // Island menu opening/closing management
   const [isIslandCodeOpen, setIslandCodeOpen] = useState(true);
 
-  // ワークフロープロジェクトのソースコード表示
+  // Viewing the source code of a workflow project
   const handleOpenJupyter = useCallback(async () => {
     if (!selectedProject) {
       toast({
@@ -116,17 +160,34 @@ const HomeView = () => {
     }
 
     try {
-      // プロジェクト名を取得
+      // Get project name
       const projectName = projects.find(p => p.id === selectedProject)?.name || selectedProject;
-      // 先頭大文字化
-      const trimedProjectName = projectName.replace(/\s/g, '');
+      // Initial capitalization
+      const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
       const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
 
-      // JupyterLab URLを構築（開発モード）
-      //const jupyterUrl = `http://localhost:8000/hub/login?username=user1&password=password`;
-      const jupyterUrl = "http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/projects/"+capitalizedProjectName+"/"+capitalizedProjectName+".py"
+      // Build JupyterLab URL (development mode)
+
+      // If the host contains a port, replace it with :8000. Otherwise keep the host as-is.
+      // Example: example.com:3000 -> example.com:8000
+      const jupyterBase = ((): string => {
+        try {
+          if (typeof window === 'undefined') return 'http://localhost:8000';
+          const { protocol, hostname, host } = window.location;
+          // host includes port if present (hostname:port)
+          if (host.includes(':')) {
+            return `${protocol}//${hostname}:8000`;
+          }
+          return `${protocol}//${host}`;
+        } catch (e) {
+          return 'http://localhost:8000';
+        }
+      })();
+
+      // Construct the JupyterLab URL using the detected base
+      const jupyterUrl = `${jupyterBase}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
       
-      // 新しいタブを作成
+      // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
       
       toast({
@@ -149,35 +210,35 @@ const HomeView = () => {
     }
   }, [selectedProject, projects, addJupyterTab, toast]);
 
-  // ノードのコールバック関数
+  // Node callback functions
   const handleNodeJupyter = useCallback((nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
+    const node = sharedNodes.find(n => n.id === nodeId);
     if (node) {
       setSelectedNode(node);
       onCodeOpen();
     }
-  }, [nodes, onCodeOpen]);
+  }, [sharedNodes, onCodeOpen]);
 
 
   const handleNodeInfo = useCallback((nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
+    const node = sharedNodes.find(n => n.id === nodeId);
     if (node) {
       setSelectedNode(node);
       onViewOpen();
     }
-  }, [nodes, onViewOpen]);
+  }, [sharedNodes, onViewOpen]);
 
   const handleNodeUpdate = useCallback((nodeId: string, updatedData: Partial<CalculationNodeData>) => {
     console.log('handleNodeUpdate called for node:', nodeId, 'with data:', updatedData);
     
-    setNodes((nds) => {
+    setSharedNodes((nds) => {
       const updatedNodes = nds.map((node) => {
         if (node.id === nodeId) {
-          // 完全に新しいオブジェクトを作成してReact Flowに変更を認識させる
+          // Create an entirely new object and let React Flow recognize the change
           const updatedNode = { 
             ...node, 
             data: { ...node.data, ...updatedData },
-            // 強制的に再レンダリングを起こすためにtimestampを追加
+            // Add a timestamp to force a re-render
             __timestamp: Date.now()
           };
           console.log('Node updated:', updatedNode);
@@ -189,7 +250,7 @@ const HomeView = () => {
       return updatedNodes;
     });
     
-    // selectedNodeも更新
+    // selectedNode also updated
     setSelectedNode((prevNode) => {
       if (prevNode?.id === nodeId) {
         const updatedSelectedNode = { 
@@ -201,54 +262,13 @@ const HomeView = () => {
       }
       return prevNode;
     });
-  }, [setNodes]);
+  }, [setSharedNodes]);
 
-  // handleSyncWorkflowNodes関数は削除 - サイドバーとワークフローノードは独立して扱う
+  // The handleSyncWorkflowNodes function has been removed. - Sidebar and workflow nodes are treated independently
 
-  const handleRefreshNodeData = useCallback(async (filename: string) => {
-    try {
-      console.log('Refreshing node data for filename:', filename);
-      
-      const headers = await createAuthHeaders();
-      console.log('Auth headers created:', headers);
-      
-      const response = await fetch(`/api/box/uploaded-nodes/`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          ...headers,
-        },
-      });
-
-      console.log('Refresh response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Refresh API error:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('Refresh API result:', result);
-      
-      // filename でノードを検索
-      if (result.nodes && Array.isArray(result.nodes)) {
-        const refreshedNode = result.nodes.find((node: any) => node.file_name === filename);
-        console.log('Found refreshed node:', refreshedNode);
-        return refreshedNode;
-      }
-      
-      console.log('No nodes found in result or result.nodes is not an array');
-      return null;
-    } catch (error) {
-      console.error('Error refreshing node data:', error);
-      throw error;
-    }
-  }, []);
-
-  // サイドバーからのノード情報表示
+  // Viewing node information from the sidebar
   const handleSidebarNodeInfo = useCallback((nodeData: any) => {
-    // サイドバーノードは常に独立した一時的ノードとして作成
+    // Sidebar nodes are always created as independent temporary nodes
     console.log('Creating temporary node for sidebar view');
     const tempNode = {
       id: `sidebar_${nodeData.id}`,
@@ -262,9 +282,9 @@ const HomeView = () => {
     onViewOpen();
   }, [onViewOpen]);
 
-  // サイドバーからのソースコード表示
+  // View source code from the sidebar
   const handleSidebarViewCode = useCallback((nodeData: any) => {
-    // サイドバーノードは常に独立した一時的ノードとして作成
+    // Sidebar nodes are always created as independent temporary nodes
     console.log('Creating temporary node for sidebar code view');
     const tempNode = {
       id: `sidebar_${nodeData.id}`,
@@ -278,6 +298,7 @@ const HomeView = () => {
     onCodeOpen();
   }, [onCodeOpen]);
 
+  // handleNodeDelete
   const handleNodeDelete = useCallback(async (nodeId: string) => {
     try {
       if (selectedProject && autoSaveEnabled) {
@@ -290,9 +311,10 @@ const HomeView = () => {
           },
         });
       }
-      
-      setNodes((nds) => nds.filter((node) => node.id !== nodeId));
-      setEdges((eds) => {
+ 
+      const n = sharedNodes;
+      setSharedNodes((nds) => nds.filter((node) => node.id !== nodeId));
+      setSharedEdges((eds) => {
         const relatedEdges = eds.filter(
           (edge) => edge.source === nodeId || edge.target === nodeId
         );
@@ -332,9 +354,9 @@ const HomeView = () => {
         isClosable: true,
       });
     }
-  }, [setNodes, setEdges, toast, autoSaveEnabled, selectedProject]);
+  }, [setSharedNodes, setSharedEdges, toast, autoSaveEnabled, selectedProject]);
 
-  // nodeTypes を useMemo で定義 - すべてのカテゴリタイプをcalculationNodeコンポーネントにマッピング
+  // Define nodeTypes in useMemo - map all category types to calculationNode components
   const nodeTypes = useMemo(() => {
     const calculationNodeComponent = (props: NodeProps<CalculationNodeData>) => (
       <CalculationNode
@@ -345,13 +367,13 @@ const HomeView = () => {
       />
     );
 
-    // 基本のタイプ
+    // basic type
     const types: Record<string, any> = {
       calculationNode: calculationNodeComponent,
       default: calculationNodeComponent, // fallback
     };
 
-    // uploadedNodesから動的にカテゴリタイプを追加
+    // Dynamically add category types from uploadedNodes
     if (uploadedNodes?.nodes) {
       const categories = new Set(uploadedNodes.nodes.map(node => node.category));
       categories.forEach(category => {
@@ -361,7 +383,7 @@ const HomeView = () => {
       });
     }
 
-    // よくあるカテゴリを事前定義
+    // Predefined common categories
     const commonCategories = ['analysis', 'preprocessing', 'visualization', 'modeling', 'utils', 'Uploaded Nodes'];
     commonCategories.forEach(category => {
       if (!types[category]) {
@@ -373,12 +395,12 @@ const HomeView = () => {
   }, [handleNodeJupyter, handleNodeInfo, handleNodeDelete, uploadedNodes]);
 
 
-  // API通信用のヘルパー関数
+  // Helper functions for API communication
   const createAuthHeadersLocal = async () => {
     return await createAuthHeaders();
   };
 
-  // 接続状態を監視
+  // Monitor connection status
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -400,121 +422,122 @@ const HomeView = () => {
     const interval = setInterval(checkConnection, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  });
 
-  // 初回ロード時に onChange を実行
+  // Execute onChange on first load
   useEffect(() => {
-      const projectId = localStorage.getItem('projectId');
+      const projectId = localStorage.getItem(PROJECT_ID_KEY);
 
     handleProjectChange( projectId );
   }, []);
 
-  // ノードの個別作成
+  // Creating individual nodes
   const createNodeAPI = async (nodeData: Node<CalculationNodeData>) => {
-  if (!selectedProject || !autoSaveEnabled) {
-    console.log('Skipping node creation API call:', { selectedProject, autoSaveEnabled });
-    return;
-  }
+    if (!selectedProject || !autoSaveEnabled) {
+      console.log('Skipping node creation API call:', { selectedProject, autoSaveEnabled });
+      return;
+    }
 
-  console.log('Creating node via API:', nodeData);
+    console.log('Creating node via API:', nodeData);
   
-  try {
-    const headers = await createAuthHeadersLocal();
-    const requestBody = {
-      id: nodeData.id,
-      position: nodeData.position,
-      type: nodeData.type,
-      data: nodeData.data,
-    };
-    
-    console.log('Request body:', requestBody);
-    
-    const response = await fetch(`/api/workflow/${selectedProject}/nodes/`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+    try {
+      const headers = await createAuthHeadersLocal();
+      const requestBody = {
+        id: nodeData.id,
+        position: nodeData.position,
+        type: nodeData.type,
+        data: nodeData.data,
+      };
+      
+      console.log('Request body:', requestBody);
+      
+      const response = await fetch(`/api/workflow/${selectedProject}/nodes/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    const responseData = await response.json();
-    console.log('Create node response:', responseData);
+      const responseData = await response.json();
+      console.log('Create node response:', responseData);
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setIsConnected(false);
+        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to create node'}`);
+      }
+      
+      setIsConnected(true);
+      console.log('Node created successfully:', responseData);
+    } catch (error) {
+      console.error('Error creating node:', error);
       setIsConnected(false);
-      throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to create node'}`);
+      toast({
+        title: "Save Error",
+        description: `Failed to save node: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
     }
-    
-    setIsConnected(true);
-    console.log('Node created successfully:', responseData);
-  } catch (error) {
-    console.error('Error creating node:', error);
-    setIsConnected(false);
-    toast({
-      title: "Save Error",
-      description: `Failed to save node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-};
+  };
 
-// ノードの個別更新
-const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => {
-  if (!selectedProject || !autoSaveEnabled) {
-    console.log('Skipping node update API call:', { selectedProject, autoSaveEnabled });
-    return;
-  }
+  // Individual node updates
+  const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => {
+    if (!selectedProject || !autoSaveEnabled) {
+      console.log('Skipping node update API call:', { selectedProject, autoSaveEnabled });
+      return;
+    }
 
-  // 全ての更新をサーバーに送信する（nodeParametersの更新も含む）
+    // Send all updates to the server (including nodeParameters updates)
 
-  console.log('Updating node via API:', { nodeId, nodeData });
+    console.log('Updating node via API:', { nodeId, nodeData });
 
-  try {
-    const headers = await createAuthHeadersLocal();
-    const requestBody = {
-      position: nodeData.position,
-      type: nodeData.type,
-      data: nodeData.data,
-    };
-    
-    console.log('Update request body:', requestBody);
+    try {
+      const headers = await createAuthHeadersLocal();
+      const requestBody = {
+        position: nodeData.position,
+        type: nodeData.type,
+        data: nodeData.data,
+      };
+      
+      console.log('Update request body:', requestBody);
 
-    const response = await fetch(`/api/workflow/${selectedProject}/nodes/${nodeId}/`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const response = await fetch(`/api/workflow/${selectedProject}/nodes/${nodeId}/`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    const responseData = await response.json();
-    console.log('Update node response:', responseData);
+      const responseData = await response.json();
+      console.log('Update node response:', responseData);
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setIsConnected(false);
+        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to update node'}`);
+      }
+      
+      setIsConnected(true);
+    } catch (error) {
+      console.error('Error updating node:', error);
       setIsConnected(false);
-      throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to update node'}`);
+      toast({
+        title: "Save Error",
+        description: `Failed to update node: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: "error",
+        duration: 2000,
+        isClosable: true,
+      });
     }
-    
-    setIsConnected(true);
-  } catch (error) {
-    console.error('Error updating node:', error);
-    setIsConnected(false);
-    toast({
-      title: "Save Error",
-      description: `Failed to update node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      status: "error",
-      duration: 2000,
-      isClosable: true,
-    });
-  }
-};
+  };
 
+  // Deleting nodes individually
   const deleteNodeAPI = async (nodeId: string) => {
     if (!selectedProject || !autoSaveEnabled) {
       console.log('Skipping node deletion API call:', { selectedProject, autoSaveEnabled });
@@ -533,7 +556,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         },
       });
 
-      // 204 No Content の場合はレスポンスボディがない
+      // 204 No Content means there is no response body
       let responseData;
       if (response.status !== 204) {
         responseData = await response.json();
@@ -560,7 +583,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
   };
 
-  // エッジの個別作成
+  // Creating edges individually
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const createEdgeAPI = async (edgeData: Edge) => {
     if (!selectedProject || !autoSaveEnabled) {
@@ -615,53 +638,53 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
   };
 
-  // エッジの個別削除
+  // Deleting individual edges
   const deleteEdgeAPI = async (edgeId: string) => {
-  if (!selectedProject || !autoSaveEnabled) {
-    console.log('Skipping edge deletion API call:', { selectedProject, autoSaveEnabled });
-    return;
-  }
-
-  console.log('Deleting edge via API:', edgeId);
-
-  try {
-    const headers = await createAuthHeadersLocal();
-    const response = await fetch(`/api/workflow/${selectedProject}/edges/${edgeId}/`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: {
-        ...headers,
-      },
-    });
-
-    // 204 No Content または 200 OK の場合
-    let responseData;
-    if (response.status !== 204) {
-      responseData = await response.json();
-      console.log('Delete edge response:', responseData);
+    if (!selectedProject || !autoSaveEnabled) {
+      console.log('Skipping edge deletion API call:', { selectedProject, autoSaveEnabled });
+      return;
     }
 
-    if (!response.ok) {
+    console.log('Deleting edge via API:', edgeId);
+
+    try {
+      const headers = await createAuthHeadersLocal();
+      const response = await fetch(`/api/workflow/${selectedProject}/edges/${edgeId}/`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          ...headers,
+        },
+      });
+
+      // 204 No Content or 200 OK
+      let responseData;
+      if (response.status !== 204) {
+        responseData = await response.json();
+        console.log('Delete edge response:', responseData);
+      }
+
+      if (!response.ok) {
+        setIsConnected(false);
+        throw new Error(`HTTP ${response.status}: ${responseData?.error || 'Failed to delete edge'}`);
+      }
+      
+      setIsConnected(true);
+      console.log('Edge deleted successfully');
+    } catch (error) {
+      console.error('Error deleting edge:', error);
       setIsConnected(false);
-      throw new Error(`HTTP ${response.status}: ${responseData?.error || 'Failed to delete edge'}`);
+      toast({
+        title: "Save Error",
+        description: `Failed to delete connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: "error",
+        duration: 2000,
+        isClosable: true,
+      });
     }
-    
-    setIsConnected(true);
-    console.log('Edge deleted successfully');
-  } catch (error) {
-    console.error('Error deleting edge:', error);
-    setIsConnected(false);
-    toast({
-      title: "Save Error",
-      description: `Failed to delete connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      status: "error",
-      duration: 2000,
-      isClosable: true,
-    });
-  }
-};
+  };
 
-  // デバウンスされた保存関数
+  // Debounced Storage Function
   const debouncedSave = useCallback((action: () => Promise<void>) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -672,45 +695,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }, 500);
   }, []);
 
-  // ノード変更のハンドラー（オーバーライド）
-  const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    onNodesChange(changes);
-    
-    if (!autoSaveEnabled) return;
-    
-    changes.forEach((change) => {
-      switch (change.type) {
-        case 'position':
-          if (change.position) {
-            debouncedSave(() => updateNodeAPI(change.id, { 
-              position: change.position 
-            }));
-          }
-          break;
-          
-        case 'remove':
-          deleteNodeAPI(change.id);
-          break;
-      }
-    });
-  }, [onNodesChange, debouncedSave, autoSaveEnabled]);
-
-  // エッジ変更のハンドラー（オーバーライド）
-  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-    onEdgesChange(changes);
-    
-    if (!autoSaveEnabled) return;
-    
-    changes.forEach((change) => {
-      switch (change.type) {
-        case 'remove':
-          deleteEdgeAPI(change.id);
-          break;
-      }
-    });
-  }, [onEdgesChange, autoSaveEnabled]);
-
-  // プロジェクト一覧を取得
+  // Get project list
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -749,13 +734,13 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     fetchProjects();
   }, [toast]);
 
-  // プロジェクト削除の開始
+  // Start project deletion
   const handleProjectDeleteStart = useCallback((project: Project) => {
     setProjectToDelete(project);
     onDeleteOpen();
   }, [onDeleteOpen]);
 
-  // プロジェクト削除の実行
+  // Executing project deletion
   const handleProjectDelete = useCallback(async () => {
     if (!projectToDelete) return;
 
@@ -771,14 +756,14 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
       });
 
       if (response.ok) {
-        // プロジェクトリストから削除
+        // Remove from project list
         setProjects(prevProjects => prevProjects.filter(p => p.id !== projectToDelete.id));
         
-        // 削除したプロジェクトが選択されていた場合、クリア
+        // If the deleted project is selected, clear
         if (selectedProject === projectToDelete.id) {
           setSelectedProject(null);
-          setNodes([]);
-          setEdges([]);
+          setSharedNodes([]);
+          setSharedEdges([]);
         }
 
         toast({
@@ -809,15 +794,17 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
   }, [projectToDelete, selectedProject, toast, onDeleteClose]);
 
-  // プロジェクト選択時にフローデータを取得
+  // Get flow data when selecting a project
   const handleProjectChange = async (projectId: string) => {
     if (!projectId) {
       setSelectedProject(null);
-      setNodes([]);
-      setEdges([]);
-      localStorage.removeItem('projectId');
+      setSharedNodes([]);
+      setSharedEdges([]);
+      localStorage.removeItem(PROJECT_ID_KEY);
       return;
     }
+
+    localStorage.setItem(PROJECT_ID_KEY, projectId)
 
     setIsLoading(true);
     try {
@@ -831,11 +818,11 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
       if (response.ok) {
         const flowData: FlowData = await response.json();
 
-        setNodes(flowData.nodes as Node<CalculationNodeData>[] || []);
-        setEdges(flowData.edges || []);
+        setSharedNodes(flowData.nodes as Node<CalculationNodeData>[] || []);
+        setSharedEdges(flowData.edges || []);
         setSelectedProject(projectId);
         setIsConnected(true);
-        localStorage.setItem('projectId', projectId);
+        localStorage.setItem(PROJECT_ID_KEY, projectId);
         
         toast({
           title: "Loaded",
@@ -862,181 +849,35 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
   };
 
-  // 接続時のハンドラー（エッジ作成） - タイプチェック付き
-  const onConnect = useCallback(
-    (params: Connection) => {
-      // ハンドルIDからタイプ情報を直接抽出
-      // フォーマット: {nodeId}-{portName}-{portDirection}-{type}
-      let sourceType = null;
-      let targetType = null;
-      let sourcePortName = null;
-      let targetPortName = null;
-      
-      if (params.sourceHandle) {
-        const sourceParts = params.sourceHandle.split('-');
-        // 最後がtype
-        sourceType = sourceParts[sourceParts.length - 1];
-        // 最後から2番目がport_direction
-        const sourcePortDirection = sourceParts[sourceParts.length - 2];
-        // nodeIdとport_directionとtypeを除いた部分がポート名
-        sourcePortName = sourceParts.slice(1, -2).join('-');
-        
-        console.log('Source handle parsing:', {
-          handle: params.sourceHandle,
-          portName: sourcePortName,
-          portDirection: sourcePortDirection,
-          type: sourceType
-        });
-      }
-      
-      if (params.targetHandle) {
-        const targetParts = params.targetHandle.split('-');
-        // 最後がtype
-        targetType = targetParts[targetParts.length - 1];
-        // 最後から2番目がport_direction
-        const targetPortDirection = targetParts[targetParts.length - 2];
-        // nodeIdとport_directionとtypeを除いた部分がポート名
-        targetPortName = targetParts.slice(1, -2).join('-');
-        
-        console.log('Target handle parsing:', {
-          handle: params.targetHandle,
-          portName: targetPortName,
-          portDirection: targetPortDirection,
-          type: targetType
-        });
-      }
-      
-      // タイプが取得できない場合
-      if (!sourceType || !targetType) {
-        toast({
-          title: "Connection Failed",
-          description: "Could not determine port types",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
-      }
-      
-      // タイプが一致しているかチェック（大文字小文字を無視）
-      if (sourceType.toUpperCase() !== targetType.toUpperCase()) {
-        toast({
-          title: "Type Mismatch",
-          description: `Cannot connect: ${sourcePortName || 'output'} (${sourceType}) and ${targetPortName || 'input'} (${targetType}) have different types`,
-          status: "warning",
-          duration: 4000,
-          isClosable: true,
-        });
-        console.warn(
-          `Type mismatch: ${sourcePortName} (${sourceType}) → ${targetPortName} (${targetType})`
-        );
-        return;
-      }
-      
-      // タイプが一致している場合は接続を作成
-      const edgeId = `${params.source}-${params.sourceHandle || 'output'}-to-${params.target}-${params.targetHandle || 'input'}`;
-      
-      const newEdge = { 
-        id: edgeId,
-        ...params, 
-        style: { stroke: '#8b5cf6', strokeWidth: 2 }
-      };
-      
-      console.log('Creating new edge:', {
-        edge: newEdge,
-        sourcePort: `${sourcePortName} (${sourceType})`,
-        targetPort: `${targetPortName} (${targetType})`,
-        typesMatch: true
-      });
-      
-      setEdges((eds) => {
-        const updatedEdges = addEdge(newEdge, eds);
-        console.log('Updated edges state:', updatedEdges.length);
-        return updatedEdges;
-      });
-
-      // APIに送信（非同期で実行）
-      if (autoSaveEnabled) {
-        console.log('Calling createEdgeAPI...');
-        createEdgeAPI(newEdge).then(() => {
-          console.log('Edge creation API call completed');
-        });
-      } else {
-        console.log('Auto-save disabled, skipping edge API call');
-      }
-      
-      toast({
-        title: "Connected",
-        description: `Connected ${sourcePortName || 'output'} (${sourceType}) → ${targetPortName || 'input'} (${targetType})`,
-        status: "success",
-        duration: 2000,
-        isClosable: true,
-      });
-    },
-    [setEdges, toast, autoSaveEnabled, createEdgeAPI],
-  );
-
-
-  // ノードクリック時のインフォメーション表示機能をコメントアウト
-  // const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
-  //   event.preventDefault();
-  //   
-  //   setNodeMenuPosition({
-  //     x: event.clientX,
-  //     y: event.clientY,
-  //   });
-
-  //   console.log("クリックしたぞね", node)
-
-  //   setSelectedNodeId(node.id);
-  //   setSelectedNode(node);
-
-  //   onViewOpen();
-  // }, []);
-
+  // Comment out the information display function when clicking a node
+  /*
   const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
-    // ノード選択のみ行う（インフォメーション表示はアイコンボタンから）
-    console.log("Node clicked:", node.id);
-  }, []);
-
-  const onNodeDragStop = useCallback((event, node) => {
-    console.log("Node Drag Stop:", selectedProject, node.id, node.position.x, node.position.y);
-
-    debouncedSave(() => updateNodeAPI(node.id, node));
-  }, [selectedProject]);
-
-  const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
     event.preventDefault();
-    
-    setEdgeMenuPosition({
+  
+    setNodeMenuPosition({
       x: event.clientX,
       y: event.clientY,
     });
-    
-    setSelectedEdgeId(edge.id);
+
+    console.log("Clicked", node)
+
+    setSelectedNodeId(node.id);
+    setSelectedNode(node);
+
+    onViewOpen();
   }, []);
+  */
 
-  const closeMenu = useCallback(() => {
-    setNodeMenuPosition(null);
-    setSelectedNodeId(null);
-    setEdgeMenuPosition(null);
-    setSelectedEdgeId(null);
-  }, []);
-
-  const onPaneClick = useCallback(() => {
-    closeMenu();
-  }, [closeMenu]);
-
-  // キーボードイベントハンドラー（削除処理）
+  // Keyboard event handler (deletion process)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // モーダルが開いている時は削除処理を無効化
+      // Disable deletion when modal is open
       if (isViewOpen || isCodeOpen) {
         return;
       }
       
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        const selectedEdges = edges.filter(edge => edge.selected);
+        const selectedEdges = sharedEdges.filter(edge => edge.selected);
         if (selectedEdges.length > 0) {
           event.preventDefault();
           if (autoSaveEnabled) {
@@ -1044,7 +885,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
               deleteEdgeAPI(edge.id);
             });
           }
-          setEdges((eds) => eds.filter(edge => !edge.selected));
+          setSharedEdges((eds) => eds.filter(edge => !edge.selected));
           
           toast({
             title: "Deleted",
@@ -1055,7 +896,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           });
         }
         
-        const selectedNodes = nodes.filter(node => node.selected);
+        const selectedNodes = sharedNodes.filter(node => node.selected);
         if (selectedNodes.length > 0) {
           event.preventDefault();
           const nodeIds = selectedNodes.map(node => node.id);
@@ -1065,7 +906,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
               deleteNodeAPI(node.id);
             });
             
-            const relatedEdges = edges.filter(
+            const relatedEdges = sharedEdges.filter(
               (edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target)
             );
             relatedEdges.forEach(edge => {
@@ -1073,8 +914,8 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
             });
           }
           
-          setNodes((nds) => nds.filter(node => !node.selected));
-          setEdges((eds) => eds.filter(
+          setSharedNodes((nds) => nds.filter(node => !node.selected));
+          setSharedEdges((eds) => eds.filter(
             (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
           ));
           
@@ -1093,17 +934,59 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [nodes, edges, setNodes, setEdges, toast, autoSaveEnabled, isViewOpen, isCodeOpen]);
+  }, [sharedNodes, sharedEdges, setSharedNodes, setSharedEdges, toast, autoSaveEnabled, isViewOpen, isCodeOpen]);
 
-  // ノード削除処理（メニューから）
+  // handleRefreshNodeData
+  const handleRefreshNodeData = useCallback(async (filename: string) => {
+    try {
+      console.log('Refreshing node data for filename:', filename);
+      
+      const headers = await createAuthHeaders();
+      console.log('Auth headers created:', headers);
+      
+      const response = await fetch(`/api/box/uploaded-nodes/`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          ...headers,
+        },
+      });
+
+      console.log('Refresh response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Refresh API error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Refresh API result:', result);
+      
+      // filename Find a node with
+      if (result.nodes && Array.isArray(result.nodes)) {
+        const refreshedNode = result.nodes.find((node: any) => node.file_name === filename);
+        console.log('Found refreshed node:', refreshedNode);
+        return refreshedNode;
+      }
+      
+      console.log('No nodes found in result or result.nodes is not an array');
+      return null;
+    } catch (error) {
+      console.error('Error refreshing node data:', error);
+      throw error;
+    }
+  }, []);
+
+  // Node deletion process (from menu)
   const handleDeleteNode = useCallback(() => {
     if (selectedNodeId) {
       if (autoSaveEnabled) {
         deleteNodeAPI(selectedNodeId);
       }
       
-      setNodes((nds) => nds.filter((node) => node.id !== selectedNodeId));
-      setEdges((eds) => {
+      setSharedNodes((nds) => nds.filter((node) => node.id !== selectedNodeId));
+      setSharedEdges((eds) => {
         const relatedEdges = eds.filter(
           (edge) => edge.source === selectedNodeId || edge.target === selectedNodeId
         );
@@ -1127,9 +1010,9 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         isClosable: true,
       });
     }
-  }, [selectedNodeId, setNodes, setEdges, toast, autoSaveEnabled]);
+  }, [selectedNodeId, setSharedNodes, setSharedEdges, toast, autoSaveEnabled]);
 
-  // エッジ削除処理（メニューから）
+  // Edge removal process (from the menu)
   const handleDeleteEdge = useCallback(() => {
     if (selectedEdgeId) {
       if (autoSaveEnabled) {
@@ -1146,239 +1029,9 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         isClosable: true,
       });
     }
-  }, [selectedEdgeId, setEdges, toast, autoSaveEnabled]);
+  }, [selectedEdgeId, setSharedEdges, toast, autoSaveEnabled]);
 
-
-  const onDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-
-      if (!reactFlowInstance.current) {
-        console.log('ReactFlow instance not ready');
-        return;
-      }
-
-      if (!selectedProject) {
-        console.log('No project selected');
-        toast({
-          title: "No Project",
-          description: "Please select a project first",
-          status: "warning",
-          duration: 2000,
-          isClosable: true,
-        });
-        return;
-      }
-
-      const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-      const position = reactFlowInstance.current.screenToFlowPosition({
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
-      });
-
-      const nodeDataString = event.dataTransfer.getData('application/nodedata');
-      let nodeData;
-      try {
-        nodeData = JSON.parse(nodeDataString);
-      } catch (error) {
-        console.error('Invalid node data:', error);
-        return;
-      }
-
-      if (!nodeData) {
-        console.log('No node data received');
-        return;
-      }
-
-      console.log('====================================');
-      console.log('🔄 NEW DROP EVENT');
-      console.log('Dropped nodeData:', nodeData);
-      console.log('NodeData ID:', nodeData.id);
-      console.log('NodeData Label:', nodeData.label);
-      console.log('====================================');
-      
-      let schema: SchemaFields = {
-        inputs: {},
-        outputs: {},
-        parameters: {},
-        methods: {}
-      };
-      let nodeType = 'calculationNode';
-      let label = nodeData.label || nodeData.name || 'New Calculator';
-      let fileName: string = "";
-      // uploadedNodesから該当するノードのスキーマを取得
-      if (uploadedNodes?.nodes && Array.isArray(uploadedNodes.nodes)) {
-        console.log('Available nodes in uploadedNodes:', uploadedNodes.nodes.length);
-        
-        // マッチング処理
-        let matchedNode: UploadedNode | null = null;
-        
-        // IDで完全一致を試みる
-        if (nodeData.id) {
-          matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.id === nodeData.id);
-          if (matchedNode) {
-            console.log('✅ Matched by ID:', nodeData.id);
-          }
-        }
-        
-        // IDでマッチしない場合、ラベルで試みる
-        if (!matchedNode && nodeData.label) {
-          matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.label === nodeData.label);
-          if (matchedNode) {
-            console.log('✅ Matched by label:', nodeData.label);
-          }
-        }
-        
-        // それでもマッチしない場合、nameで試みる
-        if (!matchedNode && nodeData.name) {
-          matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.name === nodeData.name);
-          if (matchedNode) {
-            console.log('✅ Matched by name:', nodeData.name);
-          }
-        }
-        
-        if (matchedNode && matchedNode.schema) {
-          console.log('📋 Processing schema for:', matchedNode.label);
-          console.log('Original schema structure:', matchedNode.schema);
-          
-          // 新しい構造のスキーマをそのまま使用
-          schema = matchedNode.schema;
-          
-          // スキーマの内容を確認
-          const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
-          const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
-          const paramCount = schema.parameters ? Object.keys(schema.parameters).length : 0;
-          const methodCount = schema.methods ? Object.keys(schema.methods).length : 0;
-          
-          console.log(`✅ Schema loaded: ${inputCount} inputs, ${outputCount} outputs, ${paramCount} parameters, ${methodCount} methods`);
-          
-          // デフォルトスキーマが必要な場合
-          if (inputCount === 0 && outputCount === 0) {
-            console.warn('⚠️ No ports found, using default schema');
-            schema = {
-              inputs: {
-                "default_input": {
-                  name: "default_input",
-                  type: "any",
-                  description: "Default input",
-                  port_direction: "input"
-                }
-              },
-              outputs: {
-                "default_output": {
-                  name: "default_output",
-                  type: "any",
-                  description: "Default output",
-                  port_direction: "output"
-                }
-              },
-              parameters: {},
-              methods: {}
-            };
-          }
-          
-          // matchedNodeから正しいラベルとタイプを取得
-          nodeType = matchedNode.category || matchedNode.nodeType || matchedNode.type || 'calculationNode';
-          label = matchedNode.label || matchedNode.name || label;
-          fileName = matchedNode.file_name || "" ; 
-        } else {
-          console.log('❌ No matching node found, using fallback schema');
-          // フォールバックスキーマ
-          schema = {
-            inputs: {
-              "input": {
-                name: "input",
-                type: "any",
-                description: "Input",
-                port_direction: "input"
-              }
-            },
-            outputs: {
-              "output": {
-                name: "output",
-                type: "any",
-                description: "Output",
-                port_direction: "output"
-              }
-            },
-            parameters: {},
-            methods: {}
-          };
-        }
-      } else {
-        console.warn('❌ uploadedNodes not available, using default schema');
-      }
-
-      // 新しいIDを生成
-      const newNodeId = `calc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // スキーマの深いコピーを作成して、各ノードが独立したパラメーター値を持つようにする
-      const independentSchema = JSON.parse(JSON.stringify(schema));
-
-      const newNode: Node<CalculationNodeData> = {
-        id: newNodeId,
-        type: nodeType,
-        position,
-        data: {
-          file_name: fileName,
-          label: label,
-          instanceName: label,  // デフォルトインスタンス名
-          schema: independentSchema,
-          nodeType: nodeType,
-          // 空のnodeParametersで初期化（将来のパラメーター変更用）
-          nodeParameters: {}
-        },
-      };
-
-      console.log('🎯 Creating NEW node:');
-      console.log('ノードデータ', newNode)
-      console.log('  ID:', newNodeId);
-      console.log('  Label:', label);
-      console.log('  Schema:', schema);
-      console.log(' file name:', fileName);
-      console.log('====================================');
-
-      // UIの更新
-      setNodes((nds) => {
-        const updated = nds.concat(newNode);
-        console.log('Total nodes after adding:', updated.length);
-        return updated;
-      });
-
-      // APIに送信
-      if (autoSaveEnabled) {
-        createNodeAPI(newNode);
-      }
-      
-      // ワークフローノードの場合、個別のパラメーター値を保持するため自動リフレッシュはスキップ
-      console.log('Skipping auto-refresh for workflow node to maintain independent parameters:', newNodeId);
-      
-      // カウント計算（新しい構造に対応）
-      const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
-      const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
-      
-      toast({
-        title: "Node Added",
-        description: `"${label}" (${inputCount} inputs, ${outputCount} outputs)`,
-        status: "success",
-        duration: 2000,
-        isClosable: true,
-      });
-    },
-    [setNodes, toast, selectedProject, autoSaveEnabled, uploadedNodes, handleRefreshNodeData, handleNodeUpdate]
-  );
-
-  const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onInit = useCallback((instance: ReactFlowInstance) => {
-    reactFlowInstance.current = instance;
-  }, []);
-
-
-  // フロー全体をJSONとして出力
+  // Export the entire flow as JSON
   const handleExportFlowJSON = useCallback(() => {
     if (!reactFlowInstance.current) {
       toast({
@@ -1392,10 +1045,10 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
 
     try {
-      // React FlowのtoObject()メソッドを使用してフロー全体を取得
+      // Get the entire flow using React Flow's toObject() method
       const flowData = reactFlowInstance.current.toObject();
       
-      // プロジェクト情報も含める
+      // Include project information
       const exportData = {
         project: {
           id: selectedProject,
@@ -1405,7 +1058,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         flow: flowData
       };
 
-      // JSONファイルとしてダウンロード
+      // Download as JSON file
       const jsonString = JSON.stringify(exportData, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1442,7 +1095,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     }
   }, [reactFlowInstance, selectedProject, projects, toast]);
 
-  // コード生成（フロー全体）
+  // Code generation (entire flow)
   const handleGenerateCode = useCallback(async () => {
     if (!selectedProject) {
       toast({
@@ -1466,7 +1119,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
       return;
     }
 
-    if (nodes.length === 0) {
+    if (sharedNodes.length === 0) {
       toast({
         title: "Empty Flow",
         description: "Please add nodes to the flow before generating code",
@@ -1479,7 +1132,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
 
     setIsGeneratingCode(true);
 
-    // ローディング状態を示すトースト
+    // Loading status toast
     const loadingToast = toast({
       title: "Generating Code...",
       description: "Please wait while we generate the code",
@@ -1494,7 +1147,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         throw new Error('Flow instance not ready');
       }
 
-      // React Flowのフローデータを取得
+      // Get flow data for React Flow
       const flowData = reactFlowInstance.current.toObject();
       console.log('Sending flow data to API:', flowData);
 
@@ -1513,7 +1166,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         }),
       });
 
-      // ローディングトーストを閉じる
+      // Close Loading Toast
       toast.close(loadingToast);
 
       if (!response.ok) {
@@ -1533,7 +1186,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
       });
 
     } catch (error) {
-      // ローディングトーストを閉じる（エラー時）
+      // Close loading toast (on error)
       toast.close(loadingToast);
       
       console.error('Code generation error:', error);
@@ -1547,10 +1200,9 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     } finally {
       setIsGeneratingCode(false);
     }
-  }, [selectedProject, reactFlowInstance, nodes.length, toast]);
+  }, [selectedProject, reactFlowInstance, sharedNodes.length, toast]);
 
-
-  // クリーンアップ
+  // Clean up
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -1559,62 +1211,663 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
     };
   }, []);
 
-  /*
-  // ビューポートリストア
-  useEffect(() => {
-    onRestore();
-  }, [onRestore]);
-  */
+  // Determine if it is a string
+  const isNumeric = (str: string): boolean => {
+    return /^\d+$/.test(str);
+  };
 
-  // float変換
-  const convertToFloat = function(obj: any): any {
-    if (Array.isArray(obj)) {
-      return obj.map(v => convertToFloat(v));
-    } else if (obj !== null && typeof obj === "object") {
-      const result: Record<string, any> = {};
-      for (const [key, value] of Object.entries(obj)) {
-        result[key] = convertToFloat(value);
-      }
-      return result;
-    } else if (typeof obj === "number") {
-      if (Number.isInteger(obj)) {
-        return `${obj.toFixed(1)}`;
-      } else {
-        return obj;
-      }
-    } else if (typeof obj === "string") {
-      const num = Number(obj);
-      if (!isNaN(num) && obj.trim() !== "") {
-        return `${num.toFixed(1)}`;
-      }
-      return obj;
-    } else {
-      return obj;
-    }
-  }
-
-
+  // Converting numbers to floats
   const convertToStrIncFloat = (value: any): any => {
     if (Array.isArray(value)) {
-      // 配列の場合、各要素を再帰的に処理
+      // For arrays, recursively process each element
       return value.map(v => convertToStrIncFloat(v));
     } else if (value !== null && typeof value === "object") {
-      // オブジェクトの場合、各プロパティを再帰的に処理
+      // For objects, recursively process each property
       const result: Record<string, any> = {};
       for (const [key, val] of Object.entries(value)) {
         result[key] = convertToStrIncFloat(val);
       }
       return result;
     } else if (typeof value === "number") {
-      // 数値は必ず小数点付き文字列に変換
-      // 例: 1 → "1.0", 0.25 → "0.25"
+      // Numbers are always converted to strings with decimal points
+      // Example: 1 → "1.0", 0.25 → "0.25"
       return value % 1 === 0 ? value.toFixed(1) : value.toString();
     } else {
-      // その他（文字列・null・booleanなど）はそのまま
+      if (typeof value === "string") {
+        if (isNumeric(value)){
+          const valueF = parseFloat(value);
+          return valueF % 1 === 0 ? valueF.toFixed(1) : valueF.toString();
+        }
+      }
+      // Others (string, null, boolean, etc.) remain as is
       return value;
     }
   };
 
+  // ReactFlow closeMenu(onPanelClick)
+  const closeMenu = useCallback(() => {
+    setNodeMenuPosition(null);
+    setSelectedNodeId(null);
+    setEdgeMenuPosition(null);
+    setSelectedEdgeId(null);
+  }, []);
+
+  // ReactFlow onPaneClick
+  const onPaneClick = useCallback(() => {
+    closeMenu();
+  }, [closeMenu]);
+
+
+  //////////////////////////////////////////////////////////////
+  // ReactFlow: Workflow Diagram
+  //////////////////////////////////////////////////////////////
+  const OistWorkFlow: React.FC = () => {
+    //const [nodes, setNodes, onNodesChange] = useNodesState<Node<CalculationNodeData>>([]);
+    //const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+    //const { sharedNodes, sharedEdges, setSharedNodes, setSharedEdges } = useFlowStore();
+
+    const sharedNodes = useFlowStore((state) => state.sharedNodes);
+    const sharedEdges = useFlowStore((state) => state.sharedEdges);
+    const setSharedNodes = useFlowStore((state) => state.setSharedNodes);
+    const setSharedEdges = useFlowStore((state) => state.setSharedEdges);
+
+    const [nodes, setNodes, onNodesChange] = useNodesState<Node<CalculationNodeData>>(sharedNodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(sharedEdges);
+
+    // import
+    useEffect(() => {
+      if (sharedNodes.length > 0){
+        setNodes(sharedNodes);
+      }
+    }, [sharedNodes]);
+
+    useEffect(() => {
+      if (sharedEdges.length > 0){
+        setEdges(sharedEdges);
+      }
+    }, [sharedEdges]);
+
+    /*
+    // export
+    useEffect(() => {
+      if(nodes.length > 0) {
+        setSharedNodes(nodes);
+      }
+    }, [nodes]);
+
+    useEffect(() => {
+      if(edges.length > 0){
+        setSharedEdges(edges);
+      }
+    }, [edges]);
+    */
+    
+    const projectId = localStorage.getItem(PROJECT_ID_KEY);
+
+    let vps: Viewport[] = [];
+    const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
+    if (viewportStr) { 
+      vps = JSON.parse(viewportStr); 
+    }
+    let fvp: ViewPort = vps.find(view => view.projectId === projectId);
+    if(fvp == undefined){
+      fvp  = {
+        projectId: projectId,
+        x: 0,
+        y: 0,
+        zoom: 1,
+      };
+    }
+    /* Enable this to save zoom and pan ===> */
+    const [initialViewport, setInitialViewport] = useState<Viewport>(fvp);
+    const { setViewport } = useReactFlow();
+
+    // onLoad: Read localStorage value
+    useEffect(() => {
+      const saved = localStorage.getItem(FLOW_STATE_KEY);
+      if (saved) {
+        let vps: Viewport[] = [];
+        const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
+        if (viewportStr) { 
+          vps = JSON.parse(viewportStr); 
+          let fvp: ViewPort = vps.find(view => vps.projectId == projectId);
+          if(fvp != undefined){
+            setViewport(fvp);
+            requestAnimationFrame(() => setViewport(fvp));
+          }
+        }
+      }
+    }, [setViewport]);
+    /* <=== Enable this to save zoom and pan */
+
+    // ReactFlow onInit
+    const onInit = useCallback((instance: ReactFlowInstance) => {
+      reactFlowInstance.current = instance;
+    }, []);
+
+    // ReactFlow onDrop
+    const onDrop = useCallback(
+      (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+
+        if (!reactFlowInstance.current) {
+          console.log('ReactFlow instance not ready');
+          return;
+        }
+
+        if (!selectedProject) {
+          console.log('No project selected');
+          toast({
+            title: "No Project",
+            description: "Please select a project first",
+            status: "warning",
+            duration: 2000,
+            isClosable: true,
+          });
+          return;
+        }
+
+        const reactFlowBounds = event.currentTarget.getBoundingClientRect();
+        const position = reactFlowInstance.current.screenToFlowPosition({
+          x: event.clientX - reactFlowBounds.left,
+          y: event.clientY - reactFlowBounds.top,
+        });
+
+        const nodeDataString = event.dataTransfer.getData('application/nodedata');
+        let nodeData;
+        try {
+          nodeData = JSON.parse(nodeDataString);
+        } catch (error) {
+          console.error('Invalid node data:', error);
+          return;
+        }
+
+        if (!nodeData) {
+          console.log('No node data received');
+          return;
+        }
+
+        console.log('====================================');
+        console.log('🔄 NEW DROP EVENT');
+        console.log('Dropped nodeData:', nodeData);
+        console.log('NodeData ID:', nodeData.id);
+        console.log('NodeData Label:', nodeData.label);
+        console.log('====================================');
+        
+        let schema: SchemaFields = {
+          inputs: {},
+          outputs: {},
+          parameters: {},
+          methods: {}
+        };
+        let nodeType = 'calculationNode';
+        let label = nodeData.label || nodeData.name || 'New Calculator';
+        let fileName: string = "";
+        let categories = {};
+        let color: string = nodeData.color;
+        // Get the schema of the corresponding node from uploadedNodes
+        if (uploadedNodes?.nodes && Array.isArray(uploadedNodes.nodes)) {
+          console.log('Available nodes in uploadedNodes:', uploadedNodes.nodes.length);
+          
+          // Matching process
+          let matchedNode: UploadedNode | null = null;
+          
+          // Attempt an exact match on the ID
+          if (nodeData.id) {
+            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.id === nodeData.id);
+            if (matchedNode) {
+              console.log('✅ Matched by ID:', nodeData.id);
+            }
+          }
+          
+          // If no match by ID, try by label
+          if (!matchedNode && nodeData.label) {
+            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.label === nodeData.label);
+            if (matchedNode) {
+              console.log('✅ Matched by label:', nodeData.label);
+            }
+          }
+          
+          // If that doesn't match, try by name
+          if (!matchedNode && nodeData.name) {
+            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.name === nodeData.name);
+            if (matchedNode) {
+              console.log('✅ Matched by name:', nodeData.name);
+            }
+          }
+          
+          if (matchedNode && matchedNode.schema) {
+            console.log('📋 Processing schema for:', matchedNode.label);
+            console.log('Original schema structure:', matchedNode.schema);
+
+            // Get category
+            categories = nodeData.categories;
+            
+            // Use the new structure schema as is
+            schema = matchedNode.schema;
+            
+            // Check the contents of the schema
+            const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
+            const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
+            const paramCount = schema.parameters ? Object.keys(schema.parameters).length : 0;
+            const methodCount = schema.methods ? Object.keys(schema.methods).length : 0;
+            
+            console.log(`✅ Schema loaded: ${inputCount} inputs, ${outputCount} outputs, ${paramCount} parameters, ${methodCount} methods`);
+            
+            // If you need a default schema
+            if (inputCount === 0 && outputCount === 0) {
+              console.warn('⚠️ No ports found, using default schema');
+              schema = {
+                inputs: {
+                  "default_input": {
+                    name: "default_input",
+                    type: "any",
+                    description: "Default input",
+                    port_direction: "input"
+                  }
+                },
+                outputs: {
+                  "default_output": {
+                    name: "default_output",
+                    type: "any",
+                    description: "Default output",
+                    port_direction: "output"
+                  }
+                },
+                parameters: {},
+                methods: {}
+              };
+            }
+            
+            // Get the correct label and type from matchedNode
+            nodeType = matchedNode.category || matchedNode.nodeType || matchedNode.type || 'calculationNode';
+            label = matchedNode.label || matchedNode.name || label;
+            fileName = matchedNode.file_name || "" ; 
+            // add ".py"
+            const chkPy = fileName.includes(".py");
+            if (!chkPy) {
+              fileName += ".py";
+            } 
+
+            //color = matchedNode;   //'#FFFF00'; //categories[matchedNode.category].color || '#6b46c1' ;
+          } else {
+            console.log('❌ No matching node found, using fallback schema');
+            // fallback schema
+            schema = {
+              inputs: {
+                "input": {
+                  name: "input",
+                  type: "any",
+                  description: "Input",
+                  port_direction: "input"
+                }
+              },
+              outputs: {
+                "output": {
+                  name: "output",
+                  type: "any",
+                  description: "Output",
+                  port_direction: "output"
+                }
+              },
+              parameters: {},
+              methods: {}
+            };
+          }
+        } else {
+          console.warn('❌ uploadedNodes not available, using default schema');
+        }
+
+        // Generate new ID
+        const newNodeId = `calc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Create a deep copy of the schema so that each node has independent parameter values
+        const independentSchema = JSON.parse(JSON.stringify(schema));
+        //const tmpSchema = JSON.parse(JSON.stringify(schema));
+
+        const newNode: Node<CalculationNodeData> = {
+          id: newNodeId,
+          type: nodeType,
+          position,
+          data: {
+            file_name: fileName,
+            label: label,
+            instanceName: label,  // Default instance name
+            schema: independentSchema,
+            nodeType: nodeType,
+            // Initialize with empty nodeParameters (for future parameter changes)
+            nodeParameters: {},
+            color: color,
+          },
+        };
+
+        console.log('🎯 Creating NEW node:');
+        console.log('Node data', newNode)
+        console.log('  ID:', newNodeId);
+        console.log('  Label:', label);
+        console.log('  Schema:', schema);
+        console.log(' file name:', fileName);
+        console.log('====================================');
+
+        // UI updates
+        setNodes((nds) => {
+          const updated = nds.concat(newNode);
+          console.log('Total nodes after adding:', updated.length);
+          return updated;
+        });
+
+        // Send to API
+        if (autoSaveEnabled) {
+          createNodeAPI(newNode);
+        }
+        
+        // For workflow nodes, auto-refresh is skipped to preserve individual parameter values
+        console.log('Skipping auto-refresh for workflow node to maintain independent parameters:', newNodeId);
+        
+        // Count calculation (supports new structure)
+        const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
+        const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
+        
+        toast({
+          title: "Node Added",
+          description: `"${label}" (${inputCount} inputs, ${outputCount} outputs)`,
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      },
+      [setNodes, toast, selectedProject, autoSaveEnabled, uploadedNodes, handleRefreshNodeData, handleNodeUpdate]
+    );
+
+    // ReactFlow onDragOver
+    const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    }, []);
+
+    // Mouse Moveed (Zoom Pan)
+    const onMoveEnd: OnMoveEnd = useCallback((_, viewport) => {
+      console.log("Move End:", viewport);
+
+      const projectId = localStorage.getItem(PROJECT_ID_KEY);
+      const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
+      let viewportList: Viewport[] = [];
+      if (viewportStr) { 
+        viewportList = JSON.parse(viewportStr); 
+      }
+
+      // New Viewport
+      const vp = {
+        projectId: projectId,
+        x: viewport.x,
+        y: viewport.y,
+        zoom: viewport.zoom,
+      };
+
+      // Update or Add
+      const index = viewportList.findIndex(item => item.projectId === projectId);
+      if (index !== -1) {
+        viewportList[index] = vp;
+      } else {
+        viewportList.push(vp);
+      }
+
+      localStorage.setItem(FLOW_STATE_KEY, JSON.stringify(viewportList));
+    }, []);
+
+    // ReactFlow: Node change handlers (overrides)
+    const handleNodesChange = useCallback((changes: NodeChange[]) => {
+      onNodesChange(changes);
+
+      setSharedNodes(nodes);
+      setSharedEdges(edges);
+      
+      if (!autoSaveEnabled) return;
+      
+      changes.forEach((change) => {
+        switch (change.type) {
+          case 'position':
+            if (change.position) {
+              debouncedSave(() => updateNodeAPI(change.id, { 
+                position: change.position 
+              }));
+            }
+            break;
+            
+          case 'remove':
+            deleteNodeAPI(change.id);
+            break;
+        }
+      });
+    }, [onNodesChange, debouncedSave, autoSaveEnabled]);
+    
+    // ReactFlow: Edge change handler (override)
+    const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+      onEdgesChange(changes);
+      
+      if (!autoSaveEnabled) return;
+      
+      changes.forEach((change) => {
+        switch (change.type) {
+          case 'remove':
+            deleteEdgeAPI(change.id);
+            break;
+        }
+      });
+    }, [onEdgesChange, autoSaveEnabled]);
+    
+    // ReactFlow: On connect handler (edge ​​creation) - with type checking
+    const onConnect = useCallback(
+      (params: Connection) => {
+        // Extract type information directly from handle ID
+        // Format: {nodeId}-{portName}-{portDirection}-{type}
+        let sourceType = null;
+        let targetType = null;
+        let sourcePortName = null;
+        let targetPortName = null;
+        
+        if (params.sourceHandle) {
+          const sourceParts = params.sourceHandle.split('-');
+          // The last one is type
+          sourceType = sourceParts[sourceParts.length - 1];
+          // The second to last is port_direction
+          const sourcePortDirection = sourceParts[sourceParts.length - 2];
+          // The part excluding nodeId, port_direction, and type is the port name
+          sourcePortName = sourceParts.slice(1, -2).join('-');
+          
+          console.log('Source handle parsing:', {
+            handle: params.sourceHandle,
+            portName: sourcePortName,
+            portDirection: sourcePortDirection,
+            type: sourceType
+          });
+        }
+        
+        if (params.targetHandle) {
+          const targetParts = params.targetHandle.split('-');
+          // The last one is type
+          targetType = targetParts[targetParts.length - 1];
+          // The second to last is port_direction
+          const targetPortDirection = targetParts[targetParts.length - 2];
+          // The part excluding nodeId, port_direction, and type is the port name
+          targetPortName = targetParts.slice(1, -2).join('-');
+          
+          console.log('Target handle parsing:', {
+            handle: params.targetHandle,
+            portName: targetPortName,
+            portDirection: targetPortDirection,
+            type: targetType
+          });
+        }
+        
+        // If the type cannot be obtained
+        if (!sourceType || !targetType) {
+          toast({
+            title: "Connection Failed",
+            description: "Could not determine port types",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+          return;
+        }
+        
+        // If the type cannot be obtained
+        if (sourceType.toUpperCase() !== targetType.toUpperCase()) {
+          toast({
+            title: "Type Mismatch",
+            description: `Cannot connect: ${sourcePortName || 'output'} (${sourceType}) and ${targetPortName || 'input'} (${targetType}) have different types`,
+            status: "warning",
+            duration: 4000,
+            isClosable: true,
+          });
+          console.warn(
+            `Type mismatch: ${sourcePortName} (${sourceType}) → ${targetPortName} (${targetType})`
+          );
+          return;
+        }
+        
+        // Create a connection if the types match
+        const edgeId = `${params.source}-${params.sourceHandle || 'output'}-to-${params.target}-${params.targetHandle || 'input'}`;
+        
+        const newEdge = { 
+          id: edgeId,
+          ...params, 
+          /* style: { stroke: '#8b5cf6', strokeWidth: 2 } */
+          style: { stroke: '#aaaaaa', strokeWidth: 2 }
+        };
+        
+        console.log('Creating new edge:', {
+          edge: newEdge,
+          sourcePort: `${sourcePortName} (${sourceType})`,
+          targetPort: `${targetPortName} (${targetType})`,
+          typesMatch: true
+        });
+        
+        setEdges((eds) => {
+          const updatedEdges = addEdge(newEdge, eds);
+          console.log('Updated edges state:', updatedEdges.length);
+          return updatedEdges;
+        });
+
+        // Send to API (executed asynchronously)
+        if (autoSaveEnabled) {
+          console.log('Calling createEdgeAPI...');
+          createEdgeAPI(newEdge).then(() => {
+            console.log('Edge creation API call completed');
+          });
+        } else {
+          console.log('Auto-save disabled, skipping edge API call');
+        }
+        
+        toast({
+          title: "Connected",
+          description: `Connected ${sourcePortName || 'output'} (${sourceType}) → ${targetPortName || 'input'} (${targetType})`,
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      },
+      [setEdges, toast, autoSaveEnabled, createEdgeAPI],
+    );
+
+    // Comment out the information display function when clicking a node
+    /*
+    const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
+      event.preventDefault();
+    
+      setNodeMenuPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      console.log("Clicked", node)
+
+      setSelectedNodeId(node.id);
+      setSelectedNode(node);
+
+      onViewOpen();
+    }, []);
+    */
+
+    // ReactFlow onNodeClick
+    const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
+      // Only select the node (information display is available from the icon button)
+      console.log("Node clicked:", node.id);
+    }, []);
+
+    // ReactFlow onNodeDragStop
+    const onNodeDragStop = useCallback((event, node) => {
+      console.log("Node Drag Stop:", selectedProject, node.id, node.position.x, node.position.y);
+
+      debouncedSave(() => updateNodeAPI(node.id, node));
+    }, [selectedProject]);
+
+    // ReactFlow onEdgeClick
+    const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
+      event.preventDefault();
+      
+      setEdgeMenuPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      
+      setSelectedEdgeId(edge.id);
+    }, []);
+
+    // ReactFlow Page
+    return (
+      <ReactFlow
+        position="absolute"
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
+        onConnect={onConnect}
+        onInit={onInit}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onNodeClick={onNodeClick}
+        onNodeDragStop={onNodeDragStop}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
+        onMoveEnd={onMoveEnd}
+        defaultViewport={initialViewport}
+        nodeTypes={nodeTypes} 
+        //fitView
+        attributionPosition="bottom-right"
+        connectionLineStyle={{ stroke: '#8b5cf6', strokeWidth: 2 }}
+        defaultEdgeOptions={{
+          /* style: { stroke: '#8b5cf6', strokeWidth: 2 },*/
+          style: { stroke: '#aaaaaa', strokeWidth: 2 },
+          type: 'default',
+        }}
+        //defaultViewport={{ x: 0, y: 0, zoom: 5 }}
+      >
+        <Controls {...controlsStyle} />
+        <MiniMap {...minimapStyle} />
+        <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#cbd5e0" />
+      </ReactFlow>
+    );
+  };
+
+  //////////////////////////////////////////////////////////////
+  // ReactFlowProvider: Wrapping ReactFlow
+  //////////////////////////////////////////////////////////////
+  const OistWorkFlowProvider: React.FC = () => {
+    // ReactFlow Provider Page
+    return (
+      <ReactFlowProvider>
+        {/* OistWorkFlow: ReactFlow definition */}
+        <OistWorkFlow />
+      </ReactFlowProvider>
+    );
+  }
+
+  //////////////////////////////////////////////////////////////
+  // homeView: Main Page
+  //////////////////////////////////////////////////////////////
   return (
     <div>
       <SideBoxArea 
@@ -1622,7 +1875,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         top="128px"
         left="32px"
         nodes={uploadedNodes} 
-        isLoading={isNodesLoading}  // ノード専用
+        isLoading={isNodesLoading}  // for node
         error={error}
         transition="width 200ms ease"
         onRefresh={refetchNodes}
@@ -1677,7 +1930,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
         `}
         </style>
         
-        {/* プロジェクト選択UI */}
+        {/* Project selection UI */}
         <ProjectSelector
           projects={projects}
           selectedProject={selectedProject}
@@ -1691,14 +1944,14 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           top="16px"
           right="16px"
           zIndex={1000}
-          aria-label="メニュー開閉"
+          aria-label="Open/close menu"
           icon={<FiMenu />}
           onClick={() => setIslandCodeOpen(!isIslandCodeOpen)}
           colorScheme="gray"
           bg="gray.300"
           _hover={{ bg: 'gray.600' }}
         />
-        {/* 説明 */}
+        {/* explanation */}
         <Box
           position="absolute"
           top="10px"
@@ -1714,7 +1967,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           borderColor="gray.200"
         >
           <VStack spacing={4} align="stretch">
-            {/* ヘッダー */}
+            {/* header */}
             <Box paddingRight={12}>
               <HStack justify="space-between" align="center">
                 <Text fontWeight="bold" fontSize="md" color="gray.800">
@@ -1731,7 +1984,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
                 )}
               </HStack>
             </Box>
-            {/* 説明文 */}
+            {/* Explanatory text */}
             <Box>
               <Text fontSize="sm" color="gray.600" lineHeight="1.4">
                 Drag nodes from the left panel to build mathematical workflows. Connect outputs to inputs to create calculations.
@@ -1774,7 +2027,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
                 variant="solid"
                 size="sm"
                 onClick={handleGenerateCode}
-                isDisabled={!selectedProject || nodes.length === 0}
+                isDisabled={!selectedProject || sharedNodes.length === 0}
                 isLoading={isGeneratingCode}
                 loadingText="Generating..."
                 _hover={{ bg: "blue.600", transform: "translateY(-1px)" }}
@@ -1785,7 +2038,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
                 transition="all 0.2s"
               >
                 {!selectedProject ? "Select Project First" : 
-                nodes.length === 0 ? "Add Nodes to Generate" : 
+                sharedNodes.length === 0 ? "Add Nodes to Generate" : 
                 "📝 Generate Code"}
               </Button>
               
@@ -1794,7 +2047,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
                 variant="outline"
                 size="sm"
                 onClick={handleExportFlowJSON}
-                isDisabled={!selectedProject || nodes.length === 0}
+                isDisabled={!selectedProject || sharedNodes.length === 0}
                 _hover={{ bg: "green.50", transform: "translateY(-1px)" }}
                 _disabled={{ 
                   opacity: 0.4,
@@ -1802,7 +2055,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
                 }}
                 transition="all 0.2s"
               >
-                {nodes.length === 0 ? "No Flow to Export" : "📋 Export Flow JSON"}
+                {sharedNodes.length === 0 ? "No Flow to Export" : "📋 Export Flow JSON"}
               </Button>
               
               {selectedProject && (
@@ -1813,37 +2066,9 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
             </VStack>
           </VStack>
         </Box>
-        
-          <ReactFlow
-            position="absolute"
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-            onConnect={onConnect}
-            onInit={onInit}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onNodeClick={onNodeClick}
-            onNodeDragStop={onNodeDragStop}
-            onEdgeClick={onEdgeClick}
-            onPaneClick={onPaneClick}
-            /* onMoveEnd={onSave} */
-            nodeTypes={nodeTypes} 
-            fitView
-            attributionPosition="bottom-right"
-            connectionLineStyle={{ stroke: '#8b5cf6', strokeWidth: 2 }}
-            defaultEdgeOptions={{
-              style: { stroke: '#8b5cf6', strokeWidth: 2 },
-              type: 'default',
-            }}
-            //defaultViewport={{ x: 0, y: 0, zoom: 5 }}
-          >
-            <Controls {...controlsStyle} />
-            <MiniMap {...minimapStyle} />
-            <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#cbd5e0" />
-          </ReactFlow>
-        
+          
+        {/* ReactFlow: Needs to be wrapped in ReactFlowProvider */}
+        <OistWorkFlowProvider />
         {isLoading && (
           <Box
             position="absolute"
@@ -1860,7 +2085,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           </Box>
         )}
         
-        {/* ノードメニュー */}
+        {/* Node menu */}
         {nodeMenuPosition && (
           <NodeMenu
             position={nodeMenuPosition}
@@ -1871,7 +2096,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           />
         )}
         
-        {/* エッジメニュー */}
+        {/* Edge menu */}
         {edgeMenuPosition && (
           <EdgeMenu
             position={edgeMenuPosition}
@@ -1879,12 +2104,12 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
             onClose={closeMenu}
           />
         )}
-        
+
         {/* View Modal */}
         <Modal isOpen={isViewOpen} onClose={onViewClose} size="2xl">
           <ModalOverlay />
           <ModalContent maxW="1200px" w="90vw">
-            <ModalHeader>Node Details: {selectedNode?.data.label}</ModalHeader>
+            <ModalHeader>Node Details: {/* selectedNode?.data.label */}</ModalHeader>
             <ModalCloseButton />
             <ModalBody marginTop={5}>
               <NodeDetailsContent
@@ -1905,8 +2130,6 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           </ModalContent>
         </Modal>
 
-
-
         {/* Code Editor Modal */}
         <CodeEditorModal
           isOpen={isCodeOpen}
@@ -1923,7 +2146,7 @@ const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationN
           language="python"
         />
 
-        {/* プロジェクト削除確認ダイアログ */}
+        {/* Project deletion confirmation dialog */}
         <DeleteConfirmDialog
           isOpen={isDeleteOpen}
           onClose={() => {

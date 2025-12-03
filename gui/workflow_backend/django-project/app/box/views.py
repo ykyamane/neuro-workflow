@@ -13,6 +13,7 @@ import logging
 import hashlib
 import uuid
 import os
+import json
 from pathlib import Path
 from django.core.files import File
 from django.conf import settings
@@ -24,21 +25,21 @@ logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileUploadView(APIView):
-    """Pythonファイルアップロード用のビュー"""
+    """Python view for file upload"""
 
     parser_classes = (MultiPartParser, FormParser)
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        """ファイルをアップロードして自動解析"""
+        """Upload a file and analyze it automatically"""
         serializer = PythonFileUploadSerializer(data=request.data)
 
         if serializer.is_valid():
             try:
                 file_service = PythonFileService()
 
-                # ファイルを作成・解析
+                # Create and analyze files
                 python_file = file_service.create_python_file(
                     file=serializer.validated_data["file"],
                     user=request.user if request.user.is_authenticated else None,
@@ -47,7 +48,7 @@ class PythonFileUploadView(APIView):
                     category=serializer.validated_data.get("category", "analysis"),
                 )
 
-                # レスポンス用のシリアライザー
+                # Serializer for the response
                 response_serializer = PythonFileSerializer(
                     python_file, context={"request": request}
                 )
@@ -70,23 +71,23 @@ class PythonFileUploadView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileListView(APIView):
-    """Pythonファイル一覧・詳細用のビュー"""
+    """Python file list and details view"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request, pk=None):
-        """ファイル一覧または詳細を取得"""
+        """Get file list or details"""
         if pk:
-            # 詳細を取得
+            # Get details
             python_file = get_object_or_404(PythonFile, pk=pk, is_active=True)
             serializer = PythonFileSerializer(python_file, context={"request": request})
             return Response(serializer.data)
         else:
-            # 一覧を取得
+            # get list
             python_files = PythonFile.objects.filter(is_active=True)
 
-            # フィルタリング
+            # filtering
             name = request.query_params.get("name")
             if name:
                 python_files = python_files.filter(name__icontains=name)
@@ -105,10 +106,10 @@ class PythonFileListView(APIView):
             return Response(serializer.data)
 
     def delete(self, request, pk):
-        """ファイルを削除"""
+        """delete file"""
         python_file = get_object_or_404(PythonFile, pk=pk, is_active=True)
 
-        # 権限チェック
+        # Permission check
         if (
             request.user.is_authenticated
             and python_file.uploaded_by
@@ -119,7 +120,7 @@ class PythonFileListView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # ファイルシステムからファイルを削除
+        # Delete a file from the file system
         if python_file.file:
             try:
                 python_file.file.delete(save=False)
@@ -127,7 +128,7 @@ class PythonFileListView(APIView):
             except Exception as e:
                 logger.warning(f"Failed to delete file from filesystem: {e}")
 
-        # 論理削除
+        # logical delete
         python_file.is_active = False
         python_file.save()
 
@@ -136,15 +137,15 @@ class PythonFileListView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class UploadedNodesView(APIView):
-    """アップロードされたノードクラス一覧を取得するAPI"""
+    """API to get a list of uploaded node classes"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        """アップロードされたノードクラス一覧を返す"""
+        """Returns a list of uploaded node classes"""
         try:
-            # 解析済みの有効なファイルのみ取得
+            # Only retrieve valid parsed files
             python_files = PythonFile.objects.filter(
                 is_active=True, is_analyzed=True, node_classes__isnull=False
             ).exclude(node_classes={})
@@ -154,11 +155,45 @@ class UploadedNodesView(APIView):
                 frontend_nodes = python_file.get_node_classes_for_frontend()
                 all_nodes.extend(frontend_nodes)
 
+            # Category list
+            node_categories = get_categories()
+            valid_categories = [category[0] for category in node_categories]
+            cat_settings = {}
+            nodes_path = Path(settings.MEDIA_ROOT)
+
+            for category in valid_categories:
+                category_path = nodes_path / category
+
+                if not category_path.exists():
+                    logger.info(f"Category folder not found, creating: {category_path}")
+                    category_path.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                settings_path = os.path.join( category_path, ".settings")
+
+                if os.path.exists(settings_path):
+                    logger.info(f"settings_path : {settings_path}")
+                    try:
+                        settings_open = open(settings_path, "r")
+                        cat_settings[category] = json.load(settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File load failed: {e}")
+                else:
+                    try:
+                        default_settings ={ "color" : "#6b46c1" }
+                        settings_open = open(settings_path, "w")
+                        json.dump(default_settings, settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File create failed: {e}")
+
             return Response(
                 {
                     "nodes": all_nodes,
                     "total_files": python_files.count(),
                     "total_nodes": len(all_nodes),
+                    "categories": cat_settings
                 }
             )
 
@@ -182,23 +217,23 @@ import re
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileCodeManagementView(View):
     """
-    PythonFileのコード管理ビュー
-    GET: コード取得
-    PUT: コード保存
+    Code management view of PythonFile
+    GET: Get code
+    PUT: save code
     """
 
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def get(self, request, filename):
-        """ファイル名を指定してソースコードを取得"""
+        """Get source code by specifying the file name"""
         try:
-            # .pyが付いていない場合は付けても検索
+            # If .py is not attached, search will be performed even if it is attached.
             filenames_to_search = [filename]
             if not filename.endswith(".py"):
                 filenames_to_search.append(f"{filename}.py")
 
-            # ファイル名で検索
+            # Search by file name
             python_file = PythonFile.objects.filter(
                 name__in=filenames_to_search, is_active=True
             ).first()
@@ -208,7 +243,7 @@ class PythonFileCodeManagementView(View):
                     {"error": f"File '{filename}' not found"}, status=404
                 )
 
-            # file_contentを優先、なければsource_codeを使用
+            # Prioritize file_content, if not available use source_code
             code = python_file.file_content or getattr(python_file, "source_code", "")
 
             if not code:
@@ -238,7 +273,7 @@ class PythonFileCodeManagementView(View):
             )
 
     def put(self, request, filename):
-        """編集したコードをDBに保存"""
+        """Save the edited code to the database"""
         try:
             data = json.loads(request.body)
             code = data.get("code", "")
@@ -246,12 +281,12 @@ class PythonFileCodeManagementView(View):
             if not code:
                 return JsonResponse({"error": "Code is required"}, status=400)
 
-            # .pyが付いていない場合は付けても検索
+            # If .py is not attached, search with it
             filenames_to_search = [filename]
             if not filename.endswith(".py"):
                 filenames_to_search.append(f"{filename}.py")
 
-            # ファイル名で検索
+            # Search by file name
             python_file = PythonFile.objects.filter(
                 name__in=filenames_to_search, is_active=True
             ).first()
@@ -261,7 +296,7 @@ class PythonFileCodeManagementView(View):
                     {"error": f"File '{filename}' not found"}, status=404
                 )
 
-            # 権限チェック（必要に応じて）
+            # Permission checks (if necessary)
             if (
                 request.user.is_authenticated
                 and python_file.uploaded_by
@@ -271,12 +306,12 @@ class PythonFileCodeManagementView(View):
                     {"error": "You don't have permission to edit this file"}, status=403
                 )
 
-            # PythonFileServiceを使ってコード更新と再解析を実行
+            # Use PythonFileService to update code and reparse
             from .services.python_file_service import PythonFileService
 
             file_service = PythonFileService()
 
-            # ファイル内容を更新して再解析
+            # Update the file contents and reparse
             python_file = file_service.update_file_content(python_file, code)
 
             logger.info(f"Saved code for file {filename}")
@@ -299,13 +334,13 @@ class PythonFileCodeManagementView(View):
             )
 
     def dispatch(self, request, *args, **kwargs):
-        """HTTPメソッドに応じてルーティング"""
+        """Route according to HTTP method"""
         filename = kwargs.get("filename")
 
         if not filename:
             return JsonResponse({"error": "filename is required"}, status=400)
 
-        # codeエンドポイントはGETとPUTのみ許可
+        # Only GET and PUT are allowed on the code endpoint
         if request.method == "GET":
             return self.get(request, filename)
         elif request.method == "PUT":
@@ -316,24 +351,24 @@ class PythonFileCodeManagementView(View):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileCopyView(APIView):
-    """選択したPythonファイルをコピーする"""
+    """Copy selected Python files"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        """ファイルIDまたはファイル名を指定してコピー"""
+        """Copy by specifying file ID or file name"""
         try:
             data = request.data
             file_ids = data.get("file_ids", [])
             source_filename = data.get("source_filename")
             target_filename = data.get("target_filename")
 
-            # 新しい方式: ファイル名指定のコピー
+            # New method: Copy by filename
             if source_filename and target_filename:
                 return self._copy_by_filename(request, source_filename, target_filename)
 
-            # 従来の方式: file_idsでのコピー
+            # Traditional method: Copy by file_ids
             if not file_ids:
                 return Response(
                     {
@@ -353,20 +388,20 @@ class PythonFileCopyView(APIView):
 
             for file_id in file_ids:
                 try:
-                    # 元ファイルを取得
+                    # Get original file
                     original_file = get_object_or_404(
                         PythonFile, pk=file_id, is_active=True
                     )
 
-                    # コピー名を生成
+                    # Generate copy name
                     copy_name = self._generate_copy_name(original_file.name)
 
-                    # ユニークなfile_hashを生成
+                    # Generate a unique file_hash
                     unique_hash = hashlib.sha256(
                         f"{copy_name}_{uuid.uuid4()}_{original_file.id}".encode()
                     ).hexdigest()
 
-                    # 新しいファイルオブジェクトを作成
+                    # create new file object
                     copied_file = PythonFile(
                         name=copy_name,
                         description=(
@@ -390,14 +425,14 @@ class PythonFileCopyView(APIView):
                         file_hash=unique_hash,
                     )
 
-                    # ファイルフィールドをコピー
+                    # Copy file field
                     if original_file.file:
                         try:
                             original_file.file.open()
                             file_content = original_file.file.read()
                             original_file.file.close()
 
-                            # コピーファイル名に.py拡張子を確保
+                            # Copy the file name with the .py extension
                             file_copy_name = copy_name
                             if not file_copy_name.endswith(".py"):
                                 file_copy_name = (
@@ -414,7 +449,7 @@ class PythonFileCopyView(APIView):
 
                     copied_file.save()
 
-                    # レスポンス用のシリアライザー
+                    # Serializer for the response
                     serializer = PythonFileSerializer(
                         copied_file, context={"request": request}
                     )
@@ -447,24 +482,24 @@ class PythonFileCopyView(APIView):
             )
 
     def _generate_copy_name(self, original_name):
-        """コピー用の名前を生成（.py拡張子を確保）"""
-        # 既存の "copy" や "copy (n)" パターンをチェック
+        """Generate a name for the copy (preserve the .py extension)"""
+        # Check for existing "copy" and "copy (n)" patterns
         base_name, ext = os.path.splitext(original_name)
 
-        # .py拡張子を確保（拡張子がない場合や.py以外の場合）
+        # Ensure .py extension (if no extension or something other than .py)
         if not ext or ext.lower() != ".py":
             ext = ".py"
 
-        # "copy" が既についている場合の処理
+        # Processing when "copy" is already present
         if base_name.endswith(" - copy"):
-            base_name = base_name[:-7]  # " - copy" を削除
+            base_name = base_name[:-7]  # " - copy" Delete
         elif " - copy (" in base_name and base_name.endswith(")"):
-            # " - copy (n)" パターンを削除
+            # " - copy (n)" remove pattern
             copy_index = base_name.find(" - copy (")
             if copy_index != -1:
                 base_name = base_name[:copy_index]
 
-        # 重複しない名前を探す
+        # Find unique names
         counter = 1
         while True:
             if counter == 1:
@@ -472,21 +507,21 @@ class PythonFileCopyView(APIView):
             else:
                 copy_name = f"{base_name} - copy ({counter}){ext}"
 
-            # 同じ名前のファイルが存在するかチェック
+            # Check if a file with the same name exists
             if not PythonFile.objects.filter(name=copy_name, is_active=True).exists():
                 return copy_name
 
             counter += 1
 
     def _copy_by_filename(self, request, source_filename, target_filename):
-        """ファイル名を指定してコピー"""
+        """Copy by file name"""
         try:
-            # .pyが付いていない場合は付けて検索
+            # If .py is not attached, add it and search.
             source_names = [source_filename]
             if not source_filename.endswith(".py"):
                 source_names.append(f"{source_filename}.py")
 
-            # ソースファイルを取得
+            # Get source file
             original_file = PythonFile.objects.filter(
                 name__in=source_names, is_active=True
             ).first()
@@ -497,33 +532,33 @@ class PythonFileCopyView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # ターゲットファイル名に.py拡張子を追加（必要な場合）
+            # Add the .py extension to the target filename (if needed)
             if not target_filename.endswith(".py"):
                 target_filename = f"{target_filename}.py"
 
-            # 同名ファイルが既に存在するかチェック
+            # Check if a file with the same name already exists
             if PythonFile.objects.filter(name=target_filename, is_active=True).exists():
                 return Response(
                     {"error": f"Target file '{target_filename}' already exists"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ソースコードをコピーしてクラス名を更新
+            # Copy the source code and update the class name
             updated_content = self._update_class_names_in_code(
                 original_file.file_content or "", target_filename
             )
 
-            # node_classesも更新（クラス名を新しいファイル名に基づいて変更）
+            # Also updated node_classes (class names changed based on the new filenames)
             updated_node_classes = self._update_node_classes(
                 original_file.node_classes or {}, target_filename
             )
 
-            # ユニークなfile_hashを生成
+            # Generate a unique file_hash
             unique_hash = hashlib.sha256(
                 f"{target_filename}_{uuid.uuid4()}_{original_file.id}".encode()
             ).hexdigest()
 
-            # 新しいファイルオブジェクトを作成
+            # create new file object
             copied_file = PythonFile(
                 name=target_filename,
                 description=(
@@ -535,7 +570,7 @@ class PythonFileCopyView(APIView):
                 file_content=updated_content,
                 uploaded_by=request.user if request.user.is_authenticated else None,
                 node_classes=updated_node_classes,
-                is_analyzed=original_file.is_analyzed,  # 元ファイルと同じ状態を保持
+                is_analyzed=original_file.is_analyzed,  # Keep the original file
                 analysis_error=original_file.analysis_error,
                 file_size=(
                     len(updated_content.encode("utf-8")) if updated_content else 0
@@ -543,7 +578,7 @@ class PythonFileCopyView(APIView):
                 file_hash=unique_hash,
             )
 
-            # ファイルフィールドを作成
+            # Create file field
             if updated_content:
                 try:
                     copied_file.file.save(
@@ -556,7 +591,7 @@ class PythonFileCopyView(APIView):
 
             copied_file.save()
 
-            # レスポンス用のシリアライザー
+            # Serializer for the response
             serializer = PythonFileSerializer(copied_file, context={"request": request})
 
             return Response(
@@ -576,22 +611,22 @@ class PythonFileCopyView(APIView):
             )
 
     def _update_class_names_in_code(self, source_code, target_filename):
-        """ソースコード内のクラス名をファイル名に基づいて更新"""
+        """Update class names in source code based on filenames"""
         if not source_code:
             return source_code
 
-        # ターゲットファイル名から拡張子を除去してクラス名のベースを作成
+        # Create the base class name by removing the extension from the target file name
         base_name = os.path.splitext(target_filename)[0]
 
-        # ファイル名をPascalCaseのクラス名に変換
-        # 例: "my_node.py" -> "MyNode", "test-node.py" -> "TestNode"
+        # Convert filenames to PascalCase class names
+        # Example: "my_node.py" -> "MyNode", "test-node.py" -> "TestNode"
         class_name = "".join(
             word.capitalize() for word in re.split(r"[_\-]", base_name)
         )
 
         updated_code = source_code
 
-        # クラス定義のパターンを探して置換
+        # Find and replace patterns in class definitions
         class_pattern = r"^class\s+(\w+)(\s*\([^)]*\))?:"
 
         def replace_class_name(match):
@@ -599,7 +634,7 @@ class PythonFileCopyView(APIView):
             inheritance = match.group(2) or ""
             return f"class {class_name}{inheritance}:"
 
-        # 複数行対応でクラス定義を置換
+        # Multi-line class definition replacement
         updated_code = re.sub(
             class_pattern, replace_class_name, updated_code, flags=re.MULTILINE
         )
@@ -607,14 +642,14 @@ class PythonFileCopyView(APIView):
         return updated_code
 
     def _update_node_classes(self, original_node_classes, target_filename):
-        """node_classes内のクラス名を新しいファイル名に基づいて更新"""
+        """Update the class name in node_classes based on the new file name"""
         if not original_node_classes:
             return original_node_classes
 
-        # ターゲットファイル名から拡張子を除去してクラス名のベースを作成
+        # Create the base class name by removing the extension from the target file name
         base_name = os.path.splitext(target_filename)[0]
 
-        # ファイル名をPascalCaseのクラス名に変換
+        # Convert filenames to PascalCase class names
         new_class_name = "".join(
             word.capitalize() for word in re.split(r"[_\-]", base_name)
         )
@@ -622,23 +657,23 @@ class PythonFileCopyView(APIView):
         updated_node_classes = {}
 
         for class_name, class_info in original_node_classes.items():
-            # クラス名を新しい名前に変更
+            # Rename the class to the new name
             updated_class_info = (
                 class_info.copy() if isinstance(class_info, dict) else class_info
             )
 
-            # class_info内にクラス名が含まれている場合も更新
+            # Updates even if class_info contains a class name
             if isinstance(updated_class_info, dict):
-                # 'name'フィールドがある場合は更新
+                # 'name' Update if field exists
                 if "name" in updated_class_info:
                     updated_class_info["name"] = new_class_name
 
-                # その他のクラス名参照も更新（必要に応じて）
+                # Update any other class name references (if necessary)
                 for key, value in updated_class_info.items():
                     if isinstance(value, str) and value == class_name:
                         updated_class_info[key] = new_class_name
 
-            # 新しいクラス名をキーとして追加
+            # Add the new class name as a key
             updated_node_classes[new_class_name] = updated_class_info
 
         return updated_node_classes
@@ -646,29 +681,29 @@ class PythonFileCopyView(APIView):
     def _replace_dict_parameter_value(
         self, source_code, parameter_key, parameter_value
     ):
-        """辞書内のパラメータ値を安全に置換（配列対応）"""
+        """Safely replace parameter values ​​in dictionaries (array compatible)"""
         logger.info(
             f"Replacing dict parameter '{parameter_key}' with value: {parameter_value} (type: {type(parameter_value)})"
         )
         formatted_value = self._format_value_for_python(parameter_value)
         logger.info(f"Formatted value: {formatted_value}")
 
-        # より安全なパターン：キーを見つけてから値の終端を正確に検出
+        # A safer pattern: find the key and then accurately detect the end of the value
         patterns = [
-            rf'(["\']){re.escape(parameter_key)}\1\s*:\s*',  # 'key': または "key":
+            rf'(["\']){re.escape(parameter_key)}\1\s*:\s*',  # 'key': or "key":
         ]
 
         for pattern in patterns:
             match = re.search(pattern, source_code)
             if match:
-                # キー部分の終了位置
+                # End position of the key part
                 key_end = match.end()
 
-                # 値の終端を検出（括弧のネスト、文字列も考慮）
+                # Detects the end of a value (considers nested parentheses and strings)
                 value_end = self._find_dict_value_end(source_code, key_end)
 
                 if value_end > key_end:
-                    # 値部分を完全に置換（元の値は削除）
+                    # Replace the value part completely (delete the original value)
                     new_source = (
                         source_code[:key_end]
                         + formatted_value
@@ -679,7 +714,7 @@ class PythonFileCopyView(APIView):
         return source_code
 
     def _find_dict_value_end(self, source_code, start_pos):
-        """辞書の値の終端位置を検出（配列・辞書のネストに対応）"""
+        """Find the end of a dictionary value (supports nested arrays and dictionaries)"""
         bracket_count = 0
         brace_count = 0
         paren_count = 0
@@ -687,7 +722,7 @@ class PythonFileCopyView(APIView):
         quote_char = None
         i = start_pos
 
-        # 開始位置から値を読み進める
+        # Read values ​​from the starting position
         while i < len(source_code):
             char = source_code[i]
 
@@ -699,14 +734,14 @@ class PythonFileCopyView(APIView):
                     bracket_count += 1
                 elif char == "]":
                     bracket_count -= 1
-                    # 配列が完全に閉じられた場合、次の文字をチェック
+                    # If the array is completely closed, check the next character.
                     if bracket_count < 0:
                         return i
                 elif char == "{":
                     brace_count += 1
                 elif char == "}":
                     brace_count -= 1
-                    # 辞書が完全に閉じられた場合、またはこれが外側の辞書の終了
+                    # When the dictionary is completely closed, or this is the end of the outer dictionary
                     if brace_count < 0:
                         return i
                 elif char == "(":
@@ -721,7 +756,7 @@ class PythonFileCopyView(APIView):
                     and brace_count == 0
                     and paren_count == 0
                 ):
-                    # 全てのブラケット/ブレースが閉じられている場合のみ値の終端
+                    # A value terminates only if all brackets/braces are closed
                     return i
             else:
                 if char == quote_char and (i == 0 or source_code[i - 1] != "\\"):
@@ -735,26 +770,26 @@ class PythonFileCopyView(APIView):
     def _replace_function_parameter_value(
         self, source_code, parameter_key, parameter_value
     ):
-        """関数引数のパラメータ値を安全に置換（配列対応）"""
+        """Safely replace parameter values ​​in function arguments (array compatible)"""
         logger.info(
             f"Replacing function parameter '{parameter_key}' with value: {parameter_value} (type: {type(parameter_value)})"
         )
         formatted_value = self._format_value_for_python(parameter_value)
         logger.info(f"Formatted value: {formatted_value}")
 
-        # パターン: parameter_key= の後の値の終端を正確に検出
+        # Pattern: Exactly find the end of the value after parameter_key=
         pattern = rf"\b{re.escape(parameter_key)}\s*=\s*"
         match = re.search(pattern, source_code)
 
         if match:
-            # パラメータキー部分の終了位置
+            # End position of the parameter key part
             key_end = match.end()
 
-            # 値の終端を検出（括弧のネスト、文字列も考慮）
+            # Detects the end of a value (considers nested parentheses and strings)
             value_end = self._find_function_parameter_value_end(source_code, key_end)
 
             if value_end > key_end:
-                # 値部分を完全に置換（元の値は削除）
+                # Replace the value part completely (delete the original value)
                 new_source = (
                     source_code[:key_end] + formatted_value + source_code[value_end:]
                 )
@@ -763,7 +798,7 @@ class PythonFileCopyView(APIView):
         return source_code
 
     def _find_function_parameter_value_end(self, source_code, start_pos):
-        """関数パラメータの値の終端位置を検出（配列・辞書のネストに対応）"""
+        """Detect the end position of a function parameter value (supports nested arrays and dictionaries)"""
         bracket_count = 0
         brace_count = 0
         paren_count = 0
@@ -795,7 +830,7 @@ class PythonFileCopyView(APIView):
                 elif char == ")":
                     paren_count -= 1
                     if paren_count < 0:
-                        # 外側の括弧の終了
+                        # End of outer bracket
                         return i
                 elif (
                     char == ","
@@ -803,7 +838,7 @@ class PythonFileCopyView(APIView):
                     and brace_count == 0
                     and paren_count == 0
                 ):
-                    # 全てのブラケット/ブレース/括弧が閉じられている場合のみパラメータの終端
+                    # A parameter terminates only if all brackets/braces/parentheses are closed
                     return i
             else:
                 if char == quote_char and (i == 0 or source_code[i - 1] != "\\"):
@@ -817,13 +852,13 @@ class PythonFileCopyView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileParameterUpdateView(APIView):
-    """ファイルのパラメーター値を更新する"""
+    """Update parameter values ​​in a file"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def put(self, request):
-        """パラメーター値を更新"""
+        """Update parameter value"""
         try:
             data = request.data
             parameter_key = data.get("parameter_key")
@@ -846,7 +881,7 @@ class PythonFileParameterUpdateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # ファイルを取得（file_idまたはfilenameで検索）
+            # Get file (search by file_id or filename)
             python_file = None
             if file_id:
                 python_file = get_object_or_404(PythonFile, pk=file_id, is_active=True)
@@ -864,7 +899,7 @@ class PythonFileParameterUpdateView(APIView):
                     {"error": "File not found"}, status=status.HTTP_404_NOT_FOUND
                 )
 
-            # 権限チェック
+            # Permission check
             if (
                 request.user.is_authenticated
                 and python_file.uploaded_by
@@ -875,12 +910,12 @@ class PythonFileParameterUpdateView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            # デバッグ: parameter_valueの型と値を確認
+            # Debug: Check the type and value of parameter_value
             logger.info(
                 f"Received parameter_value: {parameter_value} (type: {type(parameter_value)})"
             )
 
-            # ソースコード内のパラメーター値を更新（すべてのケースで統一）
+            # Update parameter values ​​in source code (uniform for all cases)
             updated_code = self._update_parameter_in_source_code(
                 python_file.file_content or "",
                 parameter_key,
@@ -897,12 +932,12 @@ class PythonFileParameterUpdateView(APIView):
                     }
                 )
 
-            # PythonFileServiceを使ってコード更新と再解析を実行
+            # Use PythonFileService to update code and reparse
             from .services.python_file_service import PythonFileService
 
             file_service = PythonFileService()
 
-            # ファイル内容を更新して再解析
+            # Update the file contents and reparse
             python_file = file_service.update_file_content(python_file, updated_code)
             logger.info(
                 f"Parameter '{parameter_key}.{parameter_field}' updated and re-analyzed for file {python_file.name}"
@@ -931,17 +966,17 @@ class PythonFileParameterUpdateView(APIView):
     def _update_parameter_in_source_code(
         self, source_code, parameter_key, parameter_field, parameter_value
     ):
-        """ソースコード内の指定されたパラメーターのフィールドを更新"""
+        """Updates the specified parameter field in the source code."""
         if not source_code:
             return source_code
 
         updated_code = source_code
 
         if parameter_field == "value":
-            # パターンを順番に試行し、一つでも変更があれば終了
+            # Try patterns in order and stop if any one of them changes
             original_code = updated_code
 
-            # パターン1: 変数代入（例: record_from_population = 100）
+            # Pattern 1: Variable assignment(Example: record_from_population = 100)
             variable_pattern = rf"^(\s*){re.escape(parameter_key)}\s*=\s*.*$"
 
             def replace_variable_assignment(match):
@@ -956,29 +991,29 @@ class PythonFileParameterUpdateView(APIView):
                 flags=re.MULTILINE,
             )
 
-            # 変数代入で変更があった場合は終了
+            # Exit if there is a change in variable assignment
             if updated_code != original_code:
                 return updated_code
 
-            # パターン2: 辞書内の値（例: {"record_from_population": 100} or {"time_window": [0.0, 1000.0]}）
-            # より安全な方法：値の終端を正確に検出
+            # Pattern 2: Values ​​in a dictionary (Example: {"record_from_population": 100} or {"time_window": [0.0, 1000.0]})
+            # A safer approach: accurately detecting the end of a value
             updated_code = self._replace_dict_parameter_value(
                 updated_code, parameter_key, parameter_value
             )
 
-            # 辞書内の値で変更があった場合は終了
+            # Exit if there is a change in the value in the dictionary
             if updated_code != original_code:
                 return updated_code
 
-            # パターン3: 関数呼び出しの引数（例: func(record_from_population=100) or func(time_window=[0, 100])）
-            # 配列に対応した安全な方法を使用
+            # Pattern 3: Function call arguments (Example: func(record_from_population=100) or func(time_window=[0, 100]))
+            # Use an array-safe method
             updated_code = self._replace_function_parameter_value(
                 updated_code, parameter_key, parameter_value
             )
 
         else:
-            # parameter_field が 'default_value', 'constraints' などの場合
-            # PortParameterのような構造を探して更新
+            # If parameter_field is 'default_value', 'constraints', etc.
+            # Look for and update PortParameter-like structures
             updated_code = self._update_parameter_metadata_in_code(
                 updated_code, parameter_key, parameter_field, parameter_value
             )
@@ -986,7 +1021,7 @@ class PythonFileParameterUpdateView(APIView):
         return updated_code
 
     def _format_value_for_python(self, value):
-        """Pythonコード用に値をフォーマット"""
+        """Format values ​​for Python code"""
         logger.info(f"Formatting value: {value} (type: {type(value)})")
 
         if isinstance(value, str):
@@ -994,7 +1029,7 @@ class PythonFileParameterUpdateView(APIView):
         elif isinstance(value, bool):
             return str(value)
         elif isinstance(value, list):
-            # 配列の各要素を適切にフォーマット
+            # Properly format each element of an array
             formatted_elements = []
             for item in value:
                 if isinstance(item, str):
@@ -1010,18 +1045,18 @@ class PythonFileParameterUpdateView(APIView):
     def _update_parameter_metadata_in_code(
         self, source_code, parameter_key, field_name, field_value
     ):
-        """ソースコード内のパラメーターメタデータ（default_value, constraintsなど）を更新"""
+        """Update parameter metadata (default_value, constraints, etc.) in source code"""
         updated_code = source_code
 
         print(
-            "これフィールドのデータ全部",
+            "All data in this field",
             f"key:{parameter_key}, name:{field_name}, value:{field_value}",
             flush=True,
         )
 
-        # まず、parameters={} 内に指定されたparameter_keyが存在するかチェック
+        # First, check whether the specified parameter_key exists in parameters={}
         if not self._parameter_exists_in_parameters_dict(source_code, parameter_key):
-            # parameters内に存在しない場合は何もしない
+            # If not present in parameters, do nothing
             logger.info(
                 f"Parameter '{parameter_key}' not found in parameters dict, skipping"
             )
@@ -1031,7 +1066,7 @@ class PythonFileParameterUpdateView(APIView):
             f"Starting update for parameter '{parameter_key}', field '{field_name}'"
         )
 
-        # シンプルなアプローチ: ParameterDefinition内のfield_nameを直接更新
+        # Simple approach: Update the field_name directly in the ParameterDefinition
         return self._update_parameter_field_simple(
             updated_code, parameter_key, field_name, field_value
         )
@@ -1039,9 +1074,9 @@ class PythonFileParameterUpdateView(APIView):
     def _update_parameter_field_simple(
         self, source_code, parameter_key, field_name, field_value
     ):
-        """シンプルな正規表現でParameterDefinition内のフィールドを更新"""
+        """Update fields in a ParameterDefinition with a simple regular expression"""
 
-        # ParameterDefinitionパターンを探す（より柔軟なパターン）
+        # Look for the ParameterDefinition pattern (more flexible pattern)
         # 'parameter_key': ParameterDefinition( ... field_name=old_value, ... )
         param_pattern = (
             rf"(['\"]){re.escape(parameter_key)}\1\s*:\s*ParameterDefinition\s*\("
@@ -1054,10 +1089,10 @@ class PythonFileParameterUpdateView(APIView):
             )
             return source_code
 
-        # ParameterDefinition全体の範囲で検索・置換
+        # Search and replace within the entire ParameterDefinition
         start_pos = match.start()
 
-        # ParameterDefinitionの終了位置を見つける（より正確な方法）
+        # Finding the end of a ParameterDefinition (more accurate method)
         paren_count = 0
         end_pos = match.end()
         in_string = False
@@ -1082,10 +1117,10 @@ class PythonFileParameterUpdateView(APIView):
                     in_string = False
                     quote_char = None
 
-        # ParameterDefinition部分を抽出
+        # Extract the ParameterDefinition part
         param_def = source_code[start_pos:end_pos]
 
-        # field_nameのフィールドを安全に更新
+        # Safely update the field in field_name
         updated_param_def = self._replace_parameter_field_value(param_def, field_name, field_value)
 
         if updated_param_def != param_def:
@@ -1101,23 +1136,23 @@ class PythonFileParameterUpdateView(APIView):
             return source_code
     
     def _replace_parameter_field_value(self, param_def, field_name, field_value):
-        """ParameterDefinition内の特定フィールドを安全に置換"""
-        # フィールド名のパターンを探す
+        """Safely replace specific fields in a ParameterDefinition"""
+        # Look for patterns in field names
         field_pattern = rf'\b{re.escape(field_name)}\s*=\s*'
         match = re.search(field_pattern, param_def)
         
         if not match:
             return param_def
             
-        # フィールド値の開始位置
+        # Starting position of field value
         value_start = match.end()
         
-        # フィールド値の終端を検出（配列・辞書のネストに対応）
+        # Detect the end of a field value (supports nested arrays and dictionaries)
         value_end = self._find_parameter_field_value_end(param_def, value_start)
         
         if value_end > value_start:
             formatted_value = self._format_value_for_python(field_value)
-            # 値を完全に置換
+            # Replace value completely
             return (
                 param_def[:value_start] + 
                 formatted_value + 
@@ -1127,7 +1162,7 @@ class PythonFileParameterUpdateView(APIView):
         return param_def
     
     def _find_parameter_field_value_end(self, param_def, start_pos):
-        """ParameterDefinition内のフィールド値の終端位置を検出"""
+        """Find the end of a field value in a ParameterDefinition"""
         bracket_count = 0
         brace_count = 0
         paren_count = 0
@@ -1156,10 +1191,10 @@ class PythonFileParameterUpdateView(APIView):
                     if paren_count > 0:
                         paren_count -= 1
                     else:
-                        # ParameterDefinitionの終了
+                        # End of ParameterDefinition
                         return i
                 elif char == ',' and bracket_count == 0 and brace_count == 0 and paren_count == 0:
-                    # フィールドの終端
+                    # end of field
                     return i
             else:
                 if char == quote_char and (i == 0 or param_def[i-1] != '\\'):
@@ -1173,12 +1208,12 @@ class PythonFileParameterUpdateView(APIView):
     def _update_specific_parameter_field(
         self, source_code, parameter_key, field_name, field_value
     ):
-        """指定されたパラメーターの指定されたフィールドのみを更新（より確実な方法）"""
+        """Update only the specified fields of the specified parameters (more reliable method)"""
 
-        # 完全一致する '"parameter_key": ParameterDefinition(' パターンを探す
+        # Look for an exact match of the pattern '"parameter_key": ParameterDefinition('
         exact_patterns = [
-            rf'"{re.escape(parameter_key)}"\s*:\s*ParameterDefinition\s*\(',  # ダブルクォート
-            rf"'{re.escape(parameter_key)}'\s*:\s*ParameterDefinition\s*\(",  # シングルクォート
+            rf'"{re.escape(parameter_key)}"\s*:\s*ParameterDefinition\s*\(', 
+            rf"'{re.escape(parameter_key)}'\s*:\s*ParameterDefinition\s*\(", 
         ]
 
         target_match = None
@@ -1187,16 +1222,16 @@ class PythonFileParameterUpdateView(APIView):
         for pattern in exact_patterns:
             matches = list(re.finditer(pattern, source_code))
             if matches:
-                # 完全一致するもののみを選択
+                # Select only exact matches
                 for match in matches:
-                    # マッチした部分の前後をチェックして、完全な独立したキーかを確認
+                    # Check the parts before and after the match to see if they are completely independent keys
                     start_pos = match.start()
 
-                    # 前の文字をチェック（英数字でないことを確認）
+                    # Check the previous character (make sure it's not an alphanumeric character)
                     if start_pos > 0:
                         prev_char = source_code[start_pos - 1]
                         if prev_char.isalnum() or prev_char == "_":
-                            continue  # 部分マッチなのでスキップ
+                            continue  # Partial match, skipped
 
                     target_match = match
                     target_pattern = pattern
@@ -1212,8 +1247,8 @@ class PythonFileParameterUpdateView(APIView):
             logger.warning(f"No exact match found for parameter '{parameter_key}'")
             return source_code
 
-        # ParameterDefinition(...) の終端を見つける
-        start_pos = target_match.end() - 1  # '(' の位置
+        # ParFind the end of ParameterDefinition(...)
+        start_pos = target_match.end() - 1  # '('
         end_pos = self._find_matching_paren(source_code, start_pos)
 
         if end_pos == -1:
@@ -1222,19 +1257,19 @@ class PythonFileParameterUpdateView(APIView):
             )
             return source_code
 
-        # ParameterDefinition内の内容を取得
+        # Get the contents of ParameterDefinition
         param_content = source_code[start_pos + 1 : end_pos]
 
         logger.info(f"Extracted content for '{parameter_key}': {param_content}")
 
-        # この内容内で指定されたフィールドを更新
+        # Update the specified field within this content
         updated_content = self._update_field_in_parameter_content(
             param_content, field_name, field_value
         )
 
         logger.info(f"Updated content for '{parameter_key}': {updated_content}")
 
-        # 元のコードを更新
+        # Updated original code
         if updated_content != param_content:
             updated_code = (
                 source_code[: start_pos + 1] + updated_content + source_code[end_pos:]
@@ -1250,7 +1285,7 @@ class PythonFileParameterUpdateView(APIView):
         return updated_code
 
     def _find_matching_paren(self, source_code, start_pos):
-        """指定位置の開き括弧に対応する閉じ括弧の位置を見つける"""
+        """Find the closing parenthesis that matches the opening parenthesis at the specified position"""
         paren_count = 0
         in_string = False
         escape_next = False
@@ -1279,23 +1314,23 @@ class PythonFileParameterUpdateView(APIView):
                     if paren_count == 0:
                         return i
 
-        return -1  # 対応する閉じ括弧が見つからない
+        return -1  # Matching closing parenthesis not found
 
     def _update_field_in_parameter_content(
         self, param_content, field_name, field_value
     ):
-        """ParameterDefinition内のコンテンツで特定フィールドを更新"""
+        """Updates a specific field with the content in the ParameterDefinition"""
         formatted_value = self._format_value_for_python(field_value)
 
-        # より正確なパターン: フィールド名の境界を厳密に定義
-        # ネストした辞書や複雑な値も正確に抽出
+        # More precise patterns: strictly define field name boundaries
+        # Accurate extraction of nested dictionaries and complex values
         field_pattern = (
             rf"\b{re.escape(field_name)}\s*=\s*(?:[^,\)]*(?:\([^)]*\)[^,\)]*)*)"
         )
 
-        # 値の終端をより正確に検出するため、括弧のネストも考慮
+        # Takes parentheses into account to more accurately detect the end of a value
         def find_field_value_end(content, start_pos):
-            """フィールド値の終端位置を見つける"""
+            """Finding the end position of a field value"""
             paren_count = 0
             brace_count = 0
             bracket_count = 0
@@ -1316,7 +1351,7 @@ class PythonFileParameterUpdateView(APIView):
                         if paren_count > 0:
                             paren_count -= 1
                         else:
-                            # 外側の括弧に到達
+                            # Reaching the outer parenthesis
                             return i
                     elif char == "{":
                         brace_count += 1
@@ -1332,7 +1367,7 @@ class PythonFileParameterUpdateView(APIView):
                         and brace_count == 0
                         and bracket_count == 0
                     ):
-                        # フィールドの終端
+                        # end of field
                         return i
                 else:
                     if char == quote_char and (i == 0 or content[i - 1] != "\\"):
@@ -1343,7 +1378,7 @@ class PythonFileParameterUpdateView(APIView):
 
             return len(content)
 
-        # フィールドを検索して更新
+        # Find and update fields
         field_pattern = rf"\b{re.escape(field_name)}\s*=\s*"
         field_match = re.search(field_pattern, param_content)
 
@@ -1352,7 +1387,7 @@ class PythonFileParameterUpdateView(APIView):
         logger.info(f"Field match found: {field_match is not None}")
 
         if field_match:
-            # 既存フィールドを更新
+            # Update existing field
             field_start = field_match.start()
             value_start = field_match.end()
             value_end = find_field_value_end(param_content, value_start)
@@ -1362,7 +1397,7 @@ class PythonFileParameterUpdateView(APIView):
             )
             logger.info(f"Original value: {param_content[value_start:value_end]}")
 
-            # フィールド部分を置換
+            # Replace field part
             updated_content = (
                 param_content[:field_start]
                 + f"{field_name}={formatted_value}"
@@ -1371,19 +1406,19 @@ class PythonFileParameterUpdateView(APIView):
             logger.info(f"Replacement result: {updated_content}")
             return updated_content
         else:
-            # 新しいフィールドを追加
+            # Add new field
             param_content = param_content.strip()
             if param_content:
-                # 既存のパラメーターがある場合
+                # If there are existing parameters
                 return f"{param_content}, {field_name}={formatted_value}"
             else:
-                # 空の場合
+                # If empty
                 return f"{field_name}={formatted_value}"
 
     def _parameter_exists_in_parameters_dict(self, source_code, parameter_key):
-        """parameters={}辞書内に指定されたパラメーターキーが存在するかチェック"""
+        """parameters={} Checks whether the specified parameter key exists in the dictionary."""
 
-        # parameters = { ... } のブロックを探す
+        # parameters = { ... } Find the block of
         params_pattern = r"parameters\s*=\s*\{"
 
         match = re.search(params_pattern, source_code)
@@ -1391,12 +1426,12 @@ class PythonFileParameterUpdateView(APIView):
         if not match:
             return False
 
-        # parameters辞書の開始位置
-        start_pos = match.end() - 1  # '{' の位置
+        # starting position of parameters dictionary
+        start_pos = match.end() - 1  # '{' 
 
-        # 辞書の終わりを見つける（ネストした括弧を考慮）
+        # Find the end of a dictionary (taking nested parentheses into account)
         brace_count = 0
-        end_pos = len(source_code) - 1  # デフォルトでファイル終端に設定
+        end_pos = len(source_code) - 1  # Default to end of file
         in_string = False
         escape_next = False
         quote_char = None
@@ -1425,13 +1460,13 @@ class PythonFileParameterUpdateView(APIView):
                         end_pos = i
                         break
 
-        # parameters辞書の内容を取得
+        # Get the contents of the parameters dictionary
         params_content = source_code[start_pos : end_pos + 1]
 
-        # print("これパラメーターコンテンツ", params_content, flush=True)
+        # print("This parameter content", params_content, flush=True)
 
-        # 指定されたparameter_keyが含まれているかチェック
-        # ダブルクォートまたはシングルクォートでマッチ
+        # Checks whether the specified parameter_key is included
+        # Matches double or single quotes
         patterns = [
             rf'"{re.escape(parameter_key)}"\s*:\s*ParameterDefinition',
             rf"'{re.escape(parameter_key)}'\s*:\s*ParameterDefinition",
@@ -1446,20 +1481,54 @@ class PythonFileParameterUpdateView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class NodeCategoryListView(APIView):
-    """ノードカテゴリ一覧取得用のビュー"""
+    """View for getting a list of node categories"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        """利用可能なカテゴリ一覧を返す"""
+        """Returns a list of available categories"""
         try:
             node_categories = get_categories()
 
-            logger.info(f"categories/ : {node_categories}")
+            #logger.info(f"categories/ : {node_categories}")
+
+            # Scan each category folder
+            valid_categories = [category[0] for category in node_categories]
+
+            category_settings = {}
+            nodes_path = Path(settings.MEDIA_ROOT)
+
+            for category in valid_categories:
+                category_path = nodes_path / category
+
+                if not category_path.exists():
+                    logger.info(f"Category folder not found, creating: {category_path}")
+                    category_path.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                settings_path = os.path.join( category_path, ".settings")
+
+                if os.path.exists(settings_path):
+                    logger.info(f"settings_path : {settings_path}")
+                    try:
+                        settings_open = open(settings_path, "r")
+                        category_settings[category] = json.load(settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File load failed: {e}")
+                else:
+                    try:
+                        default_settings ={ "color" : "#6b46c1" }
+                        settings_open = open(settings_path, "w")
+                        json.dump(default_settings, settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File create failed: {e}")
+
 
             categories = [
-                {"value": value, "label": label} for value, label in node_categories
+                {"value": value, "label": label, "settings": category_settings[value]} for value, label in node_categories
             ]
 
             return Response({"categories": categories, "default": "analysis"})
@@ -1469,17 +1538,62 @@ class NodeCategoryListView(APIView):
                 {"error": "Failed to get categories"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        
+
+    def post(self, request):
+        """Save category colors => .settings"""
+        try:
+            data = request.data
+            category_key = data.get("category")
+            category_value = data.get("color")
+
+            if category_key is None:
+                return Response(
+                    {"error": "category_key is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if category_value is None:
+                return Response(
+                    {"error": "category_value is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            category_settings = {"color": category_value}
+            nodes_path = Path(settings.MEDIA_ROOT)
+            category_path = nodes_path / category_key
+            settings_path = os.path.join( category_path, ".settings")
+            settings_open = open(settings_path, "w")
+            json.dump(category_settings, settings_open)
+            settings_open.close()
+
+            response_data = {
+                "status": "success",
+                "message": "Category color updated successfully",
+                "data": "",
+            }
+
+            logger.info(
+                f"Successfully updated category color {category_key}:{category_value}"
+            )
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"Error updating category color: {e}")
+            return Response(
+                {"error": "Failed to update category color"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class BulkSyncNodesView(APIView):
-    """nodesフォルダの内容を一括でDBに同期するビュー"""
+    """A view that synchronizes the contents of the nodes folder to the database all at once."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        """nodesフォルダをスキャンしてDBに一括追加"""
+        """Scan the nodes folder and add them to the DB all at once"""
         try:
             nodes_path = Path(settings.MEDIA_ROOT)
 
@@ -1499,8 +1613,10 @@ class BulkSyncNodesView(APIView):
 
             node_categories = get_categories()
 
-            # 各カテゴリフォルダをスキャン
+            # Scan each category folder
             valid_categories = [category[0] for category in node_categories]
+
+            cat_settings = {}
 
             for category in valid_categories:
                 category_path = nodes_path / category
@@ -1510,7 +1626,26 @@ class BulkSyncNodesView(APIView):
                     category_path.mkdir(parents=True, exist_ok=True)
                     continue
 
-                # .pyファイルをスキャン
+                settings_path = os.path.join( category_path, ".settings")
+
+                if os.path.exists(settings_path):
+                    logger.info(f"settings_path : {settings_path}")
+                    try:
+                        settings_open = open(settings_path, "r")
+                        cat_settings[category] = json.load(settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File load failed: {e}")
+                else:
+                    try:
+                        default_settings ={ "color" : "#6b46c1" }
+                        settings_open = open(settings_path, "w")
+                        json.dump(default_settings, settings_open)
+                        settings_open.close()
+                    except Exception as e:
+                        logger.error(f".settings File create failed: {e}")
+
+                # Scan .py files
                 for py_file in category_path.glob("*.py"):
                     results["total_scanned"] += 1
                     result = self._process_file(py_file, category)
@@ -1524,6 +1659,8 @@ class BulkSyncNodesView(APIView):
                     else:
                         results["errors"] += 1
                         results["files"]["errors"].append(result)
+
+            results["settings"] = cat_settings
 
             return Response(results, status=status.HTTP_200_OK)
 
@@ -1539,14 +1676,14 @@ class BulkSyncNodesView(APIView):
         try:
             filename = file_path.name
 
-            # ファイル内容を読み取り
+            # read file contents
             with open(file_path, "r", encoding="utf-8") as f:
                 file_content = f.read()
 
-            # ファイルハッシュで重複チェック
+            # Check for duplicates using file hashes
             file_hash = hashlib.sha256(file_content.encode("utf-8")).hexdigest()
 
-            # 既存ファイルチェック（ハッシュまたはファイル名+カテゴリで、アクティブなファイルのみ）
+            # Existing file check (active files only, by hash or filename + category)
             existing_file = PythonFile.objects.filter(
                 (
                     models.Q(file_hash=file_hash)
@@ -1556,7 +1693,7 @@ class BulkSyncNodesView(APIView):
             ).first()
 
             if existing_file:
-                # より詳細な重複理由を提供
+                # Provides more detailed reasons for duplication
                 if existing_file.file_hash == file_hash:
                     reason = "Identical content already exists"
                 else:
@@ -1571,7 +1708,7 @@ class BulkSyncNodesView(APIView):
                     "existing_name": existing_file.name,
                 }
 
-            # 新しいファイルとして作成（DB登録のみ、ファイルコピーなし）
+            # Create a new file (DB registration only, no file copying)
             python_file = PythonFile.objects.create(
                 name=filename,
                 description=f"Synced from {category} folder",
@@ -1579,10 +1716,10 @@ class BulkSyncNodesView(APIView):
                 file_content=file_content,
                 file_size=file_path.stat().st_size,
                 file_hash=file_hash,
-                # fileフィールドは空のまま（file_contentがあるので不要）
+                # Leave the file field empty (not necessary since file_content is used)
             )
 
-            # 自動解析実行
+            # Automatic analysis execution
             try:
                 file_service = PythonFileService()
                 file_service._analyze_file(python_file)

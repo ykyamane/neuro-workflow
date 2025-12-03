@@ -31,7 +31,7 @@ import {
 import { ArrowRightIcon, DownloadIcon, CopyIcon } from '@chakra-ui/icons';
 import { createAuthHeaders } from '../../../api/authHeaders';
 
-// Monaco Editor の型定義
+// Monaco Editor Type Definitions
 interface Monaco {
   editor: {
     create: (container: HTMLElement, options: any) => any;
@@ -44,7 +44,7 @@ interface Monaco {
   };
 }
 
-// 実行結果の型定義
+// Execution result type definition
 interface ExecutionResult {
   status: 'success' | 'error' | 'running';
   output?: string;
@@ -53,24 +53,24 @@ interface ExecutionResult {
   timestamp?: string;
 }
 
-// エンドポイント設定の型定義
+// Endpoint configuration type definition
 interface EndpointConfig {
-  baseUrl?: string;  // デフォルト: http://localhost:3000/api
-  getCode: string;    // GET: コード取得のエンドポイント
-  saveCode: string;   // PUT: コード保存のエンドポイント
-  executeCode?: string; // POST: コード実行のエンドポイント（オプション）
+  baseUrl?: string;  // default: http://localhost:3000/api
+  getCode: string;    // GET: Code retrieval endpoint
+  saveCode: string;   // PUT: Code save endpoint
+  executeCode?: string; // POST: Code execution endpoint (optional)
 }
 
 interface CodeEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  identifier: string | null; // projectId, workflowId, filename など汎用的な識別子
-  endpoints: EndpointConfig; // エンドポイント設定
-  title?: string; // モーダルのタイトル（オプション）
-  initialCode?: string; // 初期コード（オプション）
-  language?: string; // プログラミング言語（デフォルト: python）
-  downloadFileName?: string; // ダウンロード時のファイル名（オプション）
-  showExecute?: boolean; // 実行機能を表示するか（デフォルト: true）
+  identifier: string | null; // projectId, workflowId, filename General-purpose identifiers such as
+  endpoints: EndpointConfig; // Endpoint settings
+  title?: string; // Modal title (optional)
+  initialCode?: string; // Initial Code (Optional)
+  language?: string; // Programming Language (default: python）
+  downloadFileName?: string; // Download filename (optional)
+  showExecute?: boolean; // Show execution functions (default: true）
 }
 
 export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
@@ -96,20 +96,20 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
   const [executionResults, setExecutionResults] = useState<ExecutionResult[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
-  // ベースURLを取得
+  // Get base URL
   const getBaseUrl = () => endpoints.baseUrl || 'http://localhost:3000/api';
 
-  // エンドポイントURLを構築
+  // Build endpoint URL
   const buildUrl = (endpoint: string) => {
     const baseUrl = getBaseUrl();
-    // identifierがある場合は置換、なければそのまま使用
+    // Replace if identifier exists, use as is if not
     if (identifier) {
       return `${baseUrl}${endpoint.replace('{identifier}', identifier)}`;
     }
     return `${baseUrl}${endpoint}`;
   };
 
-  // Monaco Editor を動的に読み込み
+  // Dynamically Loading the Monaco Editor
   useEffect(() => {
     if (!isOpen) return;
 
@@ -117,7 +117,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
       try {
         console.log('🔧 Loading Monaco Editor...');
         
-        // Monaco Editor をCDNから読み込み
+        // Loading Monaco Editor from CDN
         if (!window.monaco) {
           console.log('📦 Monaco not found, loading from CDN...');
           await loadScript('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js');
@@ -154,9 +154,9 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     loadMonaco();
   }, [isOpen, toast]);
 
-  // Monaco Editor を初期化
+  // Initialize Monaco Editor
   useEffect(() => {
-    // 全ての条件が整うまで待つ
+    // Wait until all the conditions are met
     if (!monacoRef.current || !containerRef.current || !isOpen || isLoading) {
       console.log('⏳ Monaco Editor not ready:', {
         monaco: !!monacoRef.current,
@@ -169,14 +169,14 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
 
     console.log('🎨 All conditions met, initializing Monaco Editor');
 
-    // 既存のエディターを破棄
+    // Destroy the existing editor
     if (editorRef.current) {
       console.log('🗑️ Disposing existing editor');
       editorRef.current.dispose();
       editorRef.current = null;
     }
 
-    // さらに遅延を追加してDOM要素が完全に準備されるのを待つ
+    // Adding an additional delay to wait for the DOM element to be fully ready
     const initTimer = setTimeout(() => {
       if (!containerRef.current) {
         console.log('❌ Container disappeared during initialization');
@@ -186,7 +186,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
       try {
         console.log('🚀 Starting Monaco Editor creation...');
         
-        // カスタムテーマを定義
+        // Define a custom theme
         monacoRef.current.editor.defineTheme('chakra-theme', {
           base: 'vs',
           inherit: true,
@@ -206,7 +206,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
           },
         });
 
-        // エディターを作成（初期値は空にする）
+        // Create an editor (initial value is empty)
         editorRef.current = monacoRef.current.editor.create(containerRef.current, {
           value: '',
           language: language,
@@ -225,20 +225,20 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
 
         console.log('✅ Monaco Editor created successfully');
 
-        // コード変更を監視
+        // Monitor code changes
         const disposable = editorRef.current.onDidChangeModelContent(() => {
           const newCode = editorRef.current.getValue();
           setCode(newCode);
           setHasUnsavedChanges(true);
         });
 
-        // 初期コードを設定
+        // Set initial code
         if (code) {
           editorRef.current.setValue(code);
           console.log('📝 Initial code set, length:', code.length);
         }
 
-        // クリーンアップ関数を保存
+        // Save the cleanup function
         return () => {
           console.log('🧹 Cleaning up Monaco Editor');
           disposable?.dispose();
@@ -256,9 +256,9 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
       clearTimeout(initTimer);
     };
 
-  }, [monacoRef.current, isOpen, isLoading, language]); // codeを依存配列から削除
+  }, [monacoRef.current, isOpen, isLoading, language]); // Remove code from the dependency array
 
-  // コードを取得
+  // get code
   const fetchCode = async () => {
     if (!identifier) return;
 
@@ -277,7 +277,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
         const fetchedCode = data.code || data.file_content || data.source_code || initialCode;
         setCode(fetchedCode);
         
-        // エディターが初期化されている場合、値を更新
+        // If the editor is initialized, update the value
         if (editorRef.current) {
           editorRef.current.setValue(fetchedCode);
         }
@@ -308,7 +308,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     }
   };
 
-  // コードを保存
+  // save code
   const saveCode = async () => {
     if (!identifier) return;
 
@@ -353,7 +353,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     }
   };
 
-  // コードを実行
+  // run code
   const executeCode = async () => {
     if (!identifier || !endpoints.executeCode) return;
 
@@ -426,7 +426,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     }
   };
 
-  // コードをクリップボードにコピー
+  // Copy code to clipboard
   const copyCode = async () => {
     try {
       await navigator.clipboard.writeText(code);
@@ -448,14 +448,14 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     }
   };
 
-  // コードをダウンロード
+  // download code
   const downloadCode = () => {
     const blob = new Blob([code], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     
-    // ファイル名を決定
+    // Decide file name
     const fileName = downloadFileName || 
                     `${identifier}_code.${language === 'python' ? 'py' : language}`;
     a.download = fileName;
@@ -474,19 +474,19 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     });
   };
 
-  // モーダルが開かれたときにコードを取得
+  // Get the code when the modal is opened
   useEffect(() => {
     if (isOpen && identifier) {
       fetchCode();
     }
   }, [isOpen, identifier]);
 
-  // 結果をクリア
+  // clear results
   const clearResults = () => {
     setExecutionResults([]);
   };
 
-  // モーダルタイトルを生成
+  // Generate modal title
   const modalTitle = title || `Code Editor - ${identifier}`;
 
   return (
@@ -704,7 +704,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
   );
 };
 
-// スクリプトを動的に読み込むヘルパー関数
+// Helper functions to dynamically load scripts
 const loadScript = (src: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -715,7 +715,7 @@ const loadScript = (src: string): Promise<void> => {
   });
 };
 
-// グローバル型定義
+// global type definition
 declare global {
   interface Window {
     monaco: any;

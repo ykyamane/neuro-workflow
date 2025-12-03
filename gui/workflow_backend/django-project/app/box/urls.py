@@ -13,25 +13,25 @@ from .views import (
 app_name = "box"
 
 urlpatterns = [
-    # ファイルアップロード
+    # file upload
     path("upload/", PythonFileUploadView.as_view(), name="python-file-upload"),
-    # ファイル一覧
+    # File list
     path("files/", PythonFileListView.as_view(), name="python-file-list"),
-    # ファイル詳細・削除
+    # File details/delete
     path("files/<uuid:pk>/", PythonFileListView.as_view(), name="python-file-detail"),
-    # アップロードされたノード一覧（フロントエンド用）
+    # List of uploaded nodes (for frontend)
     path("uploaded-nodes/", UploadedNodesView.as_view(), name="uploaded-nodes"),
     path(
         "files/<str:filename>/code/",
         PythonFileCodeManagementView.as_view(),
         name="python-file-code",
     ),
-    # ファイルコピー
+    # file copy
     path("copy/", PythonFileCopyView.as_view(), name="python-file-copy"),
-    # パラメーター更新
+    # Parameter update
     path("parameters/update/", PythonFileParameterUpdateView.as_view(), name="python-file-parameter-update"),
-    # カテゴリ一覧
+    # Category list
     path("categories/", NodeCategoryListView.as_view(), name="node-categories"),
-    # ノード一括同期
+    # Bulk node synchronization
     path("sync/", BulkSyncNodesView.as_view(), name="bulk-sync-nodes"),
 ]

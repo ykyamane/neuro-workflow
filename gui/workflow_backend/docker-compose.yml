@@ -13,11 +13,11 @@ services:
     networks:
       - workflow
 
-  # === Django サービス ===
+  # === Django Service ===
   web:
     build: .
     container_name: web
-    command: python django-project/manage.py runserver 0.0.0.0:3000
+    command: python -u django-project/manage.py runserver 0.0.0.0:3000
     volumes:
       - .:/django-app
     working_dir: /django-app
@@ -46,11 +46,13 @@ services:
     restart: unless-stopped
     networks:
       - workflow
+      - jupyterhub-network
 
 volumes:
   postgres_data:
   jupyterhub-data:
 
 networks:
+  jupyterhub-network:
+    name: jupyterhub-network
   workflow:
-    name: neuro-workflow_workflow

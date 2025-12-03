@@ -101,8 +101,6 @@ class NodeDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
-            logger.debug("（あ）nodes INSERT 開始")
-
             # Insert or update node
             cursor.execute(
                 """
@@ -118,14 +116,10 @@ class NodeDatabase:
 
             node_id = cursor.lastrowid
 
-            logger.debug("（い）DELETE 開始")
-
             # Clear existing related data
             cursor.execute("DELETE FROM ports WHERE node_id = ?", (node_id,))
             cursor.execute("DELETE FROM parameters WHERE node_id = ?", (node_id,))
             cursor.execute("DELETE FROM methods WHERE node_id = ?", (node_id,))
-
-            logger.debug("（う） ports INSERT 開始")
 
             # Save inputs
             for port_name, port_info in node_info.get("inputs", {}).items():
@@ -144,8 +138,6 @@ class NodeDatabase:
                     ),
                 )
 
-            logger.debug("（え - 2） ports INSERT 開始")
-
             # Save outputs
             for port_name, port_info in node_info.get("outputs", {}).items():
                 cursor.execute(
@@ -163,21 +155,15 @@ class NodeDatabase:
                     ),
                 )
 
-            logger.debug("（お） parameters INSERT 開始")
-
             # Save parameters
             for param_name, param_info in node_info.get("parameters", {}).items():
                 info_text = param_info.get("default_value", "")
-                logger.debug(f"（おお） info_text: {info_text}")
                 """
                 if isinstance(info_text, list):
-                    logger.debug(f"（おお） info_text: {info_text} => リストっす")
                     info_text = json.dumps(info_text)
                 elif isinstance(info_text, dict):
-                    logger.debug(f"（おお） info_text: {info_text} => DICTっす")
                     info_text = json.dumps(info_text)
                 """
-                logger.debug(f"（おおお） info_text: {info_text}")
                 cursor.execute(
                     """
                     INSERT INTO parameters (node_id, param_name, default_value, description, constraints)
@@ -193,8 +179,6 @@ class NodeDatabase:
                         json.dumps(param_info.get("constraints", {})),
                     ),
                 )
-
-            logger.debug("（か） methods INSERT 開始")
 
             # Save methods
             for method_name, method_info in node_info.get("methods", {}).items():
@@ -212,24 +196,22 @@ class NodeDatabase:
                     ),
                 )
 
-            logger.debug("（き） INSERT 完了")
-
             conn.commit()
             return node_id
 
 
 class PythonNodeAnalyzer:
-    """Pythonファイルからノード情報を解析するサービス"""
+    """A service that parses node information from Python files"""
 
     def __init__(self, db_path: str = "nodes.db"):
         self.db = NodeDatabase(db_path)
 
     def analyze_file_content(self, content: str) -> List[Dict[str, Any]]:
         """
-        Pythonファイルの内容を解析してノード情報を抽出
+        Parse the contents of a Python file to extract node information
 
         Args:
-            content: Pythonファイルの内容
+            content: Python file contents
 
         Returns:
             List of node information dictionaries
@@ -238,12 +220,9 @@ class PythonNodeAnalyzer:
             tree = ast.parse(content)
             nodes = []
 
-            logger.debug(f"XXX解析開始 analyze_file_content():")
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
-                    logger.debug(f"＊＊＊解析開始 _analyze_class_node():")
                     node_info = self._analyze_class_node(node, content, tree)
-                    logger.debug(f"＊＊＊解析完了 _analyze_class_node():")
                     if node_info:
                         nodes.append(node_info)
                         # Save to database
@@ -251,7 +230,6 @@ class PythonNodeAnalyzer:
                         print(
                             f"Saved node '{node_info['class_name']}' with ID: {node_id}"
                         )
-            logger.debug(f"XXX解析終了 analyze_file_content():")
 
             return nodes
         except SyntaxError as e:
@@ -261,17 +239,17 @@ class PythonNodeAnalyzer:
         self, class_node: ast.ClassDef, content: str, tree: ast.AST
     ) -> Optional[Dict[str, Any]]:
         """
-        クラスノードを解析してノード情報を抽出
+        Parse class nodes to extract node information
 
         Args:
-            class_node: ASTクラスノード
-            content: 元のファイル内容
-            tree: 完全なAST
+            class_node: AST Class node
+            content: Original file contents
+            tree: complete AST
 
         Returns:
             Node information dictionary or None
         """
-        # NODE_DEFINITION属性を探す
+        # Look for the NODE_DEFINITION attribute
         node_definition = None
         for node in class_node.body:
             if (
@@ -286,17 +264,15 @@ class PythonNodeAnalyzer:
         if not node_definition:
             return None
 
-        # NODE_DEFINITIONから情報を抽出
+        # Extract information from NODE_DEFINITION
         try:
             definition_info = self._extract_node_definition_ast(node_definition, tree)
             #definition_info = {"class_name": class_node.name} | definition_info
             #return definition_info
             #result = {"class_name": class_node.name} | definition_info
-            #logger.debug(f"解析結果RESULT：{definition_info}")
             #if result:
             #    return result
             if definition_info:
-                logger.debug(f"解析結果RESULT：代入")
                 result = {
                     "class_name": class_node.name,
                     "description": definition_info.get("description", ""),
@@ -306,7 +282,6 @@ class PythonNodeAnalyzer:
                     "parameters": definition_info.get("parameters", {}),
                     "methods": definition_info.get("methods", {}),
                 }
-                logger.debug(f"解析結果RESULT：{result}")
                 return result
 
                 """
@@ -328,11 +303,11 @@ class PythonNodeAnalyzer:
         self, node_def: ast.AST, tree: ast.AST
     ) -> Dict[str, Any]:
         """
-        ASTを使ってNODE_DEFINITIONから情報を抽出
+        Extracting information from NODE_DEFINITION using AST
 
         Args:
-            node_def: NODE_DEFINITION のASTノード
-            tree: 完全なAST
+            node_def: NODE_DEFINITION, AST node
+            tree: Complete AST
 
         Returns:
             Extracted definition information
@@ -342,10 +317,8 @@ class PythonNodeAnalyzer:
         if not isinstance(node_def, ast.Call):
             return result
 
-        # NodeDefinitionSchemaの引数を解析
+        # Parsing NodeDefinitionSchema arguments
         for keyword in node_def.keywords:
-            logger.debug(f"_extract_node_definition_ast: keyword={keyword}")
-
             if keyword.arg == "description":
                 result["description"] = self._extract_string_value(keyword.value)
             elif keyword.arg == "type":
@@ -355,26 +328,24 @@ class PythonNodeAnalyzer:
             elif keyword.arg == "outputs":
                 result["outputs"] = self._extract_port_dict(keyword.value, tree)
             elif keyword.arg == "parameters":
-                logger.debug("呼出：_extract_parameter_dict [parameters]")
                 result["parameters"] = self._extract_parameter_dict(keyword.value)
-                logger.debug("完了：_extract_parameter_dict [parameters]")
             elif keyword.arg == "methods":
                 result["methods"] = self._extract_method_dict(keyword.value)
 
         return result
 
     def _extract_string_value(self, node: ast.AST) -> str:
-        """文字列値を抽出"""
+        """extract string value"""
         if isinstance(node, ast.Constant):
             return str(node.value)
-        elif isinstance(node, ast.Str):  # Python 3.7以前の互換性
+        elif isinstance(node, ast.Str):  # for before Python 3.7
             return node.s
         return ""
 
     def _extract_port_dict(
         self, node: ast.AST, tree: ast.AST
     ) -> Dict[str, Dict[str, Any]]:
-        """ポート定義辞書を抽出"""
+        """Extract the port definition dictionary"""
         if not isinstance(node, ast.Dict):
             return {}
 
@@ -389,7 +360,7 @@ class PythonNodeAnalyzer:
         return ports
 
     def _extract_port_definition(self, node: ast.AST, tree: ast.AST) -> Dict[str, Any]:
-        """PortDefinitionから情報を抽出"""
+        """Extract information from the PortDefinition"""
         if not isinstance(node, ast.Call):
             return {}
 
@@ -405,30 +376,30 @@ class PythonNodeAnalyzer:
         return port_info
 
     def _extract_port_type(self, node: ast.AST, tree: ast.AST) -> str:
-        """PortTypeを抽出してマッピング"""
+        """Extract and map PortTypes"""
         if isinstance(node, ast.Attribute):
-            # PortType.OBJECT のような形式
+            # PortType.OBJECT 
             if isinstance(node.value, ast.Name) and node.value.id == "PortType":
                 port_type_name = node.attr.upper()
                 return self._map_port_type(port_type_name)
         elif isinstance(node, ast.Name):
-            # 直接の変数参照の場合
+            # Direct variable reference
             return self._map_port_type(node.id.upper())
         elif isinstance(node, (ast.Constant, ast.Str)):
-            # 直接の文字列の場合
+            # For direct strings
             return self._extract_string_value(node).lower()
 
         return "any"
 
     def _map_port_type(self, port_type_name: str) -> str:
         """
-        PortType列挙型をフロントエンド用の型にマッピング
+        Mapping PortType enumerations to front-end types
 
         Args:
-            port_type_name: PortType の名前（例: "OBJECT", "DICT"）
+            port_type_name: PortType name（例: "OBJECT", "DICT"）
 
         Returns:
-            フロントエンド用の型名
+            Front-end model name
         """
         type_mapping = {
             "INT": "int",
@@ -436,17 +407,17 @@ class PythonNodeAnalyzer:
             "STR": "str",
             "BOOL": "bool",
             "LIST": "list",
-            "DICT": "dict",  # 明示的にDICTをdictにマッピング
-            "OBJECT": "object",  # 明示的にOBJECTをobjectにマッピング
+            "DICT": "dict",
+            "OBJECT": "object",
             "ANY": "any",
         }
 
         mapped_type = type_mapping.get(port_type_name.upper(), "any")
-        print(f"Debug: Mapping {port_type_name} -> {mapped_type}")  # デバッグ用
+        print(f"Debug: Mapping {port_type_name} -> {mapped_type}")
         return mapped_type
 
     def _extract_parameter_dict(self, node: ast.AST):
-        """パラメータ定義辞書を抽出"""
+        """Extract parameter definition dictionary"""
         if not isinstance(node, ast.Dict):
             return {}
 
@@ -457,20 +428,17 @@ class PythonNodeAnalyzer:
                 param_info = self._extract_parameter_definition(value)
                 if param_info:
                     parameters[param_name] = param_info
-        logger.debug("DICT解析完了 ...")
         return parameters
 
     def _extract_parameter_definition(self, node: ast.AST) -> Dict[str, Any]:
-        """ParameterDefinitionから情報を抽出"""
+        """Extracting information from ParameterDefinition"""
         if not isinstance(node, ast.Call):
             return {}
 
         param_info = {}
         for keyword in node.keywords:
             if keyword.arg == "default_value":
-                logger.debug("呼出：_extract_value [default_value]")
                 param_info["default_value"] = self._extract_value(keyword.value)
-                logger.debug("終了：_extract_value [default_value]")
             elif keyword.arg == "description":
                 param_info["description"] = self._extract_string_value(keyword.value)
             elif keyword.arg == "constraints":
@@ -480,7 +448,7 @@ class PythonNodeAnalyzer:
         return param_info
 
     def _extract_method_dict(self, node: ast.AST) -> Dict[str, Dict[str, Any]]:
-        """メソッド定義辞書を抽出"""
+        """Extract the method definition dictionary"""
         if not isinstance(node, ast.Dict):
             return {}
 
@@ -495,7 +463,7 @@ class PythonNodeAnalyzer:
         return methods
 
     def _extract_method_definition(self, node: ast.AST) -> Dict[str, Any]:
-        """MethodDefinitionから情報を抽出"""
+        """Extracting Information from MethodDefinition"""
         if not isinstance(node, ast.Call):
             return {}
 
@@ -511,7 +479,7 @@ class PythonNodeAnalyzer:
         return method_info
 
     def _extract_list_values(self, node: ast.AST) -> List[str]:
-        """リストから文字列値を抽出"""
+        """Extracting String Values ​​from a List"""
         if not isinstance(node, ast.List):
             return []
 
@@ -524,24 +492,20 @@ class PythonNodeAnalyzer:
         return values
 
     def _extract_value(self, node: ast.AST) -> Any:
-        """汎用的な値を抽出"""
+        """Extracting generic values"""
         if isinstance(node, ast.Constant):
             return node.value
-        elif isinstance(node, (ast.Str, ast.Num)):  # Python 3.7以前の互換性
+        elif isinstance(node, (ast.Str, ast.Num)):  # for before Python 3.7
             return node.s if isinstance(node, ast.Str) else node.n
         elif isinstance(node, ast.List):
-            # 配列の要素を再帰的に抽出
-            logger.debug("解析開始：_extract_value")
+            # Recursively extracting elements of an array
             result = [self._extract_value(elem) for elem in node.elts]
-            logger.debug(f"{result}")
-            logger.debug(f"解析終了：_extract_value")
             return result
             #return [self._extract_value(elem) for elem in node.elts]
         elif isinstance(node, ast.Tuple):
-            logger.debug("AST Tupleを解析中...")
             return tuple(self._extract_value(elem) for elem in node.elts)
         elif isinstance(node, ast.Dict):
-            # 辞書の要素を再帰的に抽出
+            # Recursively extract dictionary elements
             result = {}
             for key, value in zip(node.keys, node.values):
                 key_str = self._extract_value(key)
@@ -553,7 +517,7 @@ class PythonNodeAnalyzer:
             return str(node)
 
     def _extract_constraints(self, node: ast.AST) -> Dict[str, Any]:
-        """制約辞書を抽出"""
+        """Extract constraint dictionary"""
         if not isinstance(node, ast.Dict):
             return {}
 

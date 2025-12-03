@@ -41,7 +41,7 @@ export const supabase = (isValidUrl(supabaseUrl) && isValidKey(supabaseAnonKey))
   ? createClient(supabaseUrl, supabaseAnonKey)
   : createMockClient();
 
-// 型定義
+// type definition
 export interface User {
   id: string;
   email: string;

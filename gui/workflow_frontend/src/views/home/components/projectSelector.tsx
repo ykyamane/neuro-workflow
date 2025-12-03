@@ -16,6 +16,8 @@ import {
 import { CheckIcon, WarningIcon, DeleteIcon } from '@chakra-ui/icons';
 import { FiMenu, FiPlay } from 'react-icons/fi';
 import { useTabContext } from '../../../components/tabs/TabManager';
+import { createAuthHeaders } from '../../../api/authHeaders';
+import LogViewModal from "./logViewModal"; 
 
 export const ProjectSelector = ({ 
   projects, 
@@ -33,11 +35,20 @@ export const ProjectSelector = ({
   isConnected?: boolean;
 }) => {
   const toast = useToast();
-  // アイランドメニュー開閉管理
+  // Island menu opening/closing management
   const [isIslandProjectOpen, setIslandProjectOpen] = useState(true);
-  // タブシステムのコンテキストを使用
+  // Use the tab system context
   const { addJupyterTab } = useTabContext();
-  
+  // Log View Modal
+  const [isLogOpen, setIsLogOpen] = useState<boolean>(false);
+  const [logText, setLogText] = useState<string | null>(null);
+
+  // Helper functions for API communication
+  const createAuthHeadersLocal = async () => {
+    return await createAuthHeaders();
+  };
+
+  // Get status badge
   const getStatusBadge = () => {
     if (!isConnected) {
       return (
@@ -71,6 +82,7 @@ export const ProjectSelector = ({
     );
   };
 
+  // Get status message
   const getStatusMessage = () => {
     if (!isConnected) {
       return "⚠️ Connection lost - changes not saved";
@@ -81,7 +93,7 @@ export const ProjectSelector = ({
     return "⚠️ Remember to save manually";
   };
 
-  // ワークフロープロジェクトのソースコード表示
+  // Viewing the source code of a workflow project
   const handleOpenJupyter = useCallback(async () => {
     if (!selectedProject) {
       toast({
@@ -97,16 +109,29 @@ export const ProjectSelector = ({
     try {
       let projectId = localStorage.getItem('projectId');
       projectId = projectId ? projectId : "";
-      // プロジェクト名を取得
+      // Get project name
       const projectName = projects.find(p => p.id === selectedProject)?.name || selectedProject;
-      // 先頭大文字化
-      const trimedProjectName = projectName.replace(/\s/g, '');
+      // Initial capitalization
+      const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
       const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
 
-      // JupyterLab URLを構築（開発モード）
-      const jupyterUrl = "http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/projects/"+capitalizedProjectName+"/"+capitalizedProjectName+".py"
+      // Build JupyterLab URL (development mode)
+      const jupyterBase = ((): string => {
+        try {
+          if (typeof window === 'undefined') return 'http://localhost:8000';
+          const { protocol, hostname, host } = window.location;
+          // host includes port if present (hostname:port)
+          if (host.includes(':')) {
+            return `${protocol}//${hostname}:8000`;
+          }
+          return `${protocol}//${host}`;
+        } catch (e) {
+          return 'http://localhost:8000';
+        }
+      })();
+      const jupyterUrl = `${jupyterBase}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
       
-      // 新しいタブを作成
+      // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
       
       toast({
@@ -129,12 +154,79 @@ export const ProjectSelector = ({
     }
   }, [selectedProject, projects, addJupyterTab, toast]);
 
+  // Run workflow project
+  const handleRunWorkflow = useCallback(async () => {
+    if (!selectedProject) {
+      toast({
+        title: "No Project Selected",
+        description: "Please select a project first",
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      const headers = await createAuthHeadersLocal();
+
+      // Get project name
+      const projectName = projects.find(p => p.id === selectedProject)?.name || selectedProject;
+      // Initial capitalization
+      const trimedProjectName = projectName.replace(/\s/g, '');
+      const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
+
+      const response = await fetch(`/api/workflow/${selectedProject}/run/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: "",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`HTTP ${response.status}: ${errorData.error || 'Failed to run workflow'}`);
+      }
+      
+      const result = await response.json();
+      console.log('Run workflow result:', result);
+
+      let resultResult = JSON.stringify(result.result);
+      let resultText = `status: "${result.status}"\n`;
+      resultText += `message: "${result.message}"\n`;
+      resultText += `project name: "${capitalizedProjectName}"\n`;
+      resultText += `result: "${resultResult}"`;
+
+      setLogText(resultText);
+      setIsLogOpen(true);
+
+      toast({
+        title: "Run Workflow Successfully! ✅",
+        description: result.message || "Code has been generated and is ready to use",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error run Workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to run workflow",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [selectedProject, projects, toast]);
 
   return (
     <Box
       position="absolute"
       top="8px"
-      left="8px"
+      left="16px"
     >
       <HStack spacing={2}>
         <IconButton
@@ -142,7 +234,7 @@ export const ProjectSelector = ({
           top="16px"
           left="16px"
           zIndex={1000}
-          aria-label="メニュー開閉"
+          aria-label="Open/close menu"
           icon={<FiMenu />}
           onClick={() => setIslandProjectOpen(!isIslandProjectOpen)}
           colorScheme="gray"
@@ -154,9 +246,9 @@ export const ProjectSelector = ({
           top="16px"
           left="64px"
           zIndex={1000}
-          aria-label="実行"
+          aria-label="Execute"
           icon={<FiPlay />}
-          onClick={() => handleOpenJupyter()}
+          onClick={() => handleRunWorkflow()}
           colorScheme="gray"
           bg="pink.300"
           _hover={{ bg: 'gray.600' }}
@@ -177,7 +269,7 @@ export const ProjectSelector = ({
         display={isIslandProjectOpen ? 'block' : 'none'}
       >
         <VStack spacing={3} align="stretch" width="100%">
-          {/* ヘッダー部分 */}
+          {/* header part */}
           <Flex justify="space-between" align="center">
             <Box marginLeft={24}>
               <FormLabel fontSize="sm" mb={0} color="gray.700" fontWeight="semibold">
@@ -187,7 +279,7 @@ export const ProjectSelector = ({
             </Box>
           </Flex>
           
-          {/* プロジェクト選択 */}
+          {/* Project selection */}
           <HStack spacing={2}>
             <Select 
               value={selectedProject || ''} 
@@ -239,7 +331,7 @@ export const ProjectSelector = ({
             )}
           </HStack>
           
-          {/* ステータスメッセージ */}
+          {/* status message */}
           {selectedProject && (
             <Text 
               fontSize="xs" 
@@ -254,9 +346,9 @@ export const ProjectSelector = ({
             >
               {getStatusMessage()}
             </Text>
-          )}
+          )}LogViewDialog
           
-          {/* プロジェクト情報（選択時のみ表示） */}
+          {/* Project information (displayed only when selected) */}
           {selectedProject && (
             <Box pt={2} borderTop="1px" borderColor="gray.100">
               <Text fontSize="xs" color="gray.500">
@@ -266,6 +358,14 @@ export const ProjectSelector = ({
           )}
         </VStack>
       </Box>
+
+      <LogViewModal 
+        isOpen={isLogOpen}
+        onClose={() => {
+          setIsLogOpen(false);
+        }}
+        logText={logText}
+      />
     </Box>
   );
 };

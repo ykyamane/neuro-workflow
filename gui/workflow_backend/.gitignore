@@ -6,9 +6,8 @@ django_
 django-project/app/*/migrations/[0-9]*.py
 
 # Project files
-django-project/projects/*
 django-project/codes/projects/*
-upload_nodes/
+django-project/codes/nodes/
 
 # Archive files
 *.zip

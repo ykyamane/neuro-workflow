@@ -31,8 +31,8 @@ interface JupyterModalProps {
   projectId: string | null;
   title?: string;
   jupyterBaseUrl?: string;
-  isDevelopment?: boolean; // 開発モード切り替え
-  jwtToken?: string; // 本番環境用のJWTトークン
+  isDevelopment?: boolean; // Switch development mode
+  jwtToken?: string; // JWT tokens for production environments
 }
 
 interface JupyterStatus {
@@ -48,8 +48,8 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
   projectId,
   title = "Jupyter Lab",
   jupyterBaseUrl = "http://localhost:8000",
-  isDevelopment = true, // デフォルトは開発モード
-  jwtToken, // 本番環境用
+  isDevelopment = true, // Default is development mode
+  jwtToken, // For production environment
 }) => {
 
   const toast = useToast();
@@ -61,13 +61,13 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     url: null
   });
 
-  // JupyterHubの起動とURL取得
+  // Launch JupyterHub and get the URL
   const initializeJupyter = async () => {
     if (!projectId) {
       setStatus({
         isLoading: false,
         isReady: false,
-        error: "プロジェクトIDが指定されていません",
+        error: "No project ID specified",
         url: null
       });
       return;
@@ -79,22 +79,22 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
       let jupyterUrl: string;
 
       if (isDevelopment) {
-        // 開発モード: プロジェクトIDを含むURLに直接アクセス
+        // Development mode: Directly access the URL containing the project ID
         jupyterUrl = `http://localhost:8000/hub/login?username=user1&password=password`;
         
         console.log(`Development mode: Initializing Jupyter for project ${projectId}`);
         console.log(`URL: ${jupyterUrl}`);
         
-        // 簡易的な待機（実際のヘルスチェックは省略）
+        // Simple wait (actual health check omitted)
         await new Promise(resolve => setTimeout(resolve, 1500));
         
       } else {
-        // 本番モード: Django APIを通してJWT認証
+        // Production mode: JWT authentication through the Django API
         const requestBody: any = {
           project_id: projectId,
         };
 
-        // JWTトークンが利用可能な場合は追加
+        // Add JWT token if available
         if (jwtToken) {
           requestBody.token = jwtToken;
         }
@@ -105,7 +105,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // JWTトークンをAuthorizationヘッダーにも設定
+            // The JWT token is also included in the Authorization header.
             ...(jwtToken && {
               'Authorization': `Bearer ${jwtToken}`
             }),
@@ -121,18 +121,18 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 
         const data = await response.json();
         
-        // 本番環境でもプロジェクトIDを含むURLを使用
+        // Use a URL containing the project ID even in production
         jupyterUrl = data.jupyterhub_url || 
                     `${jupyterBaseUrl}/project/${projectId}`;
 
-        // トークンがある場合はURLに追加（iframe用）
+        // If there is a token, add it to the URL (for iframes)
         if (jwtToken && !data.jupyterhub_url) {
           jupyterUrl += `?token=${jwtToken}`;
         }
         
         console.log(`Production URL: ${jupyterUrl}`);
         
-        // JupyterHubの準備完了を待機
+        // Wait for JupyterHub to be ready
         await waitForJupyterReady(jupyterBaseUrl, projectId);
       }
       
@@ -146,8 +146,8 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
       toast({
         title: "Jupyter Lab Ready",
         description: isDevelopment 
-          ? `Project "${projectId}" のJupyterLabが起動しました（開発モード）` 
-          : `Project "${projectId}" のJupyterLabが起動しました`,
+          ? `Project "${projectId}" JupyterLab has started (development mode)` 
+          : `Project "${projectId}" JupyterLab has started`,
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -156,7 +156,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     } catch (error) {
       console.error('JupyterHub initialization error:', error);
       
-      const errorMessage = error instanceof Error ? error.message : "起動に失敗しました";
+      const errorMessage = error instanceof Error ? error.message : "Startup failed";
       
       setStatus({
         isLoading: false,
@@ -166,7 +166,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
       });
 
       toast({
-        title: "JupyterHub起動エラー",
+        title: "JupyterHub startup error",
         description: errorMessage,
         status: "error",
         duration: 5000,
@@ -175,7 +175,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     }
   };
 
-  // JupyterHubの準備完了を待機
+  // Wait for JupyterHub to be ready
   const waitForJupyterReady = async (
     baseUrl: string, 
     projectId: string,
@@ -185,39 +185,39 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        // CORSエラーを避けるため、ヘルスチェック用のエンドポイントを使用
+        // Use a health check endpoint to avoid CORS errors
         const healthCheckUrl = `${baseUrl}/hub/api`;
         
         await fetch(healthCheckUrl, { 
           method: 'HEAD',
-          mode: 'no-cors' // CORSエラーを避ける
+          mode: 'no-cors' // Avoid CORS errors
         });
         
-        // no-corsモードでは常に opaque response が返される
-        // 実際の起動確認は時間ベースで行う
-        if (i >= 3) { // 最低3秒は待機
+        // In no-cors mode, an opaque response is always returned.
+        // Actual startup check is performed on a time basis
+        if (i >= 3) { // Wait at least 3 seconds
           console.log(`JupyterHub is ready for project ${projectId}`);
           return;
         }
       } catch (error) {
-        // エラーは無視して続行
+        // Ignore the error and continue
       }
       
-      // 1秒待機
+      // Wait 1 second
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    throw new Error('JupyterHubの起動がタイムアウトしました');
+    throw new Error('JupyterHub startup timed out');
   };
 
-  // モーダルが開かれた時にJupyterを初期化
+  // Initialize Jupyter when modal is opened
   useEffect(() => {
     if (isOpen && projectId && !status.isReady && !status.isLoading) {
       initializeJupyter();
     }
   }, [isOpen, projectId]);
 
-  // プロジェクトIDが変更された場合はステータスをリセット
+  // Reset status if project ID changes
 //   useEffect(() => {
 //     if (!isOpen || !projectId) {
 //       setStatus({
@@ -229,19 +229,19 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 //     }
 //   }, [isOpen, projectId]);
 
-  // 再試行
+  // retry
   const handleRetry = () => {
     initializeJupyter();
   };
 
-  // 新しいタブで開く
+  // Open in new tab
   const handleOpenInNewTab = () => {
     if (status.url) {
       window.open(status.url, '_blank');
     }
   };
 
-  // URLをコピー
+  // Copy URL
   const handleCopyUrl = () => {
     if (status.url) {
       navigator.clipboard.writeText(status.url);
@@ -254,16 +254,16 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     }
   };
 
-  // iframe のロードエラーハンドラー
+  // iframe Load error handler for
   const handleIframeError = () => {
     console.error('iframe load error');
     setStatus(prev => ({
       ...prev,
-      error: "JupyterLabの読み込みに失敗しました"
+      error: "JupyterLab failed to load"
     }));
   };
 
-  // iframe のロード成功ハンドラー
+  // iframe Load success handler for
   const handleIframeLoad = () => {
     console.log('iframe loaded successfully');
   };
@@ -301,7 +301,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                 </Badge>
               )}
               
-              {/* 開発/本番モード表示 */}
+              {/* Development/Production Mode Display */}
               <Badge 
                 colorScheme={isDevelopment ? "green" : "blue"} 
                 variant="outline" 
@@ -314,9 +314,9 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
             <HStack spacing={2}>
               {status.isReady && (
                 <>
-                  <Tooltip label="URLをコピー">
+                  <Tooltip label="Copy URL">
                     <IconButton
-                      aria-label="URLをコピー"
+                      aria-label="Copy URL"
                       icon={<CopyIcon />}
                       size="sm"
                       variant="ghost"
@@ -324,9 +324,9 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                     />
                   </Tooltip>
                   
-                  <Tooltip label="新しいタブで開く">
+                  <Tooltip label="Open in new tab">
                     <IconButton
-                      aria-label="新しいタブで開く"
+                      aria-label="Open in new tab"
                       icon={<ExternalLinkIcon />}
                       size="sm"
                       variant="ghost"
@@ -334,9 +334,9 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                     />
                   </Tooltip>
                   
-                  <Tooltip label="リロード">
+                  <Tooltip label="reload">
                     <IconButton
-                      aria-label="リロード"
+                      aria-label="reload"
                       icon={<RepeatIcon />}
                       size="sm"
                       variant="ghost"
@@ -346,9 +346,9 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                 </>
               )}
               
-              <Tooltip label="設定">
+              <Tooltip label="setting">
                 <IconButton
-                  aria-label="設定"
+                  aria-label="setting"
                   icon={<SettingsIcon />}
                   size="sm"
                   variant="ghost"
@@ -378,15 +378,15 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
               <Spinner size="xl" color="purple.500" thickness="4px" />
               <VStack spacing={2} textAlign="center">
                 <Text fontSize="lg" fontWeight="semibold">
-                  JupyterLabを起動中...
+                  Starting JupyterLab...
                 </Text>
                 <Text fontSize="sm" color="gray.600">
                   Project ID: <Code>{projectId}</Code>
                 </Text>
                 <Text fontSize="sm" color="gray.600">
                   {isDevelopment 
-                    ? "開発モード（認証なし・自動ログイン）" 
-                    : "本番モード（JWT認証・ユーザー環境準備中）"
+                    ? "Development mode (no authentication, automatic login)" 
+                    : "Production mode (JWT authentication and user environment preparation in progress)"
                   }
                 </Text>
               </VStack>
@@ -398,7 +398,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
               <Alert status="error" borderRadius="md">
                 <AlertIcon />
                 <Box>
-                  <AlertTitle>起動エラー</AlertTitle>
+                  <AlertTitle>startup error</AlertTitle>
                   <AlertDescription mt={2}>
                     {status.error}
                   </AlertDescription>
@@ -417,10 +417,10 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                   onClick={handleRetry}
                   leftIcon={<RepeatIcon />}
                 >
-                  再試行
+                  Retry
                 </Button>
                 <Button variant="ghost" onClick={onClose}>
-                  閉じる
+                  Close
                 </Button>
               </HStack>
             </Box>
@@ -458,11 +458,11 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
               {status.isReady && (
                 <>
                   <Text fontSize="xs" color="gray.500">
-                    💡 Tip: Ctrl+S でノートブックを保存
+                    💡 Tip: Ctrl+S Save the notebook with
                   </Text>
                   <Text fontSize="xs" color="gray.400">|</Text>
                   <Text fontSize="xs" color="gray.500">
-                    📁 作業フォルダ: /projects/{projectId}
+                    📁 working folder: /projects/{projectId}
                   </Text>
                 </>
               )}

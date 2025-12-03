@@ -35,7 +35,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState, useRef } from 'react';
 import { IconType } from 'react-icons';
-import { FiBox, FiCopy, FiTrash2, FiInfo, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // デフォルトアイコンとして使用
+import { FiBox, FiCopy, FiTrash2, FiInfo, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
 import { SchemaFields } from '../home/type';
 import { createAuthHeaders } from '../../api/authHeaders';
 import { useTabContext } from '../../components/tabs/TabManager';
@@ -49,8 +49,9 @@ interface SidebarProps {
   onViewCode?: (node: BackendNodeType) => void;
 }
 
-// バックエンドのレスポンス型に合わせて定義
+// Defined according to the backend response type
 interface UploadedNodesResponse {
+  categories: any;
   nodes: BackendNodeType[];
   total_files: number;
   total_nodes: number;
@@ -66,6 +67,7 @@ interface BackendNodeType {
   class_name: string;
   file_name: string;
   schema: SchemaFields;
+  color: string;
 }
 
 interface NodeTypeWithIcon extends Omit<BackendNodeType, 'icon'> {
@@ -80,35 +82,76 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
   const [copyFileName, setCopyFileName] = useState<string>('');
   const [nodeToAction, setNodeToAction] = useState<NodeTypeWithIcon | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isColorUpdating, setIsColorUpdating] = useState<boolean>(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const toast = useToast();
 
-  // サイドメニュー開閉管理
+  const [categoryColors, setCategoryColors] = useState({});
+  const [categoryColorKey, setCategoryColorKey] = useState('');
+  const [categoryColorValue, setCategoryColorValue] = useState('');
+
+  // Side menu opening/closing management
   const [isSideExpand, setIsSideExpand] = useState<boolean>(true);
 
-  // ダイアログ管理
+  // Dialog management
   const { isOpen: isCopyModalOpen, onOpen: onCopyModalOpen, onClose: onCopyModalClose } = useDisclosure();
   const { isOpen: isDeleteAlertOpen, onOpen: onDeleteAlertOpen, onClose: onDeleteAlertClose } = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  // タブシステムのコンテキストを使用
+  // Use the tab system context
   const { addJupyterTab } = useTabContext();
 
-  console.log("サイドボックスエリア", filteredNodes)
+  //console.log("side box area", filteredNodes)
   
   useEffect(() => {
     if (nodes && nodes.nodes) {
-      // バックエンドのノードにアイコンを追加
+      // Add icons to backend nodes
       const nodesWithIcons: NodeTypeWithIcon[] = nodes.nodes.map(node => ({
         ...node,
-        icon: FiBox, // デフォルトアイコン（必要に応じて変更）
+        icon: FiBox, // Default Icon (change as needed)
       }));
       setFilteredNodes(nodesWithIcons);
+      initCategoryColors();
     } else {
       setFilteredNodes([]);
     }
   }, [nodes]);
   
+  // Getting values ​​from the color picker and updating the state
+  const handleColorChange = (selectedCategory: string, colorValue: string) => {
+    if (nodes && nodes.categories) {
+      nodes.categories[selectedCategory].color = colorValue;
+      categoryColors[selectedCategory] = colorValue;
+      setCategoryColors(categoryColors);
+
+      // Use a computed property name ([inputKey]) to dynamically set the key
+      setCategoryColors(prevCategoryColors => ({
+        ...prevCategoryColors,
+        [categoryColorKey]: categoryColorValue,
+      }));
+      
+      // clear input field
+      setCategoryColorKey(selectedCategory);
+      setCategoryColorValue(colorValue);
+      // keep
+      updateCategoryColorAPI(selectedCategory, colorValue);
+    }
+  };
+
+  // Initialize category colors
+  const initCategoryColors = () => {
+    if(nodes?.categories){
+      for (const key in nodes.categories) {
+        handleColorChange(key, nodes.categories[key].color);
+      }
+      /*
+      for (const node in nodes) {
+        node.color = 
+      }
+        */
+    }
+  };
+
   const handleSearch = (keyword: string) => {
     console.log('Searching for:', keyword);
     setSearchResult(keyword);
@@ -140,8 +183,8 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }
   };
   
-  const onDragStart = (event: React.DragEvent, node: NodeTypeWithIcon) => {
-    // バックエンドの詳細な情報もドラッグデータに含める
+  const onDragStart = (event: React.DragEvent, node: NodeTypeWithIcon, categoryColors: {}) => {
+    // Include detailed backend information in drag data
     const dragData = {
       type: node.type,
       label: node.label,
@@ -150,6 +193,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
       file_name: node.file_name,
       schema: node.schema,
       description: node.description,
+      color: categoryColors[node.category.toLocaleLowerCase().replace("/","")],
     };
     
     event.dataTransfer.setData('application/reactflow', node.type);
@@ -157,7 +201,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     event.dataTransfer.effectAllowed = 'move';
   };
 
-  // 削除確認ダイアログを開く
+  // Opens a delete confirmation dialog
   const openDeleteDialog = (node: NodeTypeWithIcon) => {
     if (!node.file_id) {
       toast({
@@ -174,7 +218,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     onDeleteAlertOpen();
   };
 
-  // 削除実行
+  // Delete execution on node list
   const handleDeleteNode = async () => {
     if (!nodeToAction) return;
 
@@ -222,7 +266,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }
   };
 
-  // ノードデータ同期
+  // Node data synchronization
   const handleSyncNodes = async () => {
     setIsSyncing(true);
     
@@ -268,7 +312,58 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }
   };
 
-  // コピーダイアログを開く
+  // Update category color
+  const updateCategoryColorAPI = async (categoryName: string, categoryColor: string) => {
+    if (!categoryName || !categoryColor) {
+      console.log('Skipping category color update API call:', { categoryName, categoryColor });
+      return;
+    }
+
+    // Send category color updates to the server
+    console.log('Updating category color via API:', { categoryName, categoryColor });
+
+    try {
+      const headers = await createAuthHeaders();
+      const requestBody = {
+        category: categoryName,
+        color: categoryColor,
+      };
+      
+      console.log('Update request body:', requestBody);
+
+      const response = await fetch(`/api/box/categories/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const responseData = await response.json();
+      console.log('Update category color response:', responseData);
+
+      if (!response.ok) {
+        setIsColorUpdating(false);
+        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to update category color'}`);
+      }
+      
+      setIsColorUpdating(true);
+    } catch (error) {
+      console.error('Error updating category color:', error);
+      setIsColorUpdating(false);
+      toast({
+        title: "Save Error",
+        description: `Failed to update category color: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: "error",
+        duration: 2000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Open copy dialog
   const openCopyDialog = (node: NodeTypeWithIcon) => {
     if (!node.file_name) {
       toast({
@@ -282,13 +377,13 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }
 
     setNodeToAction(node);
-    // デフォルトファイル名を設定（拡張子を除去してコピー接尾辞を追加）
+    // Set default filename (remove extension and add copy suffix)
     const baseName = node.file_name.replace(/\.py$/, '');
     setCopyFileName(`${baseName}_copy`);
     onCopyModalOpen();
   };
 
-  // コピー実行
+  // Copy execution
   const handleCopyNode = async () => {
     if (!nodeToAction || !copyFileName.trim()) {
       toast({
@@ -381,7 +476,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     return acc;
   }, {} as Record<string, NodeTypeWithIcon[]>);
 
-  // カテゴリの折りたたみ状態をトグルする関数
+  // A function to toggle the collapsed state of a category
   const toggleCategory = (category: string) => {
     setCollapsedCategories(prev => ({
       ...prev,
@@ -389,7 +484,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }));
   };
 
-  // 全カテゴリを展開/折りたたみする関数
+  // Function to expand/collapse all categories
   const toggleAllCategories = (collapsed: boolean) => {
     const newState = Object.keys(nodesByCategory).reduce((acc, category) => {
       acc[category] = collapsed;
@@ -398,17 +493,34 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     setCollapsedCategories(newState);
   };
 
-  // Jupyterを別タブで開く
+  // Open Jupyter in a new tab
   const OpenJupyter = (filename : string, category : string) => {
-    // JupyterLab URLを構築（開発モード）
-    const jupyterUrl = "http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename
+    // Build JupyterLab URL (development mode)
+    const chkPy = filename.includes(".py");
+    if (!chkPy) {
+      filename += ".py";
+    } 
+    const jupyterBase = ((): string => {
+      try {
+        if (typeof window === 'undefined') return 'http://localhost:8000';
+        const { protocol, hostname, host } = window.location;
+        // host includes port if present (hostname:port)
+        if (host.includes(':')) {
+          return `${protocol}//${hostname}:8000`;
+        }
+        return `${protocol}//${host}`;
+      } catch (e) {
+        return 'http://localhost:8000';
+      }
+    })();
+    const jupyterUrl = jupyterBase+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename
     
     let projectId = localStorage.getItem('projectId');
     projectId = projectId ? projectId : "";
-    // 新しいタブを作成
+    // Create new tab
     addJupyterTab(projectId, filename, jupyterUrl);
   };
-  
+
   return (
     <Box
         position="absolute"
@@ -433,8 +545,9 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
         top="64px"
         height="calc(100vh - 348px)"
         width="320px"
-        // 幅は isOpen によって変化。transition で滑らかに
-        //width={isSideExpand ? '320px' : '8px'}
+        marginLeft="16px"
+        // The width changes depending on isOpen. Smooth transition
+        // width={isSideExpand ? '320px' : '8px'}
         display={isSideExpand ? 'block' : 'none'}
         transition="width 200ms ease"
         bg="gray.900"
@@ -513,7 +626,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                 width="100%"
               />
               
-              {/* 同期中のインディケーター */}
+              {/* Syncing indicator */}
               {isSyncing && (
                 <Box 
                   mt={2} 
@@ -606,9 +719,10 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                   {Object.entries(nodesByCategory).length > 0 ? (
                     Object.entries(nodesByCategory).map(([category, categoryNodes]) => {
                       const isCollapsed = collapsedCategories[category];
+                      const lower_category = category.toLowerCase().replace("/","");
                       return (
                         <Box key={category} mb={4}>
-                          {/* カテゴリヘッダー */}
+                          {/* category header */}
                           <Box
                             display="flex"
                             alignItems="center"
@@ -636,17 +750,24 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                 {category}
                               </Text>
                             </HStack>
-                            <Badge
-                              size="sm"
-                              colorScheme="blue"
-                              variant="subtle"
-                              borderRadius="full"
-                            >
-                              {categoryNodes.length}
-                            </Badge>
+                            <HStack>
+                              <input 
+                                type="color" 
+                                value={categoryColors[lower_category]}
+                                onChange={(event) => handleColorChange(lower_category, event.target.value)}
+                                style={{ width: '24px', height: '24px', padding: '0', border: 'none', background: '#171923' }}
+                              />
+                              <Badge
+                                size="sm"
+                                colorScheme="blue"
+                                variant="subtle"
+                                borderRadius="full"
+                              >
+                                {categoryNodes.length}
+                              </Badge>
+                            </HStack>
                           </Box>
-
-                          {/* カテゴリ内のノード */}
+                          {/* Node in category */}
                           <Collapse in={!isCollapsed} animateOpacity>
                             <SimpleGrid columns={1} spacing={2}>
                               {categoryNodes.map((node) => (
@@ -663,21 +784,21 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                 transform: "translateY(-2px)",
                                 transition: "all 0.2s"
                               }}
-                              onDragStart={(event) => onDragStart(event, node)}
+                              onDragStart={(event) => onDragStart(event, node, categoryColors)}
                               draggable
                               overflow="hidden"
                             >
-                              {/* ヘッダー部分 */}
+                              {/* header part */}
                               <Box
                                 bg="gray.750"
                                 px={3}
                                 borderBottom="1px solid"
-                                borderColor="gray.600"
+                                borderColor="gray.100"
                                 onDragStart={(e) => e.stopPropagation()}
                                 onDrag={(e) => e.stopPropagation()}
                                 draggable={false}
                               >
-                                {/* アクションボタンエリア */}
+                                {/* action button area */}
                                 <Box py={1} display="flex" justifyContent="flex-end">
                                   <HStack spacing={1}>
                                     <IconButton
@@ -782,7 +903,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                   </HStack>
                                 </Box>
 
-                                {/* タイトルエリア */}
+                                {/* title area */}
                                 <Box pb={2}>
                                   <HStack alignItems="center" spacing={2}>
                                     <Icon 
@@ -797,7 +918,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                 </Box>
                               </Box>
 
-                              {/* コンテンツ部分 */}
+                              {/* content part */}
                               <Box p={3}>
                                 <Text fontSize="xs" color="gray.500" mb={2}>
                                   from {node.file_name}
@@ -835,7 +956,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
           </VStack>
         </Box>
 
-        {/* コピー用ファイル名入力モーダル */}
+        {/* Modal for inputting file name for copy */}
         <Modal isOpen={isCopyModalOpen} onClose={onCopyModalClose}>
           <ModalOverlay />
           <ModalContent bg="gray.800" color="white">
@@ -887,7 +1008,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
           </ModalContent>
         </Modal>
 
-        {/* 削除確認アラートダイアログ */}
+        {/* Delete confirmation alert dialog */}
         <AlertDialog
           isOpen={isDeleteAlertOpen}
           leastDestructiveRef={cancelRef}

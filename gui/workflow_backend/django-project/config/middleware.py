@@ -11,12 +11,12 @@ User = get_user_model()
 class SupabaseAuthMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
-        # Supabase公開鍵（JWKS URLまたは公開鍵）
-        # 実際には環境変数やsettings.pyから取得
+        # Supabase public key (JWKS URL or public key)
+        # Actually obtained from environment variables or settings.py
         self.supabase_public_key = settings.SUPABASE_PUBLIC_KEY
 
     def __call__(self, request):
-        # APIパスの場合はCSRFチェックを無効化
+        # Disable CSRF check for API paths
         if request.path.startswith("/api/"):
             setattr(request, "_dont_enforce_csrf_checks", True)
 
@@ -40,24 +40,24 @@ class SupabaseAuthMiddleware:
             user_id = payload.get("sub")
             request.supabase_user_id = user_id
 
-            logger.info(f"認証成功: ユーザーID {user_id}")
+            logger.info(f"Authentication successful: User ID {user_id}")
 
         except jwt.ExpiredSignatureError:
-            logger.warning("期限切れトークン")
+            logger.warning("expired token")
             request.token_error = "expired"
 
         except jwt.InvalidTokenError:
-            logger.warning("無効なトークン")
+            logger.warning("invalid token")
             request.token_error = "invalid"
 
         except Exception as e:
-            logger.error(f"認証エラー: {str(e)}")
+            logger.error(f"Authentication error: {str(e)}")
             request.token_error = "error"
 
         return self.get_response(request)
 
     def _is_public_path(self, path):
-        """パブリックアクセス可能なパスかチェック（オプション）"""
+        """Check if path is publicly accessible (optional)"""
         public_paths = [
             "/api/public/",
             "/api/docs/",
@@ -71,7 +71,7 @@ class SupabaseAuthMiddleware:
 
 #     @wraps(view_func)
 #     def wrapper(request, *args, **kwargs):
-#         # トークンエラーがある場合
+#         # If there is a token error
 #         if hasattr(request, "token_error"):
 #             error_messages = {
 #                 "expired": "Token has expired",
@@ -81,7 +81,7 @@ class SupabaseAuthMiddleware:
 #             message = error_messages.get(request.token_error, "Authentication required")
 #             return JsonResponse({"error": message}, status=401)
 
-#         # トークンはあるが、ユーザーIDがない場合
+#         # If you have a token but no user ID
 #         if not hasattr(request, "supabase_user_id") or not request.supabase_user_id:
 #             return JsonResponse({"error": "Authentication required"}, status=401)
 

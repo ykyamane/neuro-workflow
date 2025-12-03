@@ -1,8 +1,9 @@
 import { SchemaFields } from "../views/home/type";
 import { useState, useEffect, useCallback } from "react";
 
-// バックエンドのレスポンス型定義
+// Backend response type definition
 interface UploadedNodesResponse {
+  categories: any;
   nodes: BackendNodeType[];
   total_files: number;
   total_nodes: number;
@@ -18,6 +19,7 @@ interface BackendNodeType {
   class_name: string;
   file_name: string;
   schema: SchemaFields;
+  color: string;
 }
 
 // interface SchemaField {
@@ -36,7 +38,7 @@ interface UseUploadedNodesReturn {
 }
 
 /**
- * アップロードされたノード一覧を取得するカスタムフック
+ * A custom hook to get the list of uploaded nodes
  */
 export const useUploadedNodes = (): UseUploadedNodesReturn => {
   const [data, setData] = useState<UploadedNodesResponse | null>(null);
@@ -56,7 +58,7 @@ export const useUploadedNodes = (): UseUploadedNodesReturn => {
 
       const result: UploadedNodesResponse = await response.json();
 
-      console.log("これレスポンスデータ", result);
+      console.log("This is response data", result);
 
       setData(result);
     } catch (err) {
@@ -80,8 +82,10 @@ export const useUploadedNodes = (): UseUploadedNodesReturn => {
   };
 };
 
+
+
 /**
- * Python ファイル一覧を取得するカスタムフック
+ * Python custom hook to get file list
  */
 interface PythonFile {
   id: string;
@@ -119,7 +123,7 @@ export const usePythonFiles = (params?: {
       setIsLoading(true);
       setError(null);
 
-      // クエリパラメータを構築
+      // Build query parameters
       const searchParams = new URLSearchParams();
       if (params?.name) {
         searchParams.append("name", params.name);
@@ -158,7 +162,7 @@ export const usePythonFiles = (params?: {
         throw new Error(`Failed to delete file: ${response.status}`);
       }
 
-      // ファイルリストから削除
+      // Remove from file list
       setFiles((prev) => prev.filter((file) => file.id !== id));
       return true;
     } catch (err) {

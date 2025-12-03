@@ -1,7 +1,7 @@
 import { supabase } from "../auth/supabase";
 import { getApiConfig, isDebugMode } from "./config";
 
-// 認証ヘッダー生成
+// Authentication header generation
 export const createAuthHeaders = async (): Promise<Record<string, string>> => {
   const config = getApiConfig();
   const baseHeaders: Record<string, string> = {
@@ -10,7 +10,7 @@ export const createAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 
   try {
-    // Supabaseからトークンを取得
+    // Get your tokens from Supabase
     const {
       data: { session },
       error,
@@ -40,7 +40,7 @@ export const createAuthHeaders = async (): Promise<Record<string, string>> => {
   }
 };
 
-// JWTトークンのデコード
+// Decoding a JWT Token
 export const decodeJWT = (token: string) => {
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
@@ -51,7 +51,7 @@ export const decodeJWT = (token: string) => {
   }
 };
 
-// トークンの有効期限チェック
+// Token expiration check
 export const isTokenExpired = (token: string): boolean => {
   const payload = decodeJWT(token);
   if (!payload || !payload.exp) return true;
@@ -60,7 +60,7 @@ export const isTokenExpired = (token: string): boolean => {
   return payload.exp < currentTime;
 };
 
-// トークンの有効性確認
+// Token Validation
 export const validateCurrentToken = async (): Promise<boolean> => {
   try {
     const {

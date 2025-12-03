@@ -63,19 +63,19 @@ class FlowNodeSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at", "has_parameter_modifications", "modified_parameters", "parameter_modification_count"]
 
     def get_has_parameter_modifications(self, obj):
-        """パラメーター変更があるかどうか"""
+        """Are there any parameter changes?"""
         return obj.has_parameter_modifications()
 
     def get_modified_parameters(self, obj):
-        """変更されたパラメーターの詳細"""
+        """Details of changed parameters"""
         return obj.get_modified_parameters()
 
     def get_parameter_modification_count(self, obj):
-        """変更されたパラメーターの数"""
+        """The number of parameters that were changed"""
         return obj.get_parameter_modification_count()
 
     def validate(self, data):
-        # React Flow形式のバリデーション
+        # React Flow-style validation
         if "data" in data:
             required_keys = ["label"]
             for key in required_keys:
@@ -102,18 +102,18 @@ class FlowEdgeSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
     def validate(self, data):
-        # 同じプロジェクト内のノード間でのみ接続可能
+        # Connections can only be made between nodes within the same project
         if data["source_node"].project != data["target_node"].project:
             raise serializers.ValidationError("Nodes must be in the same project")
 
-        # 自己参照の防止
+        # Preventing self-reference
         if data["source_node"] == data["target_node"]:
             raise serializers.ValidationError("Cannot connect a node to itself")
 
         return data
 
 
-# React Flow全体のフロー保存用シリアライザー
+# Flow-preserving serializer for the entire React Flow
 class FlowDataSerializer(serializers.Serializer):
     nodes = serializers.ListField(child=serializers.DictField())
     edges = serializers.ListField(child=serializers.DictField())

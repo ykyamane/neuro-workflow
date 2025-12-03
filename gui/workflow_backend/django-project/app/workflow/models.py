@@ -30,7 +30,7 @@ class FlowNode(models.Model):
     position_x = models.FloatField()
     position_y = models.FloatField()
     node_type = models.CharField(max_length=100)
-    data = models.JSONField()  # React Flowのdataオブジェクト全体
+    data = models.JSONField()  # React Flow, The entire data object
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -42,11 +42,11 @@ class FlowNode(models.Model):
         return f"Node {self.id} in {self.project.name}"
 
     def has_parameter_modifications(self):
-        """パラメーターに変更があるかチェック"""
+        """Check for parameter changes"""
         return self.data.get("has_parameter_modifications", False)
 
     def get_modified_parameters(self):
-        """変更されたパラメーターの一覧を取得"""
+        """Get the list of changed parameters"""
         modifications = self.data.get("parameter_modifications", {})
         return {
             param_key: {
@@ -59,7 +59,7 @@ class FlowNode(models.Model):
         }
 
     def get_parameter_modification_count(self):
-        """変更されたパラメーターの数を取得"""
+        """Get the number of changed parameters"""
         return len(self.get_modified_parameters())
 
 
@@ -76,7 +76,7 @@ class FlowEdge(models.Model):
     )
     source_handle = models.CharField(max_length=255, null=True, blank=True)
     target_handle = models.CharField(max_length=255, null=True, blank=True)
-    edge_data = models.JSONField(default=dict)  # 追加のエッジ設定
+    edge_data = models.JSONField(default=dict)  # Additional edge settings
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

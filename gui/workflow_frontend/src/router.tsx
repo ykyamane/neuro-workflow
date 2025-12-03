@@ -11,10 +11,10 @@ function Router() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* ログインページ（認証不要） */}
+          {/* Login page (no authentication required) */}
           <Route path="/login" element={<LoginView />} />
           
-          {/* 認証が必要なページ */}
+          {/* Pages that require authentication */}
           <Route
             path="/*"
             element={

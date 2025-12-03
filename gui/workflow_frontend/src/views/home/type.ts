@@ -57,10 +57,11 @@ export interface CalculationNodeData {
   schema: SchemaFields;
   nodeType?: string;
   operation?: string;
-  // ノード固有のパラメーター値（スキーマのdefault_valueを上書き）
+  // Node-specific parameter values ​​(overrides the default_value in the schema)
   nodeParameters?: {
     [key: string]: any;
   };
+  color: string;
 }
 
 export interface Project {

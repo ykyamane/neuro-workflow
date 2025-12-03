@@ -3,7 +3,7 @@ from .models import PythonFile, NODE_CATEGORIES
 from .models import get_categories
 
 class PythonFileUploadSerializer(serializers.Serializer):
-    """ファイルアップロード用シリアライザー"""
+    """File upload serializer"""
     node_categories = get_categories()
 
     file = serializers.FileField()
@@ -12,12 +12,12 @@ class PythonFileUploadSerializer(serializers.Serializer):
     category = serializers.ChoiceField(choices=node_categories, default='analysis')
 
     def validate_file(self, value):
-        """ファイルの検証"""
-        # ファイル拡張子チェック
+        """File validation"""
+        # File extension check
         if not value.name.endswith(".py"):
             raise serializers.ValidationError("Only Python files (.py) are allowed.")
 
-        # ファイルサイズチェック（10MB制限）
+        # File size check (10MB limit)
         if value.size > 10 * 1024 * 1024:
             raise serializers.ValidationError("File size must be less than 10MB.")
 
@@ -25,7 +25,7 @@ class PythonFileUploadSerializer(serializers.Serializer):
 
 
 class PythonFileSerializer(serializers.ModelSerializer):
-    """PythonFile詳細表示用シリアライザー"""
+    """PythonFile serializer for detailed display"""
 
     uploaded_by_name = serializers.CharField(
         source="uploaded_by.username", read_only=True
@@ -58,5 +58,5 @@ class PythonFileSerializer(serializers.ModelSerializer):
         ]
 
     def get_node_classes_count(self, obj):
-        """ノードクラス数を返す"""
+        """Returns the number of node classes"""
         return len(obj.node_classes) if obj.node_classes else 0

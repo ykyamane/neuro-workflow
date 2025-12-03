@@ -5,13 +5,14 @@ from .views import (
     FlowEdgeViewSet,
     SampleFlowView,
     BatchCodeGenerationView,
+    BatchWorkflowRunView,
     FlowNodeInstanceNameUpdateView,
     FlowNodeParameterUpdateView,
 )
 
 app_name = "workflow"
 
-# ViewSetをAPIViewとして使用するためのヘルパー
+# Helper for using a ViewSet as an APIView
 project_list = FlowProjectViewSet.as_view({"get": "list", "post": "create"})
 
 project_detail = FlowProjectViewSet.as_view(
@@ -33,102 +34,111 @@ edge_detail = FlowEdgeViewSet.as_view({"delete": "destroy"})
 
 
 urlpatterns = [
-    # プロジェクト管理
-    path("", project_list, name="workflow-list-create"),  # GET(一覧), POST(作成)
+    # project management
+    path("", project_list, name="workflow-list-create"),  # GET(list), POST(create)
     path(
         "<uuid:workflow_id>/", project_detail, name="workflow-detail"
-    ),  # GET(詳細), PUT/PATCH(更新), DELETE(削除)
-    # フローデータ管理
+    ),  # GET(description), PUT/PATCH(update), DELETE
+    # flow data management
     path(
         "<uuid:workflow_id>/flow/", project_flow, name="workflow-flow"
-    ),  # GET(フロー取得), PUT(フロー保存)
-    # ノード管理
+    ),  # GET(flow acquisition), PUT(flow save)
+    # node management
     path(
         "<uuid:workflow_id>/nodes/",
         node_list_create,
         name="workflow-node-list-create",
-    ),  # GET(ノード一覧), POST(ノード作成)
+    ),  # GET(node list), POST(node create)
     path(
         "<uuid:workflow_id>/nodes/<str:node_id>/",
         node_detail,
         name="workflow-node-detail",
-    ),  # GET(詳細), PUT/PATCH(更新), DELETE(削除)
-    # エッジ管理
+    ),  # GET(description), PUT/PATCH(update), DELETE
+    # edge management
     path(
         "<uuid:workflow_id>/edges/",
         edge_list_create,
         name="workflow-edge-list-create",
-    ),  # GET(エッジ一覧), POST(エッジ作成)
+    ),  # GET(edge list), POST(edge create)
     path(
         "<uuid:workflow_id>/edges/<str:edge_id>/",
         edge_detail,
         name="workflow-edge-detail",
-    ),  # DELETE(削除)
-    # ノードインスタンス名更新
+    ),  # DELETE
+    # Node instance name update
     path(
         "<uuid:workflow_id>/nodes/<str:node_id>/instance_name/",
         FlowNodeInstanceNameUpdateView.as_view(),
         name="node-instance_name-update"
-    ),  # PUT(ノードのschema.instance_nameを更新)
-    # ノードパラメーター更新
+    ),  # PUT(node schema.instance_name update)
+    # Update node parameters
     path(
         "<uuid:workflow_id>/nodes/<str:node_id>/parameters/",
         FlowNodeParameterUpdateView.as_view(),
         name="node-parameter-update"
-    ),  # PUT(ノードのschema.parametersを更新)
-    # バッチコード生成 - 新規追加
+    ),  # PUT(node schema.parameters update)
+    # Batch Code Generation - New Addition
     path(
         "<uuid:workflow_id>/generate-code/",
         BatchCodeGenerationView.as_view(),
         name="batch-code-generation"
-    ),  # POST(React Flow JSONからバッチでコード生成)
-    # サンプルデータ
+    ),  # POST (generate code in batch from React Flow JSON)
+    # Run Workflow
+    path(
+        "<uuid:workflow_id>/run/",
+        BatchWorkflowRunView.as_view(),
+        name="batch-workflow-run"
+    ),  # POST (Run workflow program)
+    # Sample Data
     path(
         "sample-flow/", SampleFlowView.as_view(), name="sample-flow"
-    ),  # GET(サンプルフロー取得)
+    ),  # GET(Sample flow acquisition)
 ]
 
-# 利用可能なAPI一覧:
+# API List:
 """
-# プロジェクト管理
-GET    /workflow/                              # プロジェクト一覧
-POST   /workflow/                              # プロジェクト作成
-GET    /workflow/{workflow_id}/                # プロジェクト詳細
-PUT    /workflow/{workflow_id}/                # プロジェクト更新
-DELETE /workflow/{workflow_id}/                # プロジェクト削除
+# project management
+GET    /workflow/                              # list
+POST   /workflow/                              # create
+GET    /workflow/{workflow_id}/                # description
+PUT    /workflow/{workflow_id}/                # update
+DELETE /workflow/{workflow_id}/                # delete
 
-# フローデータ管理（React Flowのデータをそのまま保存・取得）
-GET    /workflow/{workflow_id}/flow/           # フローデータ取得
-PUT    /workflow/{workflow_id}/flow/           # フローデータ保存
+# Flow data management (save and retrieve React Flow data as is)
+GET    /workflow/{workflow_id}/flow/           # get data
+PUT    /workflow/{workflow_id}/flow/           # save data
 
 
-# ノード管理
-GET    /workflow/{workflow_id}/nodes/          # ノード一覧
-POST   /workflow/{workflow_id}/nodes/          # ノード作成
-GET    /workflow/{workflow_id}/nodes/{node_id}/ # ノード詳細
-PUT    /workflow/{workflow_id}/nodes/{node_id}/ # ノード更新
-DELETE /workflow/{workflow_id}/nodes/{node_id}/ # ノード削除
+# node management
+GET    /workflow/{workflow_id}/nodes/          # list
+POST   /workflow/{workflow_id}/nodes/          # create
+GET    /workflow/{workflow_id}/nodes/{node_id}/ # description
+PUT    /workflow/{workflow_id}/nodes/{node_id}/ # update
+DELETE /workflow/{workflow_id}/nodes/{node_id}/ # delete
 
-# エッジ管理
-GET    /workflow/{workflow_id}/edges/          # エッジ一覧
-POST   /workflow/{workflow_id}/edges/          # エッジ作成
-DELETE /workflow/{workflow_id}/edges/{edge_id}/ # エッジ削除
+# edge management
+GET    /workflow/{workflow_id}/edges/          # list
+POST   /workflow/{workflow_id}/edges/          # create
+DELETE /workflow/{workflow_id}/edges/{edge_id}/ # delete
 
-# ノードインスタンス名更新
-PUT    /workflow/{workflow_id}/nodes/{node_id}/instance_name/  # ノードのschema.parametersを更新
+# Node instance name update
+PUT    /workflow/{workflow_id}/nodes/{node_id}/instance_name/  # Update the node's schema.parameters
 
-# ノードパラメーター更新
-PUT    /workflow/{workflow_id}/nodes/{node_id}/parameters/  # ノードのschema.parametersを更新
+# Update node parameters
+PUT    /workflow/{workflow_id}/nodes/{node_id}/parameters/  # Update the node's schema.parameters
 
-# バッチコード生成
-POST   /workflow/{workflow_id}/generate-code/  # React Flow JSONからバッチでコード生成
+# Batch code generation
+POST   /workflow/{workflow_id}/generate-code/  # React Flow batch code generation from JSON
 
-# サンプルデータ
-GET    /workflow/sample-flow/                  # サンプルフローデータ取得
+# Run Workflow
+POST   /workflow/{workflow_id}/run/            # Run Workflow Program
 
-リクエスト例:
+# sample data
+GET    /workflow/sample-flow/                  # Sample flow data acquisition
 
-# ノードパラメーター更新
+Request example:
+
+# Update node parameters
 PUT /workflow/{workflow_id}/nodes/{node_id}/parameters/
 {
   "parameter_key": "record_from_population",
@@ -144,7 +154,7 @@ Response: {
   "parameter_value": 100
 }
 
-# バッチコード生成
+# Batch code generation
 POST /workflow/{workflow_id}/generate-code/
 {
   "nodes": [

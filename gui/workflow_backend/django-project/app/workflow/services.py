@@ -4,26 +4,26 @@ from .models import FlowProject, FlowNode, FlowEdge
 
 
 class FlowService:
-    """フロー管理のビジネスロジック"""
+    """Flow Management Business Logic"""
 
     @staticmethod
     def create_project(name: str, description: str, owner) -> FlowProject:
-        """新しいフロープロジェクトを作成"""
+        """Create a new flow project"""
         return FlowProject.objects.create(
             name=name, description=description, owner=owner
         )
 
     @staticmethod
     def save_flow_data(project_id: str, nodes_data: List[Dict], edges_data: List[Dict]):
-        """React Flowのノードとエッジデータを保存"""
+        """Save React Flow node and edge data"""
         with transaction.atomic():
             project = FlowProject.objects.get(id=project_id)
 
-            # 既存のノードとエッジを削除
+            # Delete existing nodes and edges
             FlowNode.objects.filter(project=project).delete()
             FlowEdge.objects.filter(project=project).delete()
 
-            # ノードを保存
+            # save node
             nodes = []
             for node_data in nodes_data:
                 node = FlowNode(
@@ -38,7 +38,7 @@ class FlowService:
 
             FlowNode.objects.bulk_create(nodes)
 
-            # エッジを保存
+            # save edge
             edges = []
             for edge_data in edges_data:
                 try:
@@ -66,10 +66,10 @@ class FlowService:
 
     @staticmethod
     def get_flow_data(project_id: str) -> Dict[str, List]:
-        """プロジェクトのフローデータを取得"""
+        """Get project flow data"""
         project = FlowProject.objects.get(id=project_id)
 
-        # ノードデータを構築
+        # Build node data
         nodes = []
         for node in project.nodes.all():
             node_data = {
@@ -80,7 +80,7 @@ class FlowService:
             }
             nodes.append(node_data)
 
-        # エッジデータを構築
+        # Build edge data
         edges = []
         for edge in project.edges.all():
             edge_data = {
@@ -102,7 +102,7 @@ class FlowService:
 
     @staticmethod
     def create_node(project_id: str, node_data: Dict) -> FlowNode:
-        """個別ノード作成"""
+        """Create individual nodes"""
         project = FlowProject.objects.get(id=project_id)
 
         node = FlowNode.objects.create(
@@ -118,7 +118,7 @@ class FlowService:
 
     @staticmethod
     def update_node(node_id: str, project_id: str, node_data: Dict) -> FlowNode:
-        """ノード更新"""
+        """node update"""
         project = FlowProject.objects.get(id=project_id)
         node = FlowNode.objects.get(id=node_id, project=project)
 
@@ -132,14 +132,14 @@ class FlowService:
 
     @staticmethod
     def delete_node(node_id: str, project_id: str):
-        """ノード削除（関連エッジも自動削除される）"""
+        """Node deletion (associated edges are also automatically deleted)"""
         project = FlowProject.objects.get(id=project_id)
         node = FlowNode.objects.get(id=node_id, project=project)
         node.delete()
 
     @staticmethod
     def create_edge(project_id: str, edge_data: Dict) -> FlowEdge:
-        """個別エッジ作成"""
+        """Individual edge creation"""
         project = FlowProject.objects.get(id=project_id)
         source_node = FlowNode.objects.get(id=edge_data["source"], project=project)
         target_node = FlowNode.objects.get(id=edge_data["target"], project=project)
@@ -158,14 +158,14 @@ class FlowService:
 
     @staticmethod
     def delete_edge(edge_id: str, project_id: str):
-        """エッジ削除"""
+        """edge delete"""
         project = FlowProject.objects.get(id=project_id)
         edge = FlowEdge.objects.get(id=edge_id, project=project)
         edge.delete()
 
     @staticmethod
     def get_sample_flow_data() -> Dict:
-        """四則演算のサンプルフローデータを返す"""
+        """Returns sample flow data for arithmetic operations"""
         return {
             "nodes": [
                 {

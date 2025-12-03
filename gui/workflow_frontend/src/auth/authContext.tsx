@@ -22,7 +22,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 初期認証状態の取得
+    // Obtaining the initial authentication state
     const getInitialSession = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     getInitialSession();
 
-    // 認証状態の変更を監視
+    // Monitor authentication state changes
     const { data: { subscription } } = authService.onAuthStateChange(
       async (event, session) => {
         setLoading(true);
@@ -110,7 +110,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
-// カスタムフック
+// custom hooks
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

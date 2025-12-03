@@ -58,12 +58,12 @@ const TabBar: React.FC = () => {
               position="relative"
               zIndex={tab.isActive ? 2 : 1}
             >
-              {/* タブアイコン */}
+              {/* tab icon */}
               <Text fontSize="sm">
                 {tab.type === 'workflow' ? '🔬' : '📊'}
               </Text>
               
-              {/* タブタイトル */}
+              {/* tab title */}
               <Text
                 fontSize="sm"
                 fontWeight={tab.isActive ? '600' : '400'}
@@ -74,7 +74,7 @@ const TabBar: React.FC = () => {
                 {tab.title}
               </Text>
 
-              {/* クローズボタン（JupyterLabタブのみ） */}
+              {/* Close button (JupyterLab tab only) */}
               {tab.type === 'jupyter' && (
                 <Tooltip label="Close tab" fontSize="xs">
                   <IconButton
@@ -102,7 +102,7 @@ const TabBar: React.FC = () => {
           </Box>
         ))}
         
-        {/* 空のスペース */}
+        {/* empty space */}
         <Box flex="1" height="100%" />
       </HStack>
     </Box>

@@ -1,9 +1,0 @@
-VITE_API_BASE_URL="http://localhost:3000/api"
-VITE_SUPABASE_URL=https://<your_sub_domain>.supabase.co
-VITE_SUPABASE_ANON_KEY=<your_api_key>
-
-
-HOST_PROJECT_PATH=/<your_dir>/workflow_backend/django-project
-PROJECTS_BASE_PATH=/<your_dir>/workflow_backend/django-project/projects
-UPLOAD_NODES_PATH=/<your_dir>/workflow_backend/django-project/upload_nodes
-NEURO_PATH=/<your_dir>/workflow_backend/django-project/neuroworkflow/neuro

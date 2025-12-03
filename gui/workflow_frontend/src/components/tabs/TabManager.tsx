@@ -48,19 +48,20 @@ export const TabManager: React.FC = () => {
   const [activeTabId, setActiveTabId] = useState('workflow');
 
   const addJupyterTab = useCallback((projectId: string, projectName: string, url: string) => {
-    const existingTab = tabs.find(tab => tab.type === 'jupyter' && tab.projectId === projectId);
+    const existingTab = tabs.find(tab => tab.type === 'jupyter' && tab.id === `${projectId}-${projectName}`);
     
     if (existingTab) {
-      // 既存のタブをアクティブ化
+      // Activate an existing tab
       switchTab(existingTab.id);
       return;
     }
 
-    const newTabId = `jupyter-${projectId}`;
+    const newTabId = `${projectId}-${projectName}`;
     const newTab: Tab = {
       id: newTabId,
       type: 'jupyter',
-      title: `${projectName} - JupyterLab`,
+      //title: `${projectName} - JupyterLab`,
+      title: `${projectName}`,
       projectId,
       url,
       isActive: true,
@@ -74,12 +75,12 @@ export const TabManager: React.FC = () => {
   }, [tabs]);
 
   const closeTab = useCallback((tabId: string) => {
-    if (tabId === 'workflow') return; // ワークフロータブは閉じられない
+    if (tabId === 'workflow') return; // Workflow tab cannot be closed
     
     setTabs(prevTabs => {
       const updatedTabs = prevTabs.filter(tab => tab.id !== tabId);
       
-      // 閉じたタブがアクティブだった場合、ワークフロータブをアクティブ化
+      // Activate the workflow tab if a closed tab was active
       if (tabId === activeTabId) {
         setActiveTabId('workflow');
         return updatedTabs.map(tab => 
@@ -116,13 +117,13 @@ export const TabManager: React.FC = () => {
         flexDirection="column"
         //marginLeft="320px"
       >
-        {/* タブバー */}
+        {/* tab bar */}
         <TabBar />
         
-        {/* コンテンツエリア */}
+        {/* Content area */}
         <Box flex="1" overflow="auto">
           {activeTab?.type === 'workflow' ? (
-            // ワークフロータブの場合は通常のルーティング
+            // Normal routing for the Workflow tab
             <Routes>
               <Route path="/" element={<HomeView />} />
               <Route path="/file" element={<FileView />} />
@@ -132,7 +133,7 @@ export const TabManager: React.FC = () => {
               <Route path="/*" element={<NotFoundView />} />
             </Routes>
           ) : activeTab?.type === 'jupyter' ? (
-            // JupyterLabタブの場合はiframe表示
+            // In the JupyterLab tab, it displays an iframe.
             <Box height="100%" w="100%">
               <iframe
                 src={activeTab.url}

@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from django.conf import settings
 from .code_generation_service import CodeGenerationService
+from .run_workflow_service import RunWorkflowService
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 class FlowProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """フロープロジェクトのCRUD操作"""
+    """CRUD operations for flow projects"""
 
     serializer_class = FlowProjectSerializer
     lookup_url_kwarg = "workflow_id"
@@ -43,7 +44,7 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
         if self.request.user.is_authenticated:
             owner = self.request.user
         else:
-            # デフォルトユーザーを取得または作成
+            # Get or create a default user
             owner, created = User.objects.get_or_create(
                 username="anonymous_user",
                 defaults={
@@ -56,25 +57,25 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
             if created:
                 print("Created default anonymous user")
 
-        # プロジェクトを保存
+        # Save project
         project = serializer.save(owner=owner)
 
-        # プロジェクト作成時の自動コード生成は削除
-        # 必要に応じて /generate-code/ エンドポイントを使用
+        # Automatic code generation during project creation has been removed
+        # Use the /generate-code/ endpoint if needed
 
         return project
 
     def create_project_python_file(self, project):
-        """プロジェクト作成時にPythonファイルを生成"""
+        """Generate Python files when creating a project"""
         try:
             code_service = CodeGenerationService()
             project_name = project.name.replace(" ","").capitalize()
             code_file = code_service.get_code_file_path(project_name)
 
-            # 基本テンプレートを作成
+            # Create a basic template
             python_code = code_service._create_base_template(project)
 
-            # ファイルに書き込み
+            # write to file
             with open(code_file, "w", encoding="utf-8") as f:
                 f.write(python_code)
 
@@ -82,11 +83,11 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             logger.error(f"Failed to create Python file for project {project.id}: {e}")
-            # エラーが発生してもプロジェクト作成は継続
+            # Project creation continues even if an error occurs
 
     @action(detail=True, methods=["get", "put"])
     def flow(self, request, **kwargs):
-        """フローデータの取得・保存（一括保存用として残す）"""
+        """Acquire and save flow data (keep it for bulk saving)"""
         project = self.get_object()
 
         if request.method == "GET":
@@ -119,7 +120,7 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class FlowNodeViewSet(viewsets.ModelViewSet):
-    """フローノードのCRUD操作（リアルタイム対応）"""
+    """CRUD operations for flow nodes (real-time support)"""
 
     authentication_classes = []
 
@@ -134,15 +135,15 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """ノード作成（リアルタイム保存 + コード生成）"""
+        """Node creation (real-time saving + code generation)"""
         project_id = self.kwargs.get("workflow_id")
         logger.info(f"Creating node in project {project_id} with data: {request.data}")
 
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=project_id)
 
-            # リクエストデータの検証
+            # Validating request data
             required_fields = ["id", "position"]
             for field in required_fields:
                 if field not in request.data:
@@ -152,7 +153,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-            # FlowServiceを使用してノード作成（既存の処理と同じ）
+            # Create a node using FlowService (same as existing process)
             node_data = {
                 "id": request.data["id"],
                 "position": request.data["position"],
@@ -160,14 +161,14 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                 "data": request.data.get("data", {}),
             }
 
-            # 既存ノードの確認（重複作成を防ぐ）
+            # Check for existing nodes (avoid creating duplicates)
             try:
                 existing_node = FlowNode.objects.get(
                     id=node_data["id"], project=project
                 )
                 logger.info(f"Node {node_data['id']} already exists, updating instead")
 
-                # 既存の場合は更新
+                # Update if existing
                 existing_node.position_x = node_data["position"]["x"]
                 existing_node.position_y = node_data["position"]["y"]
                 existing_node.node_type = node_data.get("type", existing_node.node_type)
@@ -184,7 +185,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                 return Response(response_data, status=status.HTTP_200_OK)
 
             except FlowNode.DoesNotExist:
-                # 新規作成
+                # Create new
                 node = FlowService.create_node(str(project.id), node_data)
 
                 serializer = FlowNodeSerializer(node)
@@ -211,7 +212,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """ノード更新（位置変更、データ変更など + 条件付きコード生成）"""
+        """Node updates (position changes, data changes, etc. + conditional code generation)"""
         project_id = self.kwargs.get("workflow_id")
         node_id = self.kwargs.get("node_id")
         logger.info(
@@ -219,10 +220,10 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
         )
 
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=project_id)
 
-            # ノードの存在確認（IDで直接検索）
+            # Checking node existence (direct search by ID)
             try:
                 existing_node = FlowNode.objects.get(id=node_id, project=project)
             except FlowNode.DoesNotExist:
@@ -232,7 +233,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # FlowServiceを使用してノード更新
+            # Update nodes using FlowService
             node_data = {}
             if "position" in request.data:
                 node_data["position"] = request.data["position"]
@@ -266,23 +267,23 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        """ノード削除 + コード削除"""
+        """Node deletion + code deletion"""
         project_id = self.kwargs.get("workflow_id")
         node_id = self.kwargs.get("node_id")
         logger.info(f"Deleting node {node_id} from project {project_id}")
 
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=project_id)
 
-            # ノードの存在確認（IDで直接検索）
+            # Checking node existence (direct search by ID)
             try:
                 existing_node = FlowNode.objects.get(id=node_id, project=project)
             except FlowNode.DoesNotExist:
                 logger.warning(
                     f"Node {node_id} not found in project {project_id}, but returning success"
                 )
-                # ノードが存在しない場合も成功として扱う（冪等性）
+                # Treat the case where the node does not exist as a success (idempotence)
                 return Response(
                     {
                         "status": "success",
@@ -291,7 +292,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_200_OK,
                 )
 
-            # FlowServiceを使用してノード削除（関連エッジも自動削除）
+            # Delete a node using FlowService (associated edges are also deleted automatically)
             FlowService.delete_node(node_id, project_id)
 
             response_data = {
@@ -317,7 +318,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class FlowEdgeViewSet(viewsets.ModelViewSet):
-    """フローエッジのCRUD操作（リアルタイム対応）"""
+    """CRUD operations on flow edges (real-time support)"""
 
     serializer_class = FlowEdgeSerializer
     permission_classes = [permissions.AllowAny]
@@ -331,15 +332,15 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """エッジ作成（リアルタイム保存 + WorkflowBuilder更新）"""
+        """CRUD operations on flow edges (real-time support)"""
         project_id = self.kwargs.get("workflow_id")
         logger.info(f"Creating edge in project {project_id} with data: {request.data}")
 
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=project_id)
 
-            # リクエストデータの検証
+            # Validating request data
             required_fields = ["id", "source", "target"]
             for field in required_fields:
                 if field not in request.data:
@@ -358,7 +359,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
                 "data": request.data.get("data", {}),
             }
 
-            # 既存エッジの確認（重複作成を防ぐ）
+            # Check for existing edges (avoid creating duplicates)
             try:
                 existing_edge = FlowEdge.objects.get(
                     id=edge_data["id"], project=project
@@ -375,7 +376,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
                 return Response(response_data, status=status.HTTP_200_OK)
 
             except FlowEdge.DoesNotExist:
-                # 新規作成
+                # create new
                 edge = FlowService.create_edge(str(project.id), edge_data)
 
                 serializer = FlowEdgeSerializer(edge)
@@ -402,23 +403,23 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        """エッジ削除 + WorkflowBuilder更新"""
+        """Edge deletion + WorkflowBuilder update"""
         project_id = self.kwargs.get("workflow_id")
         edge_id = self.kwargs.get("edge_id")
         logger.info(f"Deleting edge {edge_id} from project {project_id}")
 
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=project_id)
 
-            # エッジの存在確認（IDで直接検索）
+            # Checking the existence of an edge (direct search by ID)
             try:
                 existing_edge = FlowEdge.objects.get(id=edge_id, project=project)
             except FlowEdge.DoesNotExist:
                 logger.warning(
                     f"Edge {edge_id} not found in project {project_id}, but returning success"
                 )
-                # エッジが存在しない場合も成功として扱う（冪等性）
+                # Treat the case where no edge exists as a success (idempotence)
                 return Response(
                     {
                         "status": "success",
@@ -427,7 +428,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_200_OK,
                 )
 
-            # FlowServiceを使用してエッジ削除
+            # Delete edges using FlowService
             FlowService.delete_edge(edge_id, project_id)
 
             response_data = {
@@ -453,13 +454,13 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class SampleFlowView(APIView):
-    """サンプルフローデータの提供"""
+    """Providing sample flow data"""
 
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        """サンプルフローデータを返す"""
+        """Return sample flow data"""
         try:
             sample_flow = FlowService.get_sample_flow_data()
             return Response(sample_flow, content_type="application/json")
@@ -476,18 +477,18 @@ class SampleFlowView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class JupyterLabView(APIView):
-    """JupyterLabとの統合用ビュー"""
+    """Views for integration with JupyterLab"""
     
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request, workflow_id):
-        """JupyterLabのURLを返す"""
+        """Return the JupyterLab URL"""
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=workflow_id)
             
-            # JupyterLabのURL生成
+            # JupyterLab URL generation
             #jupyter_url = f"http://localhost:8000/user/user1/lab/tree/codes/projects/{workflow_id}"
             jupyter_url = f"http://localhost:8000/user/user1/lab/tree/codes/projects/"
             #jupyter_url = f"http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/nodes/{workflow_id}/{workflow_id}.py"
@@ -510,25 +511,25 @@ class JupyterLabView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class FlowNodeParameterUpdateView(APIView):
-    """FlowNodeのschema.parametersを更新する（ベースノードは変更しない）"""
+    """Update the schema.parameters of the FlowNode (leave the base node unchanged)"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def put(self, request, workflow_id, node_id):
-        """FlowNodeのschema.parameters内の特定パラメーターを更新"""
+        """Update a specific parameter in the schema.parameters of a FlowNode"""
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=workflow_id)
 
-            # ノードの存在確認
+            # Checking the existence of the node
             node = get_object_or_404(FlowNode, id=node_id, project=project)
 
-            # デバッグ: リクエストデータを出力
+            # Debug: Print request data
             print(f"🔍 DEBUG: Request data: {request.data}", flush=True)
             print(f"🔍 DEBUG: Current node data: {node.data}", flush=True)
 
-            # リクエストデータの検証
+            # Validating request data
             parameter_key = request.data.get("parameter_key")
             parameter_value = request.data.get("parameter_value")
             parameter_field = request.data.get("parameter_field", "value")  # 'value', 'default_value', 'constraints'
@@ -549,7 +550,7 @@ class FlowNodeParameterUpdateView(APIView):
 
             logger.info(f"Updating parameter '{parameter_key}.{parameter_field}' to {parameter_value} in node {node_id}")
 
-            # schema.parametersが存在するかチェック
+            # Check if schema.parameters exists
             if "schema" not in node.data:
                 print("❌ DEBUG: No schema found in node data", flush=True)
                 return Response(
@@ -572,21 +573,21 @@ class FlowNodeParameterUpdateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 更新前の値を取得
+            # Get the value before update
             old_value = node.data["schema"]["parameters"][parameter_key].get(parameter_field)
             print(f"🔍 DEBUG: Updating {parameter_key}.{parameter_field} from {old_value} to {parameter_value}", flush=True)
 
-            # 元の値を保存（変更履歴用）
+            # Save original value (for change history)
             original_value = node.data["schema"]["parameters"][parameter_key].get(parameter_field)
 
-            # parameter_fieldで指定されたフィールドを直接更新
+            # Directly update the field specified by parameter_field
             print(f"🔍 DEBUG: Before update - schema.parameters[{parameter_key}]: {node.data['schema']['parameters'][parameter_key]}", flush=True)
             node.data["schema"]["parameters"][parameter_key][parameter_field] = parameter_value
             print(f"🔍 DEBUG: After update - schema.parameters[{parameter_key}]: {node.data['schema']['parameters'][parameter_key]}", flush=True)
 
             print(f"🔍 DEBUG: Updated {parameter_field} from {original_value} to {parameter_value}", flush=True)
 
-            # パラメーター変更状況を追跡（全フィールドを対象に変更）
+            # Track parameter changes (changes across all fields)
             self._update_parameter_modification_status(
                 node.data, parameter_key, parameter_field,
                 node.data["schema"]["parameters"][parameter_key],
@@ -594,7 +595,7 @@ class FlowNodeParameterUpdateView(APIView):
                 original_value
             )
 
-            # ノードを保存
+            # save node
             node.save()
 
             print(f"✅ DEBUG: Successfully saved parameter update", flush=True)
@@ -625,16 +626,16 @@ class FlowNodeParameterUpdateView(APIView):
 
 
     def _update_parameter_modification_status(self, node_data, parameter_key, parameter_field, parameter, new_value, original_value=None):
-        """パラメーターの変更状況を追跡・更新（全フィールド対応）"""
+        """Track and update parameter changes (all fields)"""
         print(f"🔍 DEBUG: Tracking modification status for {parameter_key}.{parameter_field}", flush=True)
 
-        # parameter_modificationsの構造を確保
+        # Ensure the structure of parameter_modifications
         if "parameter_modifications" not in node_data:
             node_data["parameter_modifications"] = {}
 
         modifications = node_data["parameter_modifications"]
 
-        # パラメーター単位での追跡データ構造を確保
+        # Ensure tracking data structure for each parameter
         if parameter_key not in modifications:
             modifications[parameter_key] = {
                 "is_modified": False,
@@ -643,14 +644,14 @@ class FlowNodeParameterUpdateView(APIView):
 
         param_mod = modifications[parameter_key]
 
-        # 既存データの互換性確保（古い形式から新しい形式への変換）
+        # Ensuring compatibility of existing data (conversion from old format to new format)
         if "field_modifications" not in param_mod:
-            # 古い形式のデータを新しい形式に変換
+            # Converting old data to new format
             old_original = param_mod.get("original_value")
             old_current = param_mod.get("current_value")
             param_mod["field_modifications"] = {}
 
-            # 古いデータが存在する場合、default_valueとして移行
+            # If old data exists, it will be migrated as default_value
             if old_original is not None:
                 param_mod["field_modifications"]["default_value_original"] = old_original
                 param_mod["field_modifications"]["default_value"] = {
@@ -659,42 +660,42 @@ class FlowNodeParameterUpdateView(APIView):
                     "modified_at": param_mod.get("modified_at")
                 }
 
-            # 古いキーを削除
+            # remove old key
             for old_key in ["original_value", "current_value", "modified_at"]:
                 if old_key in param_mod:
                     del param_mod[old_key]
 
-        # 各フィールドの元の値を取得（初回時のみ保存）
+        # Get the original value of each field (saved only the first time)
         field_key = f"{parameter_field}_original"
         if field_key not in param_mod["field_modifications"]:
-            # 初回変更時に元の値を保存
+            # Save original value on first change
             param_mod["field_modifications"][field_key] = original_value
 
-        # 現在の値と元の値を比較して変更状況を判定
+        # Compare current and original values ​​to determine changes
         original_field_value = param_mod["field_modifications"][field_key]
         is_field_modified = new_value != original_field_value
 
         print(f"🔍 DEBUG: {parameter_field} - original={original_field_value}, new={new_value}, modified={is_field_modified}", flush=True)
 
-        # フィールドの変更状況を更新
+        # Update field change status
         param_mod["field_modifications"][parameter_field] = {
             "current_value": new_value,
             "is_modified": is_field_modified,
-            "modified_at": None  # フロントエンドで現在時刻を設定することを想定
+            "modified_at": None  # Assumes that the current time is set on the front end
         }
 
-        # パラメーター全体の変更状況を更新（いずれかのフィールドが変更されていれば True）
+        # Update the overall parameter change status (if any field has changed) True）
         param_mod["is_modified"] = any(
             field_data.get("is_modified", False)
             for field_name, field_data in param_mod["field_modifications"].items()
             if isinstance(field_data, dict) and not field_name.endswith("_original")
         )
 
-        # 全フィールドが元の値に戻った場合はパラメーター全体を削除
+        # If all fields are reverted to their original values, remove the entire parameter
         if not param_mod["is_modified"]:
             del modifications[parameter_key]
 
-        # 全体の変更状況を更新
+        # Update overall changes
         node_data["has_parameter_modifications"] = len(modifications) > 0
 
         print(f"✅ DEBUG: Parameter '{parameter_key}.{parameter_field}' modification status: {'modified' if is_field_modified else 'default'}", flush=True)
@@ -703,27 +704,27 @@ class FlowNodeParameterUpdateView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class BatchCodeGenerationView(APIView):
-    """React FlowのJSONからバッチでコード生成するビュー"""
+    """React Flow's JSON to Batch Code Generation View"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request, workflow_id):
-        """React Flow JSONからコードを一括生成"""
+        """React Flow Bulk code generation from JSON"""
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=workflow_id)
 
-            # リクエストボディからReact FlowのJSONデータを取得
+            # Get JSON data from request body in React Flow
             data = json.loads(request.body)
             nodes_data = data.get("nodes", [])
             edges_data = data.get("edges", [])
 
             logger.info(f"Batch code generation for project {workflow_id}: {len(nodes_data)} nodes, {len(edges_data)} edges")
 
-            # コード生成サービスを使用して一括でコード生成
+            # Generate code in bulk using the code generation service
             code_service = CodeGenerationService()
-            # 補正したプロジェクト名
+            # Corrected project name
             project_name = project.name.replace(" ","").capitalize()
             success = code_service.generate_code_from_flow_data(str(workflow_id), project_name, nodes_data, edges_data)
 
@@ -737,11 +738,11 @@ class BatchCodeGenerationView(APIView):
 
             if success:
                 response_data["code_status"] = "Code generation completed successfully"
-                # Idからプロジェクトを取得
+                # Get Project by Id
                 project = FlowProject.objects.get(id=workflow_id)
                 project_name = project.name.replace(" ","").capitalize()
 
-                # 生成されたコードファイルのパスを返す
+                # Returns the path of the generated code file.
                 code_file = code_service.get_code_file_path(project_name)
                 notebook_file = code_service.get_notebook_file_path(project_name)
 
@@ -773,29 +774,73 @@ class BatchCodeGenerationView(APIView):
                 {"error": f"Batch code generation failed: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+@method_decorator(csrf_exempt, name="dispatch")
+class BatchWorkflowRunView(APIView):
+    """Run Workflow Project View"""
 
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, workflow_id):
+        """Run Workflow Project"""
+        try:
+            # Check the existence of the project
+            project = get_object_or_404(FlowProject, id=workflow_id)
+
+            # Run Workflow Project Service
+            run_workflow_service = RunWorkflowService()
+            # Corrected project name
+            project_name = project.name.replace(" ","").capitalize()
+            result = run_workflow_service.run_workflow_code(str(workflow_id), project_name)
+
+            response_data = {
+                "status": "success",
+                "message": f"Workflow project completed successfully.",
+                "workflow_id": str(workflow_id),
+                "result": result 
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        except json.JSONDecodeError:
+            return Response(
+                {"error": "Invalid JSON format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except FlowProject.DoesNotExist:
+            return Response(
+                {"error": f"Project {workflow_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error in batch code generation for project {workflow_id}: {e}")
+            return Response(
+                {"error": f"Batch code generation failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 @method_decorator(csrf_exempt, name="dispatch")
 class FlowNodeInstanceNameUpdateView(APIView):
-    """FlowNodeのinstanceNameを更新する（ベースノードは変更しない）"""
+    """Update the instanceName of the FlowNode (do not change the base node)"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def put(self, request, workflow_id, node_id):
-        """FlowNodeのinstanceNameを更新"""
+        """Update the instanceName of the FlowNode"""
         try:
-            # プロジェクトの存在確認
+            # Check the existence of the project
             project = get_object_or_404(FlowProject, id=workflow_id)
 
-            # ノードの存在確認
+            # Checking the existence of the node
             node = get_object_or_404(FlowNode, id=node_id, project=project)
 
-            # デバッグ: リクエストデータを出力
+            # Debug: Print request data
             print(f"🔍 DEBUG: Request data: {request.data}", flush=True)
             print(f"🔍 DEBUG: Current node data: {node.data}", flush=True)
 
-            # リクエストデータの検証
+            # Validating request data
             instance_name = request.data.get("instance_name")
 
             print(f"🔍 DEBUG: Parsed - instance_name: {instance_name}", flush=True)
@@ -808,7 +853,7 @@ class FlowNodeInstanceNameUpdateView(APIView):
 
             logger.info(f"Updating instance_name '{instance_name}' in node {node_id}")
 
-            # instance_nameが存在するかチェック
+            # Checks whether instance_name exists
             if "instanceName" not in node.data:
                 print("❌ DEBUG: No instanceName found in node data", flush=True)
                 return Response(
@@ -816,19 +861,19 @@ class FlowNodeInstanceNameUpdateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 更新前の値を取得
+            # Get the value before update
             old_value = node.data["instanceName"]
             print(f"🔍 DEBUG: Updating instanceName from {old_value} to {instance_name}", flush=True)
 
-            # 元の値を保存（変更履歴用）
+            # Save original value (for change history)
             original_value = node.data["instanceName"]
 
-            # parameter_fieldで指定されたフィールドを直接更新
+            # Directly update the field specified by parameter_field
             node.data["instanceName"] = instance_name
 
             print(f"🔍 DEBUG: Updated instance_name from {original_value} to {instance_name}", flush=True)
 
-            # ノードを保存
+            # save node
             node.save()
 
             print(f"✅ DEBUG: Successfully saved instance_name update", flush=True)

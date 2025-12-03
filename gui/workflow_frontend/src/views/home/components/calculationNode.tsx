@@ -1,10 +1,27 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { CalculationNodeData } from "../type";
-import { Badge, Box, Text, HStack, IconButton, Tooltip, Icon } from "@chakra-ui/react";
+import { 
+  Badge, 
+  Box, 
+  Text, 
+  HStack, 
+  useToast,
+  IconButton, 
+  Button,
+  useDisclosure,
+  AlertDialog,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogBody,
+  AlertDialogFooter,
+  Tooltip, Icon } from "@chakra-ui/react";
+import { useRef } from 'react';
 import { ViewIcon, InfoIcon, DeleteIcon } from "@chakra-ui/icons";
 import { FiCode } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
+import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface NodeCallbacks {
   onJupyter?: (nodeId: string) => void;
@@ -21,22 +38,28 @@ export const CalculationNode = ({
 }: NodeProps<CalculationNodeData> & NodeCallbacks) => {
   const schema = data.schema || { inputs: {}, outputs: {}, parameters: {} };
 
-  console.log("これがスキーマデータ", schema);
-  console.log("Node data timestamp:", data.__timestamp || 'no timestamp');
+  const [nodeToAction, setNodeToAction] = useState<NodeTypeWithIcon | null>(null);
+  const { isOpen: isDeleteAlertOpen, onOpen: onDeleteAlertOpen, onClose: onDeleteAlertClose } = useDisclosure();
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const toast = useToast();
 
-  // ハンドルIDを一意に生成する関数
+  //console.log("This is the schema data", schema);
+  //console.log("Node data timestamp:", data.__timestamp || 'no timestamp');
+
+  // A function that generates a unique handle ID
   const generateHandleId = (nodeId: string, fieldName: string, handleType: 'input' | 'output', portType: string) => {
     return `${nodeId}-${fieldName}-${handleType}-${portType}`;
   };
   
-  // inputs、outputsを配列に変換
+  // Convert inputs and outputs to arrays
   const inputEntries = schema.inputs ? Object.entries(schema.inputs) : [];
   const outputEntries = schema.outputs ? Object.entries(schema.outputs) : [];
 
-  // タブシステムのコンテキストを使用
+  // Use the tab system context
   const { addJupyterTab } = useTabContext();
 
-  // すべてのフィールドを結合（inputsを先、outputsを後）
+  // Combine all fields (inputs first, outputs second)
   const allFields = [
     ...inputEntries.map(([name, data]) => ({
       name,
@@ -54,7 +77,7 @@ export const CalculationNode = ({
     }))
   ];
 
-  // 入出力パラメータ伸縮管理
+  // Input/output parameter expansion/contraction management
   const [isParamExpand, setIsParamExpand] = useState<boolean>(true);
   const updateNodeInternals = useUpdateNodeInternals();
   //const isParamExpand = data.isParamExpand || false;
@@ -63,15 +86,66 @@ export const CalculationNode = ({
     updateNodeInternals(id);
   }, [isParamExpand, id, updateNodeInternals]);
 
-  // Jupyterを別タブで開く
+  // Open Jupyter in a new tab
   const OpenJupyter = (filename : string, category : string) => {
+    const jupyterBase = ((): string => {
+      try {
+        if (typeof window === 'undefined') return 'http://localhost:8000';
+        const { protocol, hostname, host } = window.location;
+        // host includes port if present (hostname:port)
+        if (host.includes(':')) {
+          return `${protocol}//${hostname}:8000`;
+        }
+        return `${protocol}//${host}`;
+      } catch (e) {
+        return 'http://localhost:8000';
+      }
+    })();
     // JupyterLab URLを構築（開発モード）
-    const jupyterUrl = "http://localhost:8000/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename
+    const jupyterUrl = jupyterBase+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename;
     
     let projectId = localStorage.getItem('projectId');
     projectId = projectId ? projectId : "";
-    // 新しいタブを作成
+    // Create new tab
     addJupyterTab(projectId, filename, jupyterUrl);
+  };
+
+  // Opens a delete confirmation dialog
+  const openDeleteDialog = (node: NodeTypeWithIcon) => {
+    if (!node.label) {
+      toast({
+        title: "Error",
+        description: "No label available for deletion",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setNodeToAction(node);
+    onDeleteAlertOpen();
+  };
+
+// Delete execution on workflow
+  const handleDeleteNode = async () => {
+    if (!id) return;
+
+    try {
+      setIsDeleting(id);
+      callbacks.onDelete?.(id);
+    } catch (error) {
+      console.error('Error deleting node:', error);
+      toast({
+        title: "Error",
+        description: `Failed to delete node: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeleting(null);
+    }
   };
 
   return (
@@ -88,9 +162,10 @@ export const CalculationNode = ({
       transition="all 0.2s"
       role="group"
     >
-      {/* ヘッダー */}
+      {/* header */}
       <Box 
-        bg={selected ? "purple.600" : "purple.500"}
+        //bg={selected ? "purple.300" : "purple.300"}
+        bg={data.color}
         color="white" 
         p={2} 
         borderTopRadius="lg"
@@ -98,15 +173,15 @@ export const CalculationNode = ({
         fontSize="sm"
         transition="all 0.2s"
       >
-        {/* ノード名（中央） */}
+        {/* Node name (center) */}
         <HStack justify="space-between" align="center">
           <Text fontSize="sm" fontWeight="bold" flex="1" textAlign="center">
-            {data.label}
+            {data.instanceName || data.label }
           </Text>
         </HStack>
       </Box>
       
-      {/* ボタン専用フィールド */}
+      {/* Button field */}
       <Box 
         bg={selected ? "purple.100" : "gray.50"}
         borderBottom="1px solid #e2e8f0"
@@ -168,7 +243,9 @@ export const CalculationNode = ({
               icon={<DeleteIcon boxSize={2.5} />}
               onClick={(e) => {
                 e.stopPropagation();
-                callbacks.onDelete?.(id);
+                //callbacks.onDelete?.(id);
+                e.preventDefault();
+                openDeleteDialog(data);
               }}
               _hover={{ bg: "red.500", transform: "scale(1.1)" }}
               minW="18px"
@@ -181,7 +258,7 @@ export const CalculationNode = ({
       </Box>
       
 
-      {/* フィールド表示 */}
+      {/* field display */}
       <Box p={0}>
         {allFields.map((field, index) => {
           const isInput = field.port_direction === 'input';
@@ -231,7 +308,7 @@ export const CalculationNode = ({
                 {field.type?.includes('[]') ? `${field.type}` : field.type}
               </Badge>
               
-              {/* 入力ハンドル */}
+              {/* input handle */}
               {isInput && (
                 <Handle
                   type="target"
@@ -252,7 +329,7 @@ export const CalculationNode = ({
                 />
               )}
               
-              {/* 出力ハンドル */}
+              {/* output handle */}
               {isOutput && (
                 <Handle
                   type="source"
@@ -277,7 +354,7 @@ export const CalculationNode = ({
         })}
       </Box>
       
-      {/* デバッグ情報（開発時のみ表示） */}
+      {/* Debug information (displayed only during development) */}
       {process.env.NODE_ENV === 'development' && (
         <Box
           position="absolute"
@@ -293,6 +370,48 @@ export const CalculationNode = ({
           ID: {id}
         </Box>
       )}
+
+      {/* Delete confirmation alert dialog */}
+      <AlertDialog
+          isOpen={isDeleteAlertOpen}
+          leastDestructiveRef={cancelRef}
+          onClose={onDeleteAlertClose}
+        >
+          <AlertDialogOverlay>
+            <AlertDialogContent bg="gray.800" color="white">
+              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                Delete Node
+              </AlertDialogHeader>
+
+              <AlertDialogBody>
+                Are you sure you want to delete "{nodeToAction?.label}"?
+                <br />
+                <Text fontSize="sm" color="gray.400" mt={2}>
+                  This action cannot be undone.
+                </Text>
+              </AlertDialogBody>
+
+              <AlertDialogFooter>
+                <Button 
+                  ref={cancelRef} 
+                  onClick={onDeleteAlertClose}
+                  variant="ghost"
+                  color="gray.300"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  colorScheme="red" 
+                  onClick={handleDeleteNode} 
+                  ml={3}
+                  isLoading={isDeleting === nodeToAction?.file_id}
+                >
+                  Delete
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialogOverlay>
+        </AlertDialog>
     </Box>
   );
 };

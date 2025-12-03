@@ -5,7 +5,7 @@ interface JupyterHubConfig {
   baseUrl: string;
   apiEndpoint: string;
   isDevelopment?: boolean;
-  jwtToken?: string; // 本番環境用のJWTトークン
+  jwtToken?: string; // JWT tokens for production environments
 }
 
 interface JupyterSession {
@@ -29,23 +29,23 @@ const useJupyterHub = (
   config: JupyterHubConfig = {
     baseUrl: "http://localhost:8000",
     apiEndpoint: "/api/jupyterhub",
-    isDevelopment: true, // デフォルトは開発モード
+    isDevelopment: true, // Default is development mode
   }
 ): UseJupyterHubReturn => {
   const toast = useToast();
   const [sessions, setSessions] = useState<Record<string, JupyterSession>>({});
 
-  // JupyterHubセッションを起動
+  // Launch a JupyterHub session
   const launchJupyter = useCallback(
     async (projectId: string): Promise<string | null> => {
       try {
-        // 既存のセッションがある場合はそのURLを返す
+        // If there is an existing session, return its URL.
         if (sessions[projectId]?.status === "ready") {
           console.log(`Project ${projectId} session already exists`);
           return sessions[projectId].url;
         }
 
-        // セッション状態を更新
+        // Update session state
         setSessions((prev) => ({
           ...prev,
           [projectId]: {
@@ -58,20 +58,20 @@ const useJupyterHub = (
         let jupyterUrl: string;
 
         if (config.isDevelopment) {
-          // 開発モード: プロジェクトIDを含むURLに直接アクセス
+          // Development mode: Directly access the URL containing the project ID
           jupyterUrl = `${config.baseUrl}/project/${projectId}`;
 
           console.log(`Development mode: Accessing ${jupyterUrl}`);
 
-          // 開発モードでは簡易待機のみ
+          // Development mode only supports simple standby
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } else {
-          // 本番モード: Django APIを通してJWT認証
+          // Production mode: JWT authentication through the Django API
           const requestBody: any = {
             project_id: projectId,
           };
 
-          // JWTトークンが設定されている場合は追加
+          // Add JWT token if set
           if (config.jwtToken) {
             requestBody.token = config.jwtToken;
           }
@@ -80,7 +80,7 @@ const useJupyterHub = (
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              // JWTトークンをAuthorizationヘッダーにも設定
+              // The JWT token is also included in the Authorization header.
               ...(config.jwtToken && {
                 Authorization: `Bearer ${config.jwtToken}`,
               }),
@@ -99,20 +99,20 @@ const useJupyterHub = (
 
           const data = await response.json();
 
-          // 本番環境でもプロジェクトIDを含むURLを使用
+          // Use a URL containing the project ID even in production
           jupyterUrl =
             data.jupyterhub_url || `${config.baseUrl}/project/${projectId}`;
 
-          // トークンがある場合はURLに追加（iframe用）
+          // If there is a token, add it to the URL (for iframes)
           if (config.jwtToken && !data.jupyterhub_url) {
             jupyterUrl += `?token=${config.jwtToken}`;
           }
 
-          // JupyterHubの準備完了を待機
+          // Wait for JupyterHub to be ready
           await waitForJupyterReady(config.baseUrl, projectId);
         }
 
-        // セッション状態を完了に更新
+        // Update the session state to completed
         setSessions((prev) => ({
           ...prev,
           [projectId]: {
@@ -125,8 +125,8 @@ const useJupyterHub = (
         toast({
           title: "JupyterLab Ready",
           description: config.isDevelopment
-            ? `開発モード: Project "${projectId}" のJupyterLabが起動しました`
-            : `Project "${projectId}" のJupyterLabが起動しました`,
+            ? `development mode: Project "${projectId}" JupyterLab has started`
+            : `Project "${projectId}" JupyterLab has started`,
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -139,7 +139,7 @@ const useJupyterHub = (
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
 
-        // セッション状態をエラーに更新
+        // Update session state to error
         setSessions((prev) => ({
           ...prev,
           [projectId]: {
@@ -151,7 +151,7 @@ const useJupyterHub = (
         }));
 
         toast({
-          title: "JupyterHub起動エラー",
+          title: "JupyterHub startup error",
           description: errorMessage,
           status: "error",
           duration: 5000,
@@ -164,7 +164,7 @@ const useJupyterHub = (
     [config, toast, sessions]
   );
 
-  // JupyterHubの準備完了を待機
+  // Wait for JupyterHub to be ready
   const waitForJupyterReady = async (
     baseUrl: string,
     projectId: string,
@@ -176,35 +176,35 @@ const useJupyterHub = (
 
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        // ヘルスチェック用のエンドポイントを確認
-        // Named serverを使用している場合のパスも考慮
+        // Check the health check endpoint
+        // Consider the path when using a named server
         const healthCheckUrl = `${baseUrl}/hub/api`;
 
-        // フェッチリクエストを送信
+        // Send a fetch request
         await fetch(healthCheckUrl, {
           method: "HEAD",
           mode: "no-cors",
           cache: "no-cache",
         });
 
-        // 最低限の待機時間（3秒）
+        // Minimum waiting time (3 seconds)
         if (i >= 2) {
           console.log(`JupyterHub is ready for project ${projectId}`);
           return;
         }
       } catch (error) {
-        // エラーは期待される（CORSなど）ので無視
+        // Errors are expected (CORS, etc.) so ignore them
       }
 
       // 1秒待機
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    // タイムアウトしても続行（実際にはiframeで確認される）
+    // Continue even if timeout occurs (this is actually confirmed in an iframe)
     console.warn("JupyterHub health check timed out, but continuing...");
   };
 
-  // セッションの状態確認ヘルパー関数
+  // Session status check helper function
   const isLoading = useCallback(
     (projectId: string): boolean => {
       return sessions[projectId]?.status === "starting";
@@ -237,7 +237,7 @@ const useJupyterHub = (
     [sessions]
   );
 
-  // セッションを閉じる
+  // Close session
   const closeSession = useCallback(
     (projectId: string) => {
       console.log(`Closing session for project ${projectId}`);
@@ -249,8 +249,8 @@ const useJupyterHub = (
       });
 
       toast({
-        title: "セッション終了",
-        description: `Project "${projectId}" のセッションを終了しました`,
+        title: "Session ends",
+        description: `Project "${projectId}" finished session`,
         status: "info",
         duration: 2000,
         isClosable: true,
@@ -266,7 +266,7 @@ const useJupyterHub = (
     getUrl,
     getError,
     closeSession,
-    sessions, // デバッグ用にセッション情報も公開
+    sessions, // Session information is also published for debugging purposes.
   };
 };
 

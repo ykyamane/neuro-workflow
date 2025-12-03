@@ -4,7 +4,7 @@ import { getApiConfig } from "./config";
 import { createAuthHeaders } from "./authHeaders";
 import { onRequest, onResponse, onError } from "./apiInterceptors";
 
-// APIクライアントの作成
+// Creating an API client
 const createApiClient = async () => {
   const config = getApiConfig();
   const headers = await createAuthHeaders();
@@ -21,14 +21,14 @@ const createApiClient = async () => {
   );
 };
 
-// シングルトンパターンでAPIクライアントを管理
+// Manage API clients with the Singleton pattern
 class ApiClientManager {
   private static instance: ReturnType<typeof api> | null = null;
   private static isInitializing = false;
 
   static async getInstance(): Promise<ReturnType<typeof api>> {
     if (this.isInitializing) {
-      // 初期化中の場合は完了まで待機
+      // If initialization is in progress, wait until it is complete
       while (this.isInitializing) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
@@ -46,18 +46,18 @@ class ApiClientManager {
     return this.instance;
   }
 
-  // トークン更新時にインスタンスをリセット
+  // Reset instance on token refresh
   static resetInstance(): void {
     this.instance = null;
   }
 
-  // 強制的に新しいインスタンスを作成
+  // Force a new instance to be created
   static async forceRefresh(): Promise<ReturnType<typeof api>> {
     this.instance = null;
     return this.getInstance();
   }
 
-  // インスタンスの状態確認
+  // Checking the instance status
   static hasInstance(): boolean {
     return this.instance !== null;
   }
@@ -65,7 +65,7 @@ class ApiClientManager {
 
 export { ApiClientManager };
 
-// API呼び出し用ヘルパー関数
+// Helper functions for calling APIs
 export const withErrorHandling = async <T>(
   apiCall: () => Promise<T>
 ): Promise<{ data: T | null; error: any }> => {

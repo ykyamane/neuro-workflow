@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class SupabaseAuthentication(authentication.BaseAuthentication):
     """
-    Supabase JWT認証クラス
+    Supabase JWT Authentication class
     """
 
     def authenticate(self, request):
@@ -37,20 +37,20 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
 
     def authenticate_credentials(self, token):
         """
-        Supabase JWTトークンを検証し、ユーザーを取得または作成
+        Supabase JWTValidate the token and get or create the user
         """
         try:
-            # Supabaseの公開鍵を取得してトークンを検証
+            # Get the Supabase public key and validate the token
             payload = self.verify_token(token)
 
-            # ユーザー情報を取得
+            # Get user information
             user_id = payload.get("sub")
             email = payload.get("email")
 
             if not user_id or not email:
                 raise exceptions.AuthenticationFailed("Invalid token payload.")
 
-            # Djangoユーザーを取得または作成
+            # Get or create a Django user
             user = self.get_or_create_user(user_id, email, payload)
 
             return (user, token)
@@ -65,21 +65,21 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
 
     def verify_token(self, token):
         """
-        SupabaseのJWTトークンを検証
+        SupValidate JWT token in Supabase
         """
-        # Supabaseプロジェクトの設定から取得する必要があります
+        # SupabaIt should be taken from your Supabase project settings
         supabase_url = settings.SUPABASE_URL
         supabase_key = settings.SUPABASE_ANON_KEY
 
-        # JWTのヘッダーから kid (key id) を取得
+        # Obtained from the JWT header kid (key id) 
         unverified_header = jwt.get_unverified_header(token)
 
-        # Supabaseの公開鍵を取得
+        # Get the Supabase public key
         jwks_url = f"{supabase_url}/auth/v1/jwks"
         jwks_response = requests.get(jwks_url)
         jwks = jwks_response.json()
 
-        # 適切な公開鍵を見つける
+        # Finding the right public key
         public_key = None
         for key in jwks["keys"]:
             if key["kid"] == unverified_header.get("kid"):
@@ -89,7 +89,7 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
         if not public_key:
             raise jwt.InvalidTokenError("Unable to find appropriate key")
 
-        # トークンを検証
+        # Validate token
         payload = jwt.decode(
             token,
             public_key,
@@ -102,28 +102,28 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
 
     def get_or_create_user(self, user_id, email, payload):
         """
-        Supabaseのユーザー情報からDjangoユーザーを取得または作成
+        Get or create Django users from Supabase user information
         """
         User = get_user_model()
 
-        # まずSupabase UIDで検索
+        # First, Search by Supabase UID
         try:
             user = User.objects.get(username=user_id)
             return user
         except User.DoesNotExist:
             pass
 
-        # 次にメールアドレスで検索
+        # Next, Search by mail address
         try:
             user = User.objects.get(email=email)
-            # ユーザー名をSupabase UIDに更新
+            # Update username to Supabase UID
             user.username = user_id
             user.save()
             return user
         except User.DoesNotExist:
             pass
 
-        # 新しいユーザーを作成
+        # Create new user
         user = User.objects.create_user(
             username=user_id,
             email=email,
@@ -134,7 +134,7 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
         return user
 
 
-# settings.py の追加設定
+# settings.py
 """
 SUPABASE_URL = 'https://your-project.supabase.co'
 SUPABASE_ANON_KEY = 'your-anon-key'
@@ -142,7 +142,7 @@ SUPABASE_ANON_KEY = 'your-anon-key'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'your_app.authentication.SupabaseAuthentication',
-        # 他の認証クラスも必要に応じて追加
+        # Add other authentication classes as needed
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -153,7 +153,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    # 本番環境のフロントエンドURLも追加
+    # Also added the production frontend URL
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -169,7 +169,7 @@ CORS_ALLOW_HEADERS = [
 ]
 """
 
-# views.py の例
+# views.py
 """
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated

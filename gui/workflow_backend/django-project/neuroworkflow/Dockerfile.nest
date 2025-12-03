@@ -3,7 +3,7 @@ FROM nest/nest-simulator:3.7
 # Override the default ENTRYPOINT to allow CMD to work
 ENTRYPOINT []
 
-# 基本的な依存パッケージ
+# basic dependency packages
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -15,16 +15,29 @@ RUN apt-get update && \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# pip を最新化
+# Install Miniconda
+ENV CONDA_DIR=/opt/conda
+ENV CONDA_AUTO_UPDATE_CONDA=false
+RUN curl -sSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p $CONDA_DIR && \
+    rm /tmp/miniconda.sh && \
+    $CONDA_DIR/bin/conda clean -afy
+
+ENV PATH="$CONDA_DIR/bin:${PATH}"
+
+ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
+RUN conda install -y -c conda-forge -c MRtrix3 mrtrix3 libstdcxx-ng
+
+# Update pip
 RUN python3 -m pip install --upgrade pip setuptools wheel
 
-# JupyterHub + JupyterLab + Notebook をインストール
+# Install JupyterHub + JupyterLab + Notebook
 RUN pip install --no-cache-dir \
     jupyterhub \
     jupyterlab \
     notebook
 
-# NEST でよく使う科学計算ライブラリ
+# Commonly used scientific calculation libraries in NEST
 RUN pip install --no-cache-dir \
     numpy>=1.20.0 \
     scipy \
@@ -32,7 +45,7 @@ RUN pip install --no-cache-dir \
     pandas \
     seaborn>=0.11.0
 
-# 開発・テスト用ツール（参考実装から追加）
+# Development and testing tools (added from the reference implementation)
 RUN pip install --no-cache-dir \
     pytest>=6.0 \
     black \
@@ -44,16 +57,19 @@ RUN pip install --no-cache-dir \
     aiohttp \
     requests
 
-# jovyan ユーザーを作成（JupyterLab標準）
+ # Install The Virtual Brain (TVB) libraries
+ RUN pip install --no-cache-dir tvb-library tvb-framework
+
+# Create a jovyan user (JupyterLab standard)
 RUN useradd -m -s /bin/bash -N -u 1000 jovyan && \
     chown jovyan:users /home/jovyan
 
-# NEST Python path を環境変数に設定
+# Set NEST Python path as environment variable
 ENV PYTHONPATH="/opt/nest/lib/python3.10/site-packages:${PYTHONPATH}"
 
-# 作業ディレクトリ設定
+# Working directory settings
 WORKDIR /home/jovyan
 USER jovyan
 
-# JupyterHub がユーザーサーバーとして呼び出すエントリーポイント
+# The entry point that JupyterHub calls as a user server
 CMD ["jupyterhub-singleuser"]

@@ -11,40 +11,40 @@ logger = logging.getLogger(__name__)
 
 
 class CodeGenerationService:
-    """ワークフローからPythonコードを生成するサービス（.ipynb変換機能付き）"""
+    """A service that generates Python code from workflows (with .ipynb conversion functionality)"""
 
     def __init__(self):
         self.code_dir = Path(settings.BASE_DIR) / "codes/projects"
         self.code_dir.mkdir(exist_ok=True)
 
-        # 正規表現パターンを事前定義
+        # Predefined regular expression patterns
         self._compile_patterns()
 
     def _compile_patterns(self):
-        """使用する正規表現パターンをコンパイル"""
+        """Compile a regular expression pattern to use"""
         self.patterns = {
-            # WorkflowBuilderインポートを検出
+            # Detect WorkflowBuilder import
             "workflow_builder_import": re.compile(
                 r"^(from\s+neuroworkflow.core.workflow\s+import\s+WorkflowBuilder)$", re.MULTILINE
             ),
         }
 
     def get_code_file_path(self, project_name):
-        """プロジェクトIDからコードファイルパスを取得"""
+        """Get code file path from project ID"""
         return self.code_dir / str(project_name) / f"{project_name}.py"
 
     def get_notebook_file_path(self, project_name):
-        """プロジェクトIDからnotebookファイルパスを取得"""
+        """Get notebook file path from project ID"""
         return self.code_dir / str(project_name) / f"{project_name}.ipynb"
 
     def _convert_py_to_ipynb(self, project_id):
-        """Pythonファイルをjupyter notebookに変換"""
+        """Convert Python files to Jupyter Notebook"""
         try:
-            # Idからプロジェクトを取得
+            # Get Project by Id
             project = FlowProject.objects.get(id=project_id)
-            # 補正したプロジェクト名
+            # Corrected project name
             project_name = project.name.replace(" ","").capitalize()
-            # ファイルパス取得
+            # Get file path
             code_file = self.get_code_file_path(project_name)
             notebook_file = self.get_notebook_file_path(project_name)
 
@@ -55,10 +55,10 @@ class CodeGenerationService:
             with open(code_file, "r", encoding="utf-8") as f:
                 py_content = f.read()
 
-            # Pythonコードをnotebook形式に変換
+            # Convert Python code to notebook format
             notebook_content = self._create_notebook_from_python(py_content)
 
-            # notebookファイルに保存
+            # Save to notebook file
             with open(notebook_file, "w", encoding="utf-8") as f:
                 json.dump(notebook_content, f, indent=2, ensure_ascii=False)
 
@@ -71,8 +71,8 @@ class CodeGenerationService:
             return False
 
     def _create_notebook_from_python(self, py_content):
-        """Pythonコードからnotebook構造を作成"""
-        # Pythonコードを適切なセルに分割
+        """Create notebook structure from Python code"""
+        # Split your Python code into appropriate cells
         cells = self._split_python_into_cells(py_content)
 
         notebook = {
@@ -100,7 +100,7 @@ class CodeGenerationService:
         return notebook
 
     def _split_python_into_cells(self, py_content):
-        """Pythonコードを適切なセルに分割"""
+        """Split your Python code into appropriate cells"""
         lines = py_content.split("\n")
         cells = []
         current_cell = []
@@ -109,9 +109,9 @@ class CodeGenerationService:
         while i < len(lines):
             line = lines[i]
 
-            # コメントブロックをmarkdownセルとして扱う
+            # Treat comment blocks as markdown cells
             if line.strip().startswith('"""') and len(line.strip()) > 3:
-                # 現在のセルを保存
+                # Save current cell
                 if current_cell:
                     cell = self._create_code_cell("\n".join(current_cell))
                     if cell:
@@ -119,7 +119,7 @@ class CodeGenerationService:
                     current_cell = []
 
                 docstring_content = []
-                docstring_content.append(line.strip()[3:])  # 最初の"""を除去
+                docstring_content.append(line.strip()[3:])  # Remove the first ""
                 i += 1
 
                 while i < len(lines) and not lines[i].strip().endswith('"""'):
@@ -127,7 +127,7 @@ class CodeGenerationService:
                     i += 1
 
                 if i < len(lines):
-                    # 最後の"""を除去
+                    # Remove the last ""
                     last_line = lines[i].rstrip()
                     if last_line.endswith('"""'):
                         last_line = last_line[:-3]
@@ -140,7 +140,7 @@ class CodeGenerationService:
                     if cell:
                         cells.append(cell)
 
-            # インポート部分を一つのセルにまとめる
+            # Combine imports into one cell
             elif line.strip().startswith(
                 ("import ", "from ")
             ) or line.strip().startswith("sys.path"):
@@ -154,47 +154,47 @@ class CodeGenerationService:
                     current_cell = []
                 current_cell.append(line)
 
-            # 関数定義の開始 - 関数全体を一つのセルに
+            # Start of function definition - whole function in one cell
             elif line.strip().startswith("def "):
-                # 現在のセルを保存
+                # Save current cell
                 if current_cell:
                     cell = self._create_code_cell("\n".join(current_cell))
                     if cell:
                         cells.append(cell)
                     current_cell = []
 
-                # 関数全体を読み込む
+                # Loading the entire function
                 function_lines = [line]
                 i += 1
 
-                # 関数の中身を全て読み込む（インデントで判断）
+                # Read the entire function (determined by indentation)
                 while i < len(lines):
                     next_line = lines[i]
-                    # 空行は含める
+                    # Blank lines are included
                     if next_line.strip() == "":
                         function_lines.append(next_line)
-                    # インデントがある行または関数内のコメント
+                    # Indented lines or comments within functions
                     elif next_line.startswith("    ") or next_line.startswith("\t"):
                         function_lines.append(next_line)
-                    # 新しい関数定義、クラス定義、またはトップレベルコードが始まった
+                    # A new function definition, class definition, or top-level code begins
                     elif next_line.strip().startswith(
                         ("def ", "class ", "if __name__")
                     ) or (next_line.strip() and not next_line.startswith((" ", "\t"))):
-                        # 関数終了、インデックスを戻す
+                        # End of function, return index
                         i -= 1
                         break
                     else:
                         function_lines.append(next_line)
                     i += 1
 
-                # 関数セルを作成
+                # Create function cell
                 cell = self._create_code_cell("\n".join(function_lines))
                 if cell:
                     cells.append(cell)
 
-            # クラス定義の開始
+            # Starting class definition
             elif line.strip().startswith("class "):
-                # 現在のセルを保存
+                # Save current cell
                 if current_cell:
                     cell = self._create_code_cell("\n".join(current_cell))
                     if cell:
@@ -202,36 +202,36 @@ class CodeGenerationService:
                     current_cell = []
                 current_cell.append(line)
 
-            # メイン実行部分 - if __name__ == "__main__": から最後まで
+            # main execution part - if __name__ == "__main__": from to the end
             elif line.strip() == 'if __name__ == "__main__":':
-                # 現在のセルを保存
+                # Save current cell
                 if current_cell:
                     cell = self._create_code_cell("\n".join(current_cell))
                     if cell:
                         cells.append(cell)
                     current_cell = []
 
-                # メイン部分の開始
+                # Save current cell
                 main_lines = [line]
                 i += 1
 
-                # ファイルの最後まで全て読み込む
+                # Read all the way to the end of the file
                 while i < len(lines):
                     main_lines.append(lines[i])
                     i += 1
 
-                # メイン実行セルを作成
+                # Create the main execution cell
                 cell = self._create_code_cell("\n".join(main_lines))
                 if cell:
                     cells.append(cell)
-                break  # ファイル終端なのでループ終了
+                break  # Create the main execution cell
 
             else:
                 current_cell.append(line)
 
             i += 1
 
-        # 残りのコードを追加
+        # Add the rest of the code
         if current_cell:
             cell = self._create_code_cell("\n".join(current_cell))
             if cell:
@@ -240,19 +240,19 @@ class CodeGenerationService:
         return cells
 
     def _create_code_cell(self, source_code):
-        """コードセルを作成"""
-        # 空のコードは除外
+        """Create code cell"""
+        # Exclude empty code
         if not source_code.strip():
             return None
 
-        # 改行を保持するため、各行を配列の要素として保持し、最後に改行文字を追加
+        # To preserve line breaks, store each line as an element in an array and add a newline character at the end.
         lines = source_code.split("\n")
-        # 最後の行以外は改行文字を追加
+        # Add a newline character to all lines except the last one
         source_lines = []
         for i, line in enumerate(lines):
-            if i < len(lines) - 1:  # 最後の行以外
+            if i < len(lines) - 1:  # except the last line
                 source_lines.append(line + "\n")
-            else:  # 最後の行
+            else:  # last line
                 source_lines.append(line)
 
         return {
@@ -264,21 +264,21 @@ class CodeGenerationService:
         }
 
     def _create_markdown_cell(self, markdown_text):
-        """マークダウンセルを作成"""
-        # 改行を保持するため、各行を配列の要素として保持し、最後に改行文字を追加
+        """Create a Markdown cell"""
+        # To preserve line breaks, store each line as an element in an array and add a newline character at the end.
         lines = markdown_text.split("\n")
-        # 最後の行以外は改行文字を追加
+        # Add a newline character to all lines except the last one
         source_lines = []
         for i, line in enumerate(lines):
-            if i < len(lines) - 1:  # 最後の行以外
+            if i < len(lines) - 1:  # except the last line
                 source_lines.append(line + "\n")
-            else:  # 最後の行
+            else:  # last line
                 source_lines.append(line)
 
         return {"cell_type": "markdown", "metadata": {}, "source": source_lines}
 
     def _create_base_template(self, project):
-        """基本テンプレートを作成（セクションコメント付き）"""
+        """Create a basic template (with section comments)"""
         return f'''#!/usr/bin/env python3
 """
 {project.description if project.description else f"Generated workflow for project: {project.name}"}
@@ -324,15 +324,15 @@ if __name__ == "__main__":
 '''
 
     def _generate_import_statement(self, category, class_name):
-        """クラス名から動的にimport文を生成"""
+        """Dynamically generate import statements from class names"""
         try:
-            # クラス名のバリデーション
+            # Class Name Validation
             if not re.match(r"^[A-Za-z][A-Za-z0-9_]*$", class_name):
                 logger.warning(f"Invalid class name format: {class_name}")
                 return None
 
-            # 全てのノードを nodes からimport（動的生成）
-            # nodes/{ClassName}.py から {ClassName} をimport
+            # Import all nodes from nodes (dynamically generated)
+            # nodes/{ClassName}.py import {ClassName} from
             return f"from nodes.{category}.{class_name} import {class_name}"
 
         except Exception as e:
@@ -340,7 +340,7 @@ if __name__ == "__main__":
             return None
 
     def _generate_node_code_block(self, node, node_no, instance_name):
-        """ノードのコードブロックを動的に生成（categoryベース）"""
+        """Dynamically generate code blocks for nodes (category-based)"""
         label = node.data.get("label", "").strip()
 
         category = (
@@ -361,7 +361,7 @@ if __name__ == "__main__":
             return f"""    # Node with no label (ID: {node_id})
         {var_name} = None  # TODO: Add implementation"""
 
-        # 全てのカテゴリーでコード生成を行う
+        # Generate code for all categories
         category_lower = category.lower()
         logger.info(
             f"DEBUG: Generating code for node {node_id} - category '{category}' (normalized: '{category_lower}')"
@@ -401,7 +401,7 @@ if __name__ == "__main__":
         return code_block
 
     def _sanitize_variable_name(self, node_id, prefix):
-        """ノードIDを有効な変数名に変換"""
+        """Converting node IDs to valid variable names"""
         sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", str(node_id))
         if sanitized and sanitized[0].isdigit():
             sanitized = f"{prefix}_{sanitized}"
@@ -410,16 +410,16 @@ if __name__ == "__main__":
         return sanitized
 
     def _generate_variable_name_by_category(self, class_name, node_id, category, node_no):
-        """categoryベースで変数名を生成（短い名前）"""
-        # node_idから数値部分だけを抽出（最初の数値部分を使用）
+        """Generate variable names based on category (short names)"""
+        # Extract only the numeric part from node_id (use the first numeric part)
         import re
 
         match = re.search(r"\d+", node_id)
         if match:
-            # 最初の6桁まで（または全体が6桁未満ならそのまま）
+            # First 6 digits (or as is if the total is less than 6 digits)
             short_id = match.group()[:6]
         else:
-            # 数値がない場合はnode_idの最初の8文字
+            # If there is no number, the first 8 characters of the node_id
             short_id = node_id.replace("calc_", "").replace("_", "")[:8]
 
         node_no_zero = str(node_no).zfill(3)
@@ -434,13 +434,13 @@ if __name__ == "__main__":
         elif category == "analysis":
             return f"analysis_{short_id}"
         else:
-            # その他のカテゴリー
+            # Other categories
             return f"{category}_{short_id}"
         """
         
-    """ コンストラクタにNodeを渡している（不使用？）"""
+    """ Passing Node to the constructor (unused?)"""
     def _generate_constructor_arg_by_category(self, class_name, category):
-        """categoryベースでコンストラクタ引数を生成"""
+        """Generate constructor arguments based on category"""
         if category == "network":
             return "SonataNetworkBuilder"
         elif category == "simulation":
@@ -448,11 +448,11 @@ if __name__ == "__main__":
         elif category == "analysis":
             return "SpikeAnalyzer"
         else:
-            # その他のカテゴリの場合は、カテゴリー名をそのまま使用
+            # For other categories, use the category name as is
             return category.capitalize()
 
     def _generate_configure_block_by_category(self, class_name, category, node_data):
-        """categoryベースでconfigureブロックを生成（パラメーター変更含む）"""
+        """Generate configure blocks based on category (including parameter changes)"""
         return self._generate_generic_configure_block(class_name, node_data)
         """
         if category == "network":
@@ -467,11 +467,11 @@ if __name__ == "__main__":
 
     """
     def _generate_network_configure_block(self, class_name, node_data):
-        #networkカテゴリ用のconfigureブロックを生成（変更されたパラメーターのみ）
-        # デフォルト設定は不要、変更されたパラメーターのみを取得
+        #Generate configure blocks for the #network category (only changed parameters)
+        # No default settings needed, only retrieve changed parameters
         modified_params = self._get_modified_parameters_for_configure(node_data, {})
 
-        # configureブロックをフォーマット
+        # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
             if isinstance(value, str):
@@ -482,11 +482,11 @@ if __name__ == "__main__":
         return ",\n".join(config_lines)
 
     def _generate_simulation_configure_block(self, class_name, node_data):
-        #simulationカテゴリ用のconfigureブロックを生成（変更されたパラメーターのみ）
-        # デフォルト設定は不要、変更されたパラメーターのみを取得
+        #Generate configure blocks for the simulation category (only changed parameters)
+        # No default settings needed, only retrieve changed parameters
         modified_params = self._get_modified_parameters_for_configure(node_data, {})
 
-        # configureブロックをフォーマット
+        # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
             if isinstance(value, (int)):
@@ -499,11 +499,11 @@ if __name__ == "__main__":
         return ",\n".join(config_lines)
 
     def _generate_analysis_configure_block(self, class_name, node_data):
-        #analysisカテゴリ用のconfigureブロックを生成（変更されたパラメーターのみ）
-        # 変更されたパラメーターのみを取得
+        #Generate configure block for #analysis category (only changed parameters)
+        # Get only changed parameters
         modified_params = self._get_modified_parameters_for_configure(node_data, {})
 
-        # configureブロックをフォーマット
+        # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
             if isinstance(value, str):
@@ -515,68 +515,68 @@ if __name__ == "__main__":
     """
 
     def _generate_generic_configure_block(self, class_name, node_data):
-        """その他のカテゴリー用のconfigureブロックを生成（変更されたパラメーターのみ）"""
-        # 変更されたパラメーターのみを取得
+        """Generate configure blocks for other categories (only changed parameters)"""
+        # Get only changed parameters
         modified_params = self._get_modified_parameters_for_configure(node_data, {})
 
-        # configureブロックをフォーマット
+        # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
             if isinstance(value, (int)):
-                return f"            {key}={float(value):.1f}"
+              config_lines.append(f'            {key}={float(value):.1f}')
             elif isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
+              config_lines.append(f'            {key}="{value}"')
             else:
-                config_lines.append(f"            {key}={value}")
+              config_lines.append(f"            {key}={value}")
 
         return ",\n".join(config_lines)
 
     def _get_modified_parameters_for_configure(self, node_data, default_params):
         """
-        ノードのパラメーター変更情報を取得し、変更されたもののみを返す
-        カテゴリ別に変更されたパラメーターを適切なconfigure設定に変換
+        Gets parameter change information for a node and returns only those that have changed
+        Converting categorically changed parameters to the appropriate configure settings
         """
-        # 変更されたパラメーターのみを格納する辞書
+        # A dictionary that stores only the changed parameters
         modified_params_only = {}
 
-        # schema.parametersから現在の値を取得
+        # Get the current values ​​from the schema.parameters
         schema = node_data.get("schema", {})
         parameters = schema.get("parameters", {})
 
         logger.info(f"DEBUG: Processing parameters for configure block: {parameters}")
 
-        # parameter_modificationsから変更情報を取得
+        # Get modification information from parameter_modifications
         modifications = node_data.get("parameter_modifications", {})
         logger.info(f"DEBUG: parameter_modifications: {modifications}")
 
-        # 変更されたパラメーターのみを処理
+        # Process only changed parameters
         for param_key, param_info in parameters.items():
-            current_value = param_info.get("default_value")  # default_valueから現在の値を取得
+            current_value = param_info.get("default_value")  # Get the current value from default_value
             logger.info(f"DEBUG: Processing parameter '{param_key}' with value '{current_value}'")
 
-            # configure設定にマッピングされるパラメーター名を取得
+            # Get the parameter name that maps to a configuration setting
             config_key = self._map_parameter_to_config_key(param_key)
             logger.info(f"DEBUG: Parameter '{param_key}' mapped to config_key '{config_key}'")
 
-            # default_valueの変更があった時のみチェック
+            # Check only when default_value is changed
             if param_key in modifications:
                 modification_info = modifications[param_key]
-                # 新しいデータ構造に対応
+                # Compatible with new data structures
                 original_value = modification_info.get("field_modifications", {}).get("default_value_original", "")
                 is_modified = modification_info.get("is_modified", False)
-                # default_valueが元の値と異なるかチェック
+                # Check if default_value is different from original value
                 has_default_value_changed = (current_value != original_value) and is_modified
                 logger.info(f"DEBUG: Parameter '{param_key}' default_value changed: {original_value} -> {current_value} (changed: {has_default_value_changed}, is_modified: {is_modified})")
             else:
                 has_default_value_changed = False
                 logger.info(f"DEBUG: Parameter '{param_key}' not found in modifications")
 
-            # default_valueの変更があったパラメーターのみを追加
+            # Add only parameters whose default_value has changed
             if (param_key in modifications and
                 has_default_value_changed and
                 config_key and current_value is not None):
 
-                # 型変換を行う
+                # perform type conversion
                 converted_value = self._convert_parameter_value(current_value, config_key)
                 modified_params_only[config_key] = converted_value
 
@@ -584,8 +584,8 @@ if __name__ == "__main__":
                 original_value = modification_info.get("field_modifications", {}).get("default_value_original", "")
                 logger.info(f"DEBUG: Added parameter with default_value change '{param_key}' -> '{config_key}': {original_value} -> {current_value}")
 
-        # parameter_modificationsの全ての項目を確実に処理するための追加チェック
-        # より詳細なログ出力で3つ目以降の認識問題を解決
+        # Additional checks to ensure all items in parameter_modifications are processed
+        # More detailed logging to resolve recognition issue after the third one
         logger.info(f"DEBUG: Starting additional check for all modifications: {len(modifications)} items")
         for i, (param_key, modification_info) in enumerate(modifications.items()):
             logger.info(f"DEBUG: Processing modification {i+1}/{len(modifications)}: {param_key}")
@@ -596,15 +596,15 @@ if __name__ == "__main__":
 
             param_info = parameters[param_key]
             current_value = param_info.get("default_value")
-            # 新しいデータ構造に対応
+            # Compatible with new data structures
             original_value = modification_info.get("field_modifications", {}).get("default_value_original", "")
             is_modified = modification_info.get("is_modified", False)
 
-            # configure設定にマッピングされるパラメーター名を取得
+            # Get the parameter name that maps to a configuration setting
             config_key = self._map_parameter_to_config_key(param_key)
             logger.info(f"DEBUG: Modification {i+1} - '{param_key}' -> '{config_key}': {original_value} -> {current_value} (is_modified: {is_modified})")
 
-            # より寛容な変更判定（型変換後に比較）
+            # More lenient mutation detection (comparison after type conversion)
             current_converted = self._convert_parameter_value(current_value, config_key)
             original_converted = self._convert_parameter_value(original_value, config_key)
 
@@ -613,12 +613,12 @@ if __name__ == "__main__":
 
             logger.info(f"DEBUG: Modification {i+1} - has_change: {has_change}, already_processed: {already_processed}")
 
-            # まだ処理されていないパラメーターで変更があるものを追加
+            # Add any parameter changes that have not yet been processed
             if (config_key not in modified_params_only and
                 has_change and
                 config_key and current_value is not None):
 
-                # 型変換を行う
+                # perform type conversion
                 converted_value = self._convert_parameter_value(current_value, config_key)
                 modified_params_only[config_key] = converted_value
 
@@ -631,21 +631,21 @@ if __name__ == "__main__":
 
     def _map_parameter_to_config_key(self, parameter_key):
         """
-        パラメーター名をそのまま使用（マッピング不要）
+        Use the parameter name as is (no mapping required)
         """
-        # パラメーター名をそのまま返す
+        # Returns the parameter name as is
         return parameter_key
 
     def _convert_parameter_value(self, value, config_key):
         """
-        パラメーター値を適切な型に変換（配列と数値対応）
+        Converts parameter values ​​to the appropriate type (supports arrays and numbers)
         """
-        # 配列の処理
+        # Processing arrays
         if isinstance(value, list):
-            # リストの場合はPythonの配列表記に変換
+            # If it is a list, convert it to Python array notation
             return value
 
-        # JSONから文字列として来た配列の処理
+        # Processing arrays coming from JSON as strings
         if isinstance(value, str) and value.strip().startswith('[') and value.strip().endswith(']'):
             try:
                 import json
@@ -656,13 +656,13 @@ if __name__ == "__main__":
                 logger.warning(f"Could not parse array string '{value}' for {config_key}, keeping as string")
                 return value
 
-        # 数値系のパラメーター
+        # Numerical parameters
         numeric_keys = ["simulation_time", "record_n_neurons", "hdf5_hyperslab_size"]
 
-        # 数値かどうかを自動判定
+        # Automatically determines whether it is a number
         if config_key in numeric_keys or self._is_numeric_value(value):
             try:
-                # floatまたはintに変換
+                # convert to float or int
                 if config_key == "simulation_time" or '.' in str(value):
                     return float(value)
                 else:
@@ -671,11 +671,11 @@ if __name__ == "__main__":
                 logger.warning(f"Could not convert '{value}' to number for {config_key}, keeping as string")
                 return value
 
-        # 文字列系のパラメーター（そのまま返す）
+        # String parameters (returned as is)
         return value
 
     def _is_numeric_value(self, value):
-        """値が数値かどうかを判定"""
+        """Determine if a value is a number"""
         try:
             float(value)
             return True
@@ -684,19 +684,19 @@ if __name__ == "__main__":
 
     def _extract_handle_name(self, handle_string):
         """
-        ハンドル文字列から必要な部分を抽出
-        例: calc_1757868335061_i6nyja6de-sonata_net-output-object -> sonata_net
+        Extract the necessary part from the handle string
+        Example: calc_1757868335061_i6nyja6de-sonata_net-output-object -> sonata_net
         """
         if not handle_string:
             return ""
 
         try:
-            # '-' で分割して2番目の部分を取得
+            # Split on '-' to get the second part
             parts = handle_string.split('-')
             if len(parts) >= 2:
-                return parts[1]  # sonata_net 部分
+                return parts[1]  # sonata_net part
             else:
-                # 分割できない場合はそのまま返す
+                # If it cannot be divided, return it as is
                 return handle_string
         except Exception as e:
             logger.warning(f"Could not extract handle name from '{handle_string}': {e}")
@@ -704,7 +704,7 @@ if __name__ == "__main__":
 
 
     def _get_categories(self):
-        """カテゴリディレクトリをディクショナリで取得"""
+        """Get the category directory as a dictionary"""
         sub_directories = {}
         nodes_path = Path(settings.MEDIA_ROOT)
         for item in os.listdir(nodes_path):
@@ -716,7 +716,7 @@ if __name__ == "__main__":
 
 
     def _get_section_name_from_category(self, category):
-        """カテゴリからセクション名を取得"""
+        """Get section name from category"""
         """
         category_to_section = {
             "analysis": "Analysis",
@@ -731,7 +731,7 @@ if __name__ == "__main__":
         return category_to_section.get(category.lower(), "Analysis")
 
     def _get_builder_name_from_label(self, label, node_id, category=None):
-        """ラベルとカテゴリからBuilderでの名前を取得（コンストラクタ引数と同じルール）"""
+        """Get the name in the Builder from the label and category (same rules as constructor arguments)"""
         if category == "network":
             return "SonataNetworkBuilder"
         elif category == "simulation":
@@ -739,33 +739,33 @@ if __name__ == "__main__":
         elif category == "analysis":
             return "SpikeAnalyzer"
         else:
-            # その他のカテゴリの場合は、カテゴリー名をそのまま使用
+            # For other categories, use the category name as is
             return category.capitalize()
 
     def _build_workflow_commands_from_json(self, nodes_data, edges_data):
-        """ノードとエッジ情報からワークフローコマンドを生成"""
+        """Generate workflow commands from node and edge information"""
         commands = []
 
-        # ノードIDから変数名とBuilderNameへのマッピングを作成
+        # Create a mapping from node ID to variable name and BuilderName
         node_id_to_var = {}
         node_id_to_builder = {}
 
-        # ノード番号採番
+        # Node number assignment
         node_no = 1
 
-        # まず全ノードの情報を収集
+        # First, collect information on all nodes.
         for node_data in nodes_data:
             node_id = node_data.get("id", "")
             label = node_data.get("data", {}).get("label", "")
 
-            # categoryの取得方法を修正
+            # Fixed the method to get category
             category = (
                 node_data.get("data", {}).get("nodeType", "")
                 or node_data.get("type", "")
                 or node_data.get("data", {}).get("category", "")
             ).lower()
 
-            # 全てのカテゴリーでvariable_nameとbuilder_nameを生成
+            # Generate variable_name and builder_name for all categories
             class_name = node_data.get("data", {}).get("label", "")
             var_name = node_data.get("data", {}).get("instanceName", "")
             if class_name == var_name:
@@ -783,43 +783,43 @@ if __name__ == "__main__":
             node_id_to_builder[node_id] = builder_name
             node_no += 1
 
-        # add_nodeコマンドを生成（全ノード）
+        # Generate add_node command (for all nodes)
         for node_id in node_id_to_var:
             var_name = node_id_to_var[node_id]
             commands.append(f"    workflow_builder.add_node({var_name})")
 
-        # connectコマンドを生成（エッジごと）
+        # Generate connect commands (for each edge)
         for edge_data in edges_data:
             source_id = edge_data.get("source", "")
             target_id = edge_data.get("target", "")
 
-            # sourceHandleとtargetHandleからポート情報を取得
+            # Get port information from sourceHandle and targetHandle
             source_handle_raw = edge_data.get("sourceHandle", "")
             target_handle_raw = edge_data.get("targetHandle", "")
 
-            # ハンドル名から必要な部分を抽出 (例: calc_xxx-sonata_net-output-object -> sonata_net)
+            # Extract necessary parts from handle names (Example: calc_xxx-sonata_net-output-object -> sonata_net)
             source_handle = self._extract_handle_name(source_handle_raw)
             target_handle = self._extract_handle_name(target_handle_raw)
 
             if source_id in node_id_to_var and target_id in node_id_to_var:
-                # Builder名を取得
+                # Get builder name
                 source_builder = node_id_to_builder.get(source_id, f"Node_{source_id}")
                 target_builder = node_id_to_builder.get(target_id, f"Node_{target_id}")
 
-                # connectコマンドを生成
+                # Generate connect command
                 commands.append(
                     f'    workflow_builder.connect("{source_builder}", "{source_handle}", '
                     f'"{target_builder}", "{target_handle}")'
                 )
 
-        # 最後にbuild()を追加
+        # Add build() at the end
         commands.append("    workflow = workflow_builder.build()")
 
         return commands
 
-    # ワークフロー・コードジェネレータ
+    # Workflow Code Generator
     def generate_code_from_flow_data(self, project_id, project_name, nodes_data, edges_data):
-        """React Flow JSONデータから一括でコードを生成する新しいメソッド"""
+        """React Flow New method for bulk code generation from JSON data"""
         try:
             logger.info(
                 f"=== Starting batch code generation from flow data for project {project_id} ==="
@@ -828,11 +828,11 @@ if __name__ == "__main__":
                 f"Processing {len(nodes_data)} nodes and {len(edges_data)} edges"
             )
 
-            # プロジェクトの基本テンプレートを作成
+            # Create a basic template for your project
             project = FlowProject.objects.get(id=project_id)
             base_code = self._create_base_template(project)
 
-            # カテゴリ別にノードを整理
+            # Organize nodes by category
             nodes_by_category = {}
             node_imports = set()
 
@@ -840,20 +840,20 @@ if __name__ == "__main__":
                 f"DEBUG: Processing {len(nodes_data)} nodes for NEW ARCHITECTURE"
             )
 
-            # ノード番号を採番
+            # Assigning node numbers
             node_no = 1
             for i, node_data in enumerate(nodes_data):
                 logger.info(f"DEBUG: Node {i+1}: {node_data}")
 
-                # 実際のDBからノード情報を取得してパラメーター変更情報を含める
+                # Retrieve node information from the actual database and include parameter change information
                 node_id = node_data.get("id", "")
                 instance_name = node_data.get("data", "").get("instanceName", "")
                 try:
-                    # DBから実際のノードを取得（パラメーター変更情報含む）
+                    # Get actual nodes from DB (including parameter change information)
                     db_node = FlowNode.objects.get(id=node_id, project_id=project_id)
-                    # DBのdataにパラメーター変更情報が含まれているのでそれを使用
+                    # The DB data contains parameter change information, so use that.
                     enhanced_node_data = db_node.data.copy()
-                    # 位置情報などはJSONから取得
+                    # Location information etc. is obtained from JSON
                     enhanced_node_data.update(node_data.get("data", {}))
 
                     logger.info(f"DEBUG: Enhanced node data with parameter modifications: {enhanced_node_data}")
@@ -861,7 +861,7 @@ if __name__ == "__main__":
                     logger.warning(f"Node {node_id} not found in DB, using JSON data only")
                     enhanced_node_data = node_data.get("data", {})
 
-                # 一時的なFlowNodeオブジェクトを作成（パラメーター変更情報含む）
+                # Create a temporary FlowNode object (including parameter change information)
                 temp_node = type(
                     "TempNode",
                     (),
@@ -872,18 +872,18 @@ if __name__ == "__main__":
                         "position_y": node_data.get("position", {}).get("y", 0),
                         "node_type": node_data.get(
                             "type", "default"
-                        ),  # typeフィールドを渡す
+                        ),  # Pass the type field
                     },
                 )()
 
-                # ノードのコードブロックを生成
+                # Generate a code block for a node
                 code_block = self._generate_node_code_block(temp_node, node_no, instance_name)                
                 logger.info(f"DEBUG: Generated code block: '{code_block}'")
-                # ノード番号カウント
+                # Node number count
                 node_no += 1
 
                 if code_block and code_block.strip():
-                    # categoryの取得方法を修正
+                    # Fixed the method to get category
                     category = (
                         temp_node.data.get("nodeType", "")
                         or temp_node.node_type
@@ -897,7 +897,7 @@ if __name__ == "__main__":
                     )
                     logger.info(f"DEBUG: Added to {category} category")
 
-                # 必要なインポートを収集（動的生成）
+                # Collect required imports (dynamically generated)
                 label = temp_node.data.get("label", "").strip()
                 if label:
                     import_statement = self._generate_import_statement(category, label)
@@ -905,12 +905,12 @@ if __name__ == "__main__":
                         node_imports.add(import_statement)
                         logger.info(f"DEBUG: Added import: {import_statement}")
 
-            # インポート文を追加
+            # Add import statement
             updated_code = base_code
             logger.info(f"DEBUG: Adding {len(node_imports)} imports")
             for import_line in node_imports:
                 if import_line not in updated_code:
-                    # WorkflowBuilderインポートの後に追加
+                    # Add after WorkflowBuilder import
                     match = self.patterns["workflow_builder_import"].search(
                         updated_code
                     )
@@ -920,18 +920,18 @@ if __name__ == "__main__":
                         )
                         logger.info(f"DEBUG: Added import: {import_line}")
 
-            # カテゴリ別にコードブロックをセクションに挿入
+            # Insert code blocks into sections by category
             logger.info(f"DEBUG: Categories found: {list(nodes_by_category.keys())}")
 
             """
-            # カテゴリ毎ノード生成（カテゴリ毎にセクションが異なる）
+            # Generate nodes for each category (different sections for each category)
             for category, node_list in nodes_by_category.items():
                 section_name = self._get_section_name_from_category(category)
                 logger.info(
                     f"DEBUG: Inserting {len(node_list)} nodes into '{section_name}' section"
                 )
 
-                # セクションを検出
+                # detect section
                 section_pattern = re.compile(
                     #rf"^(\s*)# {re.escape(section_name)} field\s*$", re.MULTILINE
                     rf"# Create nodes", re.MULTILINE
@@ -944,32 +944,32 @@ if __name__ == "__main__":
                         f"DEBUG: Found '{section_name}' section at position {insertion_point}"
                     )
 
-                    # セクションの既存コードを削除して新しいコードに置換
-                    # 次のセクションまたはCreate workflow fieldまでを検索
+                    # Delete the existing code in the section and replace it with the new code
+                    # Search to the next section or Create workflow field
                     next_section_pattern = re.compile(
                         #r'^(\s*)# (Analysis|IO|Network|Optimization|Simulation|Stimulus|Test|Create workflow) field\s*$',
                         r'^(\s*)# Create workflow field\s*$',
                         re.MULTILINE
                     )
 
-                    # insertion_point以降で次のセクションを検索
+                    # Find next section after insertion_point
                     remaining_code = updated_code[insertion_point:]
                     next_match = next_section_pattern.search(remaining_code)
 
                     if next_match:
-                        # 次のセクションが見つかった場合、そこまでを置換
+                        # If the next section is found, replace it up to that point
                         section_end = insertion_point + next_match.start()
                     else:
-                        # 次のセクションが見つからない場合、ファイル終端まで
+                        # If the next section is not found, continue to the end of the file.
                         section_end = len(updated_code)
 
-                    # セクションのコードブロックを結合
+                    # Combine code blocks in sections
                     section_code_blocks = [
                         node_info["code_block"] for node_info in node_list
                     ]
                     section_code = "\n".join(section_code_blocks)
 
-                    # セクション内容を置換（既存コードを削除して新しいコードを挿入）
+                    # Replace section content (delete existing code and insert new code)
                     before_section = updated_code[:insertion_point]
                     after_section = updated_code[section_end:]
                     updated_code = f"{before_section}\n{section_code}\n{after_section}"
@@ -980,19 +980,19 @@ if __name__ == "__main__":
                     logger.error(f"DEBUG: Could not find '{section_name}' section")
             """
 
-            # カテゴリ毎ノード生成（全カテゴリを1セクションに作成）
+            # Create a node for each category (create all categories in one section)
             section_codes = ""
             for category, node_list in nodes_by_category.items():
                 section_name = self._get_section_name_from_category(category)
 
-                # セクションのコードブロックを結合
+                # Combine code blocks in sections
                 section_code_blocks = [
                     node_info["code_block"] for node_info in node_list
                 ]
                 section_code = "\n".join(section_code_blocks)
                 section_codes += section_code
 
-            # セクションを検出
+            # detect section
             section_pattern = re.compile(
                 #rf"^(\s*)# {re.escape(section_name)} field\s*$", re.MULTILINE
                 rf"# Create nodes", re.MULTILINE
@@ -1005,26 +1005,26 @@ if __name__ == "__main__":
                     f"DEBUG: Found '{section_name}' section at position {insertion_point}"
                 )
 
-                # セクションの既存コードを削除して新しいコードに置換
-                # 次のセクションまたはCreate workflow fieldまでを検索
+                # Delete the existing code in the section and replace it with the new code
+                # Search to the next section or Create workflow field
                 next_section_pattern = re.compile(
                     #r'^(\s*)# (Analysis|IO|Network|Optimization|Simulation|Stimulus|Test|Create workflow) field\s*$',
                     r'^(\s*)# Create workflow field\s*$',
                     re.MULTILINE
                 )
 
-                # insertion_point以降で次のセクションを検索
+                # Find next section after insertion_point
                 remaining_code = updated_code[insertion_point:]
                 next_match = next_section_pattern.search(remaining_code)
 
                 if next_match:
-                    # 次のセクションが見つかった場合、そこまでを置換
+                    # If the next section is found, replace it up to that point
                     section_end = insertion_point + next_match.start()
                 else:
-                    # 次のセクションが見つからない場合、ファイル終端まで
+                    # If the next section is not found, continue to the end of the file.
                     section_end = len(updated_code)
 
-                # セクション内容を置換（既存コードを削除して新しいコードを挿入）
+                # Replace section content (delete existing code and insert new code)
                 before_section = updated_code[:insertion_point]
                 after_section = updated_code[section_end:]
                 updated_code = f"{before_section}\n{section_codes}\n{after_section}"
@@ -1036,11 +1036,7 @@ if __name__ == "__main__":
             
 
 
-
-
-
-
-            # Workflowコマンドを生成
+            # Generate Workflow Command
             logger.info(f"DEBUG: Building workflow commands")
             workflow_commands = self._build_workflow_commands_from_json(
                 nodes_data, edges_data
@@ -1049,7 +1045,7 @@ if __name__ == "__main__":
             for command in workflow_commands:
                 logger.info(f"DEBUG: Command: {command}")
 
-            # Create workflow fieldセクションにコマンドを挿入
+            # Insert the command in the Create workflow field section
             workflow_section_pattern = re.compile(
                 r'^(\s*)workflow_builder = WorkflowBuilder\("neural_simulation"\)\s*$',
                 re.MULTILINE,
@@ -1065,7 +1061,7 @@ if __name__ == "__main__":
                 )
 
                 if workflow_commands:
-                    # コマンドを挿入
+                    # insert command
                     before_commands = updated_code[:insertion_point]
                     after_commands = updated_code[insertion_point:]
                     commands_text = "\n" + "\n".join(workflow_commands) + "\n"
@@ -1078,7 +1074,7 @@ if __name__ == "__main__":
             else:
                 logger.error(f"DEBUG: Could not find WorkflowBuilder declaration")
 
-            # ファイルに保存
+            # save to file
             code_file = self.get_code_file_path(project_name)
             code_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1088,7 +1084,7 @@ if __name__ == "__main__":
             logger.info(f"DEBUG: Final generated code:\n{updated_code}")
             logger.info(f"Successfully saved generated code to: {code_file}")
 
-            # Jupyter notebookに変換
+            # Convert to Jupyter notebook
             notebook_success = self._convert_py_to_ipynb(project_id)
             if notebook_success:
                 logger.info("Successfully converted to Jupyter notebook")

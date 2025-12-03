@@ -35,7 +35,7 @@ export interface ApiError {
   details?: any;
 }
 
-// デバッグ設定
+// debug settings
 export const isDebugMode = () => {
   return (
     import.meta.env.VITE_DEBUG_API === "true" ||
