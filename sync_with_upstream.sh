@@ -64,8 +64,10 @@ git branch "$BACKUP_BRANCH"
 echo ""
 echo "Step 5: Merging upstream changes..."
 echo "Using strategy: prefer upstream changes for conflicts"
-git merge upstream/main -m "Merge upstream changes from oist/neuro-workflow" \
-    -X theirs || {
+if git merge upstream/main -m "Merge upstream changes from oist/neuro-workflow" -X theirs; then
+    echo "✓ Merge completed successfully!"
+else
+    # Merge had conflicts even with -X theirs (can happen with add/add conflicts)
     
     echo ""
     echo "=========================================="
@@ -82,18 +84,32 @@ git merge upstream/main -m "Merge upstream changes from oist/neuro-workflow" \
     echo "4. Run: git commit"
     echo ""
     echo "Or to abort: git merge --abort"
+    echo ""
+    echo "To resolve automatically (prefer upstream):"
+    echo "  git checkout --theirs <conflicted-file>"
+    echo "  git add <conflicted-file>"
+    echo "  git commit"
     exit 1
-}
+fi
 
-# Step 8: Success message
+# Step 8: Check for remaining conflicts (in case -X theirs didn't handle everything)
+if git diff --check; then
+    echo ""
+    echo "WARNING: There may still be conflict markers in files!"
+    echo "Please review and resolve manually."
+fi
+
+# Step 9: Success message
 echo ""
 echo "=========================================="
 echo "✓ Successfully merged upstream changes!"
 echo "=========================================="
 echo ""
 echo "Next steps:"
-echo "1. Test your code: docker-compose -f gui/docker-compose.yml up -d"
-echo "2. Run your test suite"
-echo "3. If everything works, push to your branch"
+echo "1. Review any conflict resolutions"
+echo "2. Test your code: docker-compose -f gui/docker-compose.yml up -d"
+echo "3. Run your test suite"
+echo "4. If everything works, push to your branch:"
+echo "   git push origin $(git branch --show-current)"
 echo ""
 
