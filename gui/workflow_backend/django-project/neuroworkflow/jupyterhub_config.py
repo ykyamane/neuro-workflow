@@ -17,7 +17,7 @@ c.JupyterHub.spawner_class = DockerSpawner
 
 # Docker spawner configuration - NEST simulator enabled image
 c.DockerSpawner.image = "nest-jupyterlab:latest"  # Built from Dockerfile.nest
-c.DockerSpawner.network_name = "neuro-workflow_workflow"  # Use the Docker Compose network
+c.DockerSpawner.network_name = "jupyterhub-network"  # Use the Docker Compose network (must match docker-compose.yml)
 
 # Remove containers when they stop
 c.DockerSpawner.remove = True

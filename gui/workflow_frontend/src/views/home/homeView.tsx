@@ -221,12 +221,29 @@ const HomeView = () => {
 
 
   const handleNodeInfo = useCallback((nodeId: string) => {
-    const node = sharedNodes.find(n => n.id === nodeId);
+    // Try to find node in sharedNodes first
+    let node = sharedNodes.find(n => n.id === nodeId);
+    
+    // If not found, try to get it from ReactFlow instance (for newly added nodes)
+    if (!node && reactFlowInstance.current) {
+      const flowNodes = reactFlowInstance.current.getNodes();
+      node = flowNodes.find(n => n.id === nodeId) as Node<CalculationNodeData> | undefined;
+    }
+    
     if (node) {
       setSelectedNode(node);
       onViewOpen();
+    } else {
+      console.warn(`Node ${nodeId} not found for info display`);
+      toast({
+        title: "Node Not Found",
+        description: "Could not find node information. Please try again.",
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
     }
-  }, [sharedNodes, onViewOpen]);
+  }, [sharedNodes, onViewOpen, reactFlowInstance, toast]);
 
   const handleNodeUpdate = useCallback((nodeId: string, updatedData: Partial<CalculationNodeData>) => {
     console.log('handleNodeUpdate called for node:', nodeId, 'with data:', updatedData);
@@ -1130,6 +1147,36 @@ const HomeView = () => {
       return;
     }
 
+    // CRITICAL: Save all nodes to database before generating code
+    // This ensures newly added nodes are persisted and won't disappear
+    toast({
+      title: "Saving nodes...",
+      description: "Ensuring all nodes are saved before code generation",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+
+    // Save all nodes that haven't been saved yet
+    // Get current nodes from ReactFlow instance (includes newly added ones)
+    const currentNodes = reactFlowInstance.current?.getNodes() || sharedNodes;
+    
+    for (const node of currentNodes) {
+      try {
+        await createNodeAPI(node as Node<CalculationNodeData>);
+      } catch (error) {
+        // Node might already exist, try updating instead
+        try {
+          await updateNodeAPI(node.id, node as Partial<Node<CalculationNodeData>>);
+        } catch (updateError) {
+          console.warn(`Failed to save/update node ${node.id}:`, updateError);
+        }
+      }
+    }
+
+    // Wait a bit for all saves to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     setIsGeneratingCode(true);
 
     // Loading status toast
@@ -1200,7 +1247,7 @@ const HomeView = () => {
     } finally {
       setIsGeneratingCode(false);
     }
-  }, [selectedProject, reactFlowInstance, sharedNodes.length, toast]);
+  }, [selectedProject, reactFlowInstance, sharedNodes, createNodeAPI, updateNodeAPI, toast]);
 
   // Clean up
   useEffect(() => {

@@ -18,9 +18,10 @@ services:
     volumes:
       - ./workflow_backend:/django-app
       - ${NODES_DIR}:/django-app/django-project/codes/nodes
+      - ../src:/django-app/src:ro
     working_dir: /django-app
-    # ports:
-    #   - "3000:3000"
+    ports:
+      - "3000:3000"
     env_file:
       - ./workflow_backend/.env
     depends_on:

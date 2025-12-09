@@ -6,7 +6,8 @@ set -e  # Exit on error
 
 REPO_DIR="/Users/kirill/Documents/digital_brain/neuro-workflow"
 UPSTREAM_REMOTE="upstream"
-YOUR_BRANCH="main"  # Change this to your working branch name
+# Automatically detect current branch
+YOUR_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 
 cd "$REPO_DIR"
 
@@ -110,6 +111,6 @@ echo "1. Review any conflict resolutions"
 echo "2. Test your code: docker-compose -f gui/docker-compose.yml up -d"
 echo "3. Run your test suite"
 echo "4. If everything works, push to your branch:"
-echo "   git push origin $(git branch --show-current)"
+echo "   git push upstream $(git branch --show-current):feature/enhanced-version"
 echo ""
 

@@ -72,11 +72,21 @@ class FlowService:
         # Build node data
         nodes = []
         for node in project.nodes.all():
+            # Ensure old nodes have instanceName for title display
+            node_data_dict = node.data.copy() if node.data else {}
+            if not node_data_dict.get("instanceName") and not node_data_dict.get("label"):
+                # Set default title from available fields
+                node_data_dict["instanceName"] = (
+                    node_data_dict.get("file_name") or 
+                    node_data_dict.get("nodeType") or 
+                    f"Node {node.id[:8]}"
+                )
+            
             node_data = {
                 "id": node.id,
                 "position": {"x": node.position_x, "y": node.position_y},
                 "type": node.node_type,
-                "data": node.data,
+                "data": node_data_dict,
             }
             nodes.append(node_data)
 

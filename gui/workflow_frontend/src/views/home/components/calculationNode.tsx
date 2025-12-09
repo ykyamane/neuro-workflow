@@ -176,7 +176,7 @@ export const CalculationNode = ({
         {/* Node name (center) */}
         <HStack justify="space-between" align="center">
           <Text fontSize="sm" fontWeight="bold" flex="1" textAlign="center">
-            {data.instanceName || data.label }
+            {data.instanceName || data.label || data.file_name || data.nodeType || 'Unnamed Node'}
           </Text>
         </HStack>
       </Box>

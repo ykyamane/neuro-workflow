@@ -18,8 +18,13 @@ RUN poetry config virtualenvs.create false
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
-# install dependencies
-RUN poetry install --no-interaction --no-ansi --no-root
+# Install base dependencies with poetry (core Django packages)
+RUN poetry install --no-interaction --no-ansi --no-root --only main 2>&1 || \
+    (echo "Poetry install failed, installing with pip..." && \
+     pip install --no-cache-dir django djangorestframework psycopg2-binary drf-yasg django-cors-headers gunicorn python-dotenv pyjwt cryptography)
+
+# Install additional packages for parameter metadata service
+RUN pip install --no-cache-dir openai allensdk requests fuzzywuzzy python-Levenshtein
 
 # Copy project file
 COPY . .

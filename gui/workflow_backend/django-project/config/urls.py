@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/", include("app.auth.urls")),
     path("api/box/", include("app.box.urls")),
     path("api/workflow/", include("app.workflow.urls")),
+    path("api/metadata/", include("app.metadata.urls")),
     # <uuid:user_id>/<uuid:workflow_id>/
 ]
 

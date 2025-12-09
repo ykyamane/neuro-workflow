@@ -15,11 +15,13 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { EditIcon, CheckIcon, CloseIcon, ViewIcon } from '@chakra-ui/icons';
+import { FiZap } from 'react-icons/fi';
 import { CalculationNodeData, SchemaFields } from '../type';
 import { Node } from '@xyflow/react';
 import { createAuthHeaders } from '../../../api/authHeaders';
 import HomeView from '../homeView';
 import convertToStrIncFloat from '/homeView';
+import ParameterSuggestionModal from './ParameterSuggestionModal';
  
 interface NodeDetailsContentProps {
   nodeData: Node<CalculationNodeData> | null;
@@ -41,6 +43,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   const [editingField, setEditingField] = useState<'default_value' | 'constraints' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [localNodeData, setLocalNodeData] = useState<Node<CalculationNodeData> | null>(nodeData);
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
+  const [suggestingParam, setSuggestingParam] = useState<string | null>(null);
   const toast = useToast();
 
   // Update local state and reset edit state when nodeData changes
@@ -441,6 +445,40 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     setEditValue('');
   };
 
+  // Handle opening suggestion modal
+  const openSuggestionModal = (paramKey: string) => {
+    setSuggestingParam(paramKey);
+    setSuggestionModalOpen(true);
+  };
+
+  // Handle accepting a suggestion
+  const handleAcceptSuggestion = async (suggestion: { value: any; source: string; confidence: number; description: string; species?: string | null; citation?: string | null; metadata?: Record<string, any> }) => {
+    if (!suggestingParam) return;
+
+    // Update the parameter with the suggested value
+    const success = await updateParameter(suggestingParam, suggestion.value, 'default_value');
+    
+    if (success) {
+      // Close the modal
+      setSuggestionModalOpen(false);
+      setSuggestingParam(null);
+    }
+  };
+
+  // Get node type from node data
+  const getNodeType = (): string | undefined => {
+    // Try to get node type from various possible locations
+    if (localNodeData?.data?.file_name) {
+      // Extract class name from filename (e.g., "BuildSonataNetworkNode.py" -> "BuildSonataNetworkNode")
+      const fileName = localNodeData.data.file_name;
+      return fileName.replace('.py', '');
+    }
+    if (localNodeData?.data?.label) {
+      return localNodeData.data.label;
+    }
+    return undefined;
+  };
+
   if (!localNodeData) {
     return (
       <Flex align="center" justify="center" h="200px">
@@ -451,7 +489,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     );
   }
 
-  console.log("NodeData timestamp in modal:", localNodeData.data.__timestamp || 'no timestamp');
+  // Debug: timestamp check (commented out to reduce console noise)
+  // console.log("NodeData timestamp in modal:", localNodeData.data.__timestamp || 'no timestamp');
 
   const schema: SchemaFields = localNodeData.data.schema || { inputs: {}, outputs: {}, parameters: {}, methods: {} };
   
@@ -600,7 +639,19 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             boxShadow="sm"
           >
             <VStack align="stretch" spacing={3}>
-              <Text fontWeight="bold" fontSize="md" color="orange.200">"{key}"</Text>
+              <HStack justify="space-between" align="center">
+                <Text fontWeight="bold" fontSize="md" color="orange.200">"{key}"</Text>
+                <Tooltip label="Get AI suggestions for this parameter" hasArrow>
+                  <IconButton
+                    aria-label="Suggest values"
+                    icon={<FiZap />}
+                    size="xs"
+                    colorScheme="purple"
+                    variant="ghost"
+                    onClick={() => openSuggestionModal(key)}
+                  />
+                </Tooltip>
+              </HStack>
               
               {param.description && (
                 <HStack align="start">
@@ -959,6 +1010,21 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         </VStack>
       </Box>
 
+      {/* Parameter Suggestion Modal */}
+      {suggestingParam && localNodeData && (
+        <ParameterSuggestionModal
+          isOpen={suggestionModalOpen}
+          onClose={() => {
+            setSuggestionModalOpen(false);
+            setSuggestingParam(null);
+          }}
+          parameterName={suggestingParam}
+          parameterDescription={schema.parameters?.[suggestingParam]?.description || ''}
+          nodeType={getNodeType()}
+          species="mouse" // Default to mouse if not specified
+          onAccept={handleAcceptSuggestion}
+        />
+      )}
     </>
   );
 };
