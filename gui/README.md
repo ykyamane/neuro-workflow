@@ -4,7 +4,7 @@ Create the Docker image for the NEST JupyterLab environment
 
 ```bash
 cd ./gui/workflow_backend/django-project/neuroworkflow
-docker build -t nest-jupyterlab -f Dockerfile.nest .
+docker build --platform linux/amd64 -t nest-jupyterlab -f Dockerfile.nest .
 ```
 
 Edit the .env files to set environment variables.
