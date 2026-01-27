@@ -157,11 +157,84 @@ class ParameterMetadataService:
             if neuroml_adapter.is_available():
                 self.database_adapters.append(neuroml_adapter)
                 logger.info("NeuroML-DB adapter initialized")
+            
+            # Load custom databases from config (if provided)
+            custom_databases = self.config.get('custom_databases', [])
+            self._load_custom_databases(custom_databases)
 
         except ImportError as e:
             logger.debug(f"Database adapters not available: {e}")
         except Exception as e:
             logger.warning(f"Error initializing database adapters: {e}")
+    
+    def _load_custom_databases(self, custom_databases: List[Dict[str, Any]]):
+        """Load custom database adapters from configuration."""
+        try:
+            from .database_adapters.generic import GenericDatabaseAdapter
+            
+            for db_config in custom_databases:
+                try:
+                    # Ensure source_name is set
+                    if 'source_name' not in db_config:
+                        db_config['source_name'] = db_config.get('name', 'custom_db')
+                    
+                    # Add OpenAI client
+                    db_config['openai_client'] = self.openai_client
+                    
+                    # Create adapter
+                    adapter = GenericDatabaseAdapter(db_config)
+                    
+                    if adapter.is_available():
+                        self.database_adapters.append(adapter)
+                        logger.info(f"Custom database adapter '{db_config.get('source_name')}' initialized")
+                    else:
+                        logger.debug(f"Custom database adapter '{db_config.get('source_name')}' not available")
+                
+                except Exception as e:
+                    logger.warning(f"Error loading custom database adapter: {e}")
+                    continue
+        
+        except ImportError as e:
+            logger.debug(f"Generic database adapter not available: {e}")
+        except Exception as e:
+            logger.warning(f"Error loading custom databases: {e}")
+    
+    def add_custom_database(self, db_config: Dict[str, Any]):
+        """
+        Add a custom database adapter dynamically.
+        
+        Args:
+            db_config: Configuration dictionary for the custom database
+                      - base_url: Base URL of the database
+                      - api_key: API key if required
+                      - source_name: Name for this database source
+                      - adapter_type: Type of adapter (rest_api, graphql, sdk)
+                      - config: Additional configuration
+        """
+        try:
+            from .database_adapters.generic import GenericDatabaseAdapter
+            
+            # Ensure source_name is set
+            if 'source_name' not in db_config:
+                db_config['source_name'] = db_config.get('name', 'custom_db')
+            
+            # Add OpenAI client
+            db_config['openai_client'] = self.openai_client
+            
+            # Create adapter
+            adapter = GenericDatabaseAdapter(db_config)
+            
+            if adapter.is_available():
+                self.database_adapters.append(adapter)
+                logger.info(f"Custom database adapter '{db_config.get('source_name')}' added successfully")
+                return True
+            else:
+                logger.warning(f"Custom database adapter '{db_config.get('source_name')}' not available")
+                return False
+        
+        except Exception as e:
+            logger.error(f"Error adding custom database: {e}", exc_info=True)
+            return False
     
     def suggest_parameter_values(
         self,

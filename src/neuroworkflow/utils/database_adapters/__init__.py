@@ -10,6 +10,7 @@ from .allen_brain import AllenBrainAdapter
 from .neuromorpho import NeuroMorphoAdapter
 from .pubmed import PubMedAdapter
 from .neuroml_db import NeuroMLDBAdapter
+from .generic import GenericDatabaseAdapter
 
 __all__ = [
     'DatabaseAdapter',
@@ -17,5 +18,6 @@ __all__ = [
     'NeuroMorphoAdapter',
     'PubMedAdapter',
     'NeuroMLDBAdapter',
+    'GenericDatabaseAdapter',
 ]
 

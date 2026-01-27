@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from typing import Any, Optional, Dict, List
+from .models import CustomDatabase
 
 
 class ParameterSuggestionSerializer(serializers.Serializer):
@@ -29,3 +30,46 @@ class ParameterSuggestionResponseSerializer(serializers.Serializer):
     parameter_description = serializers.CharField(help_text="Description of the parameter queried")
     species = serializers.CharField(required=False, allow_null=True, help_text="Species filter applied")
 
+
+class CustomDatabaseSerializer(serializers.ModelSerializer):
+    """Serializer for CustomDatabase model."""
+    
+    class Meta:
+        model = CustomDatabase
+        fields = [
+            'id', 'name', 'description', 'base_url', 'api_key',
+            'config', 'adapter_type', 'is_active', 'is_verified',
+            'last_tested', 'test_result', 'test_error',
+            'created_by', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'is_verified', 'last_tested', 'test_result', 'test_error']
+    
+    def validate_base_url(self, value):
+        """Validate base URL format."""
+        if not value.startswith(('http://', 'https://')):
+            raise serializers.ValidationError("Base URL must start with http:// or https://")
+        return value
+
+
+class CustomDatabaseCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a new CustomDatabase."""
+    
+    class Meta:
+        model = CustomDatabase
+        fields = [
+            'name', 'description', 'base_url', 'api_key',
+            'config', 'adapter_type', 'is_active'
+        ]
+    
+    def validate_base_url(self, value):
+        """Validate base URL format."""
+        if not value.startswith(('http://', 'https://')):
+            raise serializers.ValidationError("Base URL must start with http:// or https://")
+        return value
+
+
+class DatabaseConnectionTestSerializer(serializers.Serializer):
+    """Serializer for testing database connection."""
+    base_url = serializers.URLField(required=True, help_text="Base URL of the database")
+    api_key = serializers.CharField(required=False, allow_blank=True, help_text="API key if required")
+    config = serializers.DictField(required=False, default=dict, help_text="Additional configuration")

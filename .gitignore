@@ -13,3 +13,6 @@ ENV/
 
 # Database files
 *.db
+
+# RAG directory (contains API keys)
+rag/

@@ -19,8 +19,13 @@ import logging
 from .serializers import (
     ParameterSuggestionRequestSerializer,
     ParameterSuggestionResponseSerializer,
-    ParameterSuggestionSerializer
+    ParameterSuggestionSerializer,
+    CustomDatabaseSerializer,
+    CustomDatabaseCreateSerializer,
+    DatabaseConnectionTestSerializer
 )
+from .models import CustomDatabase
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,18 @@ def get_metadata_service_instance():
         )
         logger.info(f"Successfully imported ParameterMetadataService from {docker_src_path}")
         service = get_metadata_service(config=config)
+        
+        # Load custom databases from Django database
+        try:
+            custom_dbs = CustomDatabase.objects.filter(is_active=True, is_verified=True)
+            for db in custom_dbs:
+                db_config = db.to_adapter_config(openai_client=service.openai_client)
+                db_config['source_name'] = db.name.lower().replace(' ', '_')
+                service.add_custom_database(db_config)
+                logger.info(f"Loaded custom database: {db.name}")
+        except Exception as e:
+            logger.debug(f"Could not load custom databases (this is OK if models aren't migrated yet): {e}")
+        
         logger.info(f"Got metadata service instance: {service}")
         return service
     except Exception as e:
@@ -282,6 +299,292 @@ class SpeciesSpecificParametersView(APIView):
                 {
                     "error": "Internal server error",
                     "message": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomDatabaseListView(APIView):
+    """
+    API endpoint for listing and creating custom databases.
+    
+    GET /api/metadata/custom-databases/ - List all custom databases
+    POST /api/metadata/custom-databases/ - Create a new custom database
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        """List all custom databases."""
+        try:
+            databases = CustomDatabase.objects.filter(is_active=True)
+            serializer = CustomDatabaseSerializer(databases, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error listing custom databases: {e}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def post(self, request):
+        """Create a new custom database."""
+        serializer = CustomDatabaseCreateSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Invalid data", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Create database instance
+            database = serializer.save()
+            
+            # Try to test connection
+            test_result = self._test_connection(database)
+            database.is_verified = test_result.get('success', False)
+            database.last_tested = timezone.now()
+            database.test_result = test_result.get('message', '')
+            database.test_error = test_result.get('error', '')
+            
+            # Update adapter config if working pattern was found
+            if test_result.get('working_pattern'):
+                database.adapter_type = test_result['working_pattern'].get('adapter_type', 'rest_api')
+                if 'config' not in database.config:
+                    database.config = {}
+                database.config.update(test_result['working_pattern'])
+            
+            database.save()
+            
+            response_serializer = CustomDatabaseSerializer(database)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        
+        except Exception as e:
+            logger.error(f"Error creating custom database: {e}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _test_connection(self, database: CustomDatabase) -> dict:
+        """Test connection to a custom database."""
+        try:
+            # Import connection tester
+            docker_src_path = "/django-app/src"
+            if docker_src_path not in sys.path:
+                sys.path.insert(0, docker_src_path)
+            
+            from neuroworkflow.utils.database_adapters.connection_tester import DatabaseConnectionTester
+            
+            # Get OpenAI client if available
+            openai_client = None
+            try:
+                metadata_service = get_metadata_service_instance()
+                if metadata_service:
+                    openai_client = metadata_service.openai_client
+            except:
+                pass
+            
+            # Test connection
+            tester = DatabaseConnectionTester(openai_client=openai_client)
+            result = tester.test_adapter_patterns(
+                base_url=database.base_url,
+                api_key=database.api_key,
+                config=database.config
+            )
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"Error testing connection: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': 'Test failed',
+                'message': f'Could not test connection: {str(e)}'
+            }
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CustomDatabaseDetailView(APIView):
+    """
+    API endpoint for retrieving, updating, and deleting custom databases.
+    
+    GET /api/metadata/custom-databases/{id}/ - Get database details
+    PUT /api/metadata/custom-databases/{id}/ - Update database
+    DELETE /api/metadata/custom-databases/{id}/ - Delete database
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, db_id):
+        """Get custom database details."""
+        try:
+            database = CustomDatabase.objects.get(id=db_id)
+            serializer = CustomDatabaseSerializer(database)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except CustomDatabase.DoesNotExist:
+            return Response(
+                {"error": "Database not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error getting custom database: {e}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def put(self, request, db_id):
+        """Update custom database."""
+        try:
+            database = CustomDatabase.objects.get(id=db_id)
+            serializer = CustomDatabaseSerializer(database, data=request.data, partial=True)
+            
+            if not serializer.is_valid():
+                return Response(
+                    {"error": "Invalid data", "details": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            database = serializer.save()
+            
+            # Re-test connection if URL or API key changed
+            if 'base_url' in request.data or 'api_key' in request.data:
+                test_result = self._test_connection(database)
+                database.is_verified = test_result.get('success', False)
+                database.last_tested = timezone.now()
+                database.test_result = test_result.get('message', '')
+                database.test_error = test_result.get('error', '')
+                database.save()
+            
+            response_serializer = CustomDatabaseSerializer(database)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        
+        except CustomDatabase.DoesNotExist:
+            return Response(
+                {"error": "Database not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error updating custom database: {e}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, db_id):
+        """Delete custom database (soft delete by setting is_active=False)."""
+        try:
+            database = CustomDatabase.objects.get(id=db_id)
+            database.is_active = False
+            database.save()
+            return Response(
+                {"message": "Database deleted successfully"},
+                status=status.HTTP_200_OK
+            )
+        except CustomDatabase.DoesNotExist:
+            return Response(
+                {"error": "Database not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error deleting custom database: {e}", exc_info=True)
+            return Response(
+                {"error": "Internal server error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _test_connection(self, database: CustomDatabase) -> dict:
+        """Test connection to a custom database."""
+        try:
+            docker_src_path = "/django-app/src"
+            if docker_src_path not in sys.path:
+                sys.path.insert(0, docker_src_path)
+            
+            from neuroworkflow.utils.database_adapters.connection_tester import DatabaseConnectionTester
+            
+            openai_client = None
+            try:
+                metadata_service = get_metadata_service_instance()
+                if metadata_service:
+                    openai_client = metadata_service.openai_client
+            except:
+                pass
+            
+            tester = DatabaseConnectionTester(openai_client=openai_client)
+            result = tester.test_adapter_patterns(
+                base_url=database.base_url,
+                api_key=database.api_key,
+                config=database.config
+            )
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"Error testing connection: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': 'Test failed',
+                'message': f'Could not test connection: {str(e)}'
+            }
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DatabaseConnectionTestView(APIView):
+    """
+    API endpoint for testing database connections before creating.
+    
+    POST /api/metadata/custom-databases/test-connection/
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        """Test connection to a database."""
+        serializer = DatabaseConnectionTestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Invalid data", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Import connection tester
+            docker_src_path = "/django-app/src"
+            if docker_src_path not in sys.path:
+                sys.path.insert(0, docker_src_path)
+            
+            from neuroworkflow.utils.database_adapters.connection_tester import DatabaseConnectionTester
+            
+            # Get OpenAI client if available
+            openai_client = None
+            try:
+                metadata_service = get_metadata_service_instance()
+                if metadata_service:
+                    openai_client = metadata_service.openai_client
+            except:
+                pass
+            
+            # Test connection
+            tester = DatabaseConnectionTester(openai_client=openai_client)
+            result = tester.test_adapter_patterns(
+                base_url=serializer.validated_data['base_url'],
+                api_key=serializer.validated_data.get('api_key'),
+                config=serializer.validated_data.get('config', {})
+            )
+            
+            return Response(result, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            logger.error(f"Error testing connection: {e}", exc_info=True)
+            return Response(
+                {
+                    "error": "Internal server error",
+                    "message": str(e),
+                    "success": False
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
