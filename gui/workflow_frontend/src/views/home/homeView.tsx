@@ -1911,30 +1911,17 @@ const HomeView = () => {
   // homeView: Main Page
   //////////////////////////////////////////////////////////////
   return (
-    <div>
-      <SideBoxArea 
-        position="absolute"
-        top="128px"
-        left="32px"
-        nodes={uploadedNodes} 
-        isLoading={isNodesLoading}  // for node
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+      <SideBoxArea
+        nodes={uploadedNodes}
+        isLoading={isNodesLoading}
         error={error}
-        transition="width 200ms ease"
         onRefresh={refetchNodes}
         onNodeInfo={handleSidebarNodeInfo}
         onViewCode={handleSidebarViewCode}
         onChangeColor={handleChangeCategoryColor}
       />
-      <ChatbotArea 
-        position="absolute"
-        top="400px"
-        left="32px"
-        error={error}
-        transition="width 200ms ease"
-      />
-
-    <div style={{ width: '100%', height: 'calc(100vh - 106px)', position: 'absolute', overflow: 'hidden' }}>
-      <div style={{ width: '100%', height: '100%', position: 'absolute' }}>
+      <ChatbotArea error={error} />
         <style>
           {`
             .react-flow__controls {
@@ -2201,8 +2188,6 @@ const HomeView = () => {
           project={projectToDelete}
           isDeleting={isDeletingProject}
         />
-      </div>
-    </div>
     </div>
   );
 }

@@ -208,10 +208,10 @@ const ChatbotArea: React.FC<ChatbotProps> = () => {
 
   return (
     <Flex
-      height="calc(100vh - 340px)"
+      bottom="16px"
       overflow="hidden"
       position="absolute"
-      top="330px"
+      top="280px"
       left="8px"
       zIndex="1010"
     >
