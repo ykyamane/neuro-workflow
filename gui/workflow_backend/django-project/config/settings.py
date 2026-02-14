@@ -7,6 +7,7 @@ from .config import (
     DB_PORT,
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
+    SUPABASE_JWT_SECRET,
     SECRET_KEY,
 )
 
@@ -133,6 +134,7 @@ REST_FRAMEWORK = {
 
 SUPABASE_URL = SUPABASE_URL
 SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
+SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET
 
 # ==============================================================================
 # CORS CONFIGURATION

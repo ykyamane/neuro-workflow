@@ -2,13 +2,16 @@ import asyncio
 import json
 import logging
 
+from django.contrib.auth.models import User
 from django.http import StreamingHttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework import status
+from rest_framework import exceptions as drf_exceptions, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from app.auth.authentication import SupabaseAuthentication
 
 from .models import Conversation, Message
 from .serializers import (
@@ -21,22 +24,53 @@ from .services.chat_orchestrator import orchestrate_chat
 logger = logging.getLogger(__name__)
 
 
+class _OptionalSupabaseAuthentication(SupabaseAuthentication):
+    """SupabaseAuthentication that returns None instead of 403 on failure.
+
+    Chat views use AllowAny with anonymous fallback, so authentication
+    errors should be silently ignored rather than blocking the request.
+    """
+
+    def authenticate(self, request):
+        try:
+            result = super().authenticate(request)
+            if result:
+                logger.info("Chat auth succeeded for user: %s", result[0])
+            return result
+        except drf_exceptions.AuthenticationFailed as e:
+            logger.warning("Chat auth failed (falling back to anonymous): %s", e)
+            return None
+
+
+def _get_user(request):
+    """Return the authenticated user, or fall back to anonymous_user."""
+    if request.user and request.user.is_authenticated:
+        return request.user
+    user, _ = User.objects.get_or_create(
+        username="anonymous_user",
+        defaults={"email": "anonymous@example.com", "is_active": True},
+    )
+    return user
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class ConversationListCreateView(APIView):
     """List and create conversations."""
 
+    authentication_classes = [_OptionalSupabaseAuthentication]
     permission_classes = [AllowAny]
-    authentication_classes = []
 
     def get(self, request):
-        conversations = Conversation.objects.filter(is_active=True)
+        user = _get_user(request)
+        conversations = Conversation.objects.filter(user=user, is_active=True)
         serializer = ConversationListSerializer(conversations, many=True)
         return Response(serializer.data)
 
     def post(self, request):
+        user = _get_user(request)
         serializer = ConversationSerializer(data=request.data)
         if serializer.is_valid():
-            conversation = serializer.save()
+            conversation = serializer.save(user=user)
             return Response(
                 ConversationSerializer(conversation).data,
                 status=status.HTTP_201_CREATED,
@@ -48,13 +82,14 @@ class ConversationListCreateView(APIView):
 class ConversationDetailView(APIView):
     """Retrieve or delete a conversation."""
 
+    authentication_classes = [_OptionalSupabaseAuthentication]
     permission_classes = [AllowAny]
-    authentication_classes = []
 
     def get(self, request, conversation_id):
+        user = _get_user(request)
         try:
             conversation = Conversation.objects.get(
-                id=conversation_id, is_active=True,
+                id=conversation_id, user=user, is_active=True,
             )
         except Conversation.DoesNotExist:
             return Response(
@@ -65,8 +100,11 @@ class ConversationDetailView(APIView):
         return Response(serializer.data)
 
     def delete(self, request, conversation_id):
+        user = _get_user(request)
         try:
-            conversation = Conversation.objects.get(id=conversation_id)
+            conversation = Conversation.objects.get(
+                id=conversation_id, user=user,
+            )
         except Conversation.DoesNotExist:
             return Response(
                 {"error": "Conversation not found"},
@@ -81,14 +119,15 @@ class ConversationDetailView(APIView):
 class ChatStreamView(APIView):
     """Handle chat messages with SSE streaming response."""
 
+    authentication_classes = [_OptionalSupabaseAuthentication]
     permission_classes = [AllowAny]
-    authentication_classes = []
 
     def post(self, request):
         serializer = SendMessageSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        user = _get_user(request)
         user_message = serializer.validated_data["message"]
         conversation_id = serializer.validated_data.get("conversation_id")
         project_id = serializer.validated_data.get("project_id")
@@ -97,7 +136,7 @@ class ChatStreamView(APIView):
         if conversation_id:
             try:
                 conversation = Conversation.objects.get(
-                    id=conversation_id, is_active=True,
+                    id=conversation_id, user=user, is_active=True,
                 )
             except Conversation.DoesNotExist:
                 return Response(
@@ -109,6 +148,7 @@ class ChatStreamView(APIView):
             title = user_message[:50] + ("..." if len(user_message) > 50 else "")
             conversation = Conversation.objects.create(
                 title=title,
+                user=user,
                 project_id=project_id,
             )
 
