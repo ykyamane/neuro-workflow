@@ -1,52 +1,220 @@
-import KeywordSearch from '@/shared/keyWordSearch/keyWordSearch';
 import {
-  VStack,
   Box,
-  Text,
   Flex,
-  SimpleGrid,
-  Icon,
-  Heading,
-  Divider,
-  Spinner,
   IconButton,
+  Text,
   HStack,
-  useToast,
-  Input,
-  Button,
   useDisclosure,
-  Tooltip,
-  Collapse,
-  Badge,
+  useToast,
 } from '@chakra-ui/react';
-import { useEffect, useState, useRef } from 'react';
-import { IconType } from 'react-icons';
-import { FiBox, FiCopy, FiTrash2, FiInfo, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu, FiX } from 'react-icons/fi'; // Use as default icon
-import { IoChatboxEllipses } from "react-icons/io5";
-import { SchemaFields } from '../home/type';
-import { createAuthHeaders } from '../../api/authHeaders';
+import { useEffect, useCallback } from 'react';
+import { FiMenu, FiX, FiPlus } from 'react-icons/fi';
+import { IoChatboxEllipses } from 'react-icons/io5';
+
+import useChatStore from '@/stores/chatStore';
+import {
+  listConversations,
+  getConversation,
+  deleteConversation,
+  sendMessageStream,
+  type SSEEvent,
+} from '@/api/chatApi';
+import ChatMessageList from './ChatMessageList';
+import ChatInput from './ChatInput';
+import ConversationSelector from './ConversationSelector';
 
 interface ChatbotProps {
   isLoading?: boolean;
   error?: string;
 }
 
-const SIDEBAR_WIDTH = '600px'; // Width when opened
-const TOGGLE_WIDTH = '16px'; // Knob width when closed
+const SIDEBAR_WIDTH = '600px';
+const TOGGLE_WIDTH = '16px';
 
-const ChatbotArea: React.FC<ChatbotProps> = ({isLoading = false, error}) => {
+const ChatbotArea: React.FC<ChatbotProps> = () => {
   const toast = useToast();
-
   const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
 
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const setConversations = useChatStore((s) => s.setConversations);
+  const setActiveConversationId = useChatStore((s) => s.setActiveConversationId);
+  const setMessages = useChatStore((s) => s.setMessages);
+  const addMessage = useChatStore((s) => s.addMessage);
+  const updateLastAssistantMessage = useChatStore((s) => s.updateLastAssistantMessage);
+  const setIsStreaming = useChatStore((s) => s.setIsStreaming);
+  const setAbortController = useChatStore((s) => s.setAbortController);
+  const addToolCall = useChatStore((s) => s.addToolCall);
+  const updateToolCallArgs = useChatStore((s) => s.updateToolCallArgs);
+  const updateToolCallResult = useChatStore((s) => s.updateToolCallResult);
+  const clearToolCalls = useChatStore((s) => s.clearToolCalls);
+  const setError = useChatStore((s) => s.setError);
+  const resetChat = useChatStore((s) => s.resetChat);
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const data = await listConversations();
+      setConversations(data);
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    }
+  };
+
+  const handleSelectConversation = async (id: string) => {
+    try {
+      const data = await getConversation(id);
+      setActiveConversationId(id);
+      setMessages(
+        data.messages.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          role: m.role as string,
+          content: m.content as string,
+          tool_calls: m.tool_calls,
+          tool_call_id: m.tool_call_id as string,
+          tool_name: m.tool_name as string,
+          created_at: m.created_at as string,
+        }))
+      );
+      clearToolCalls();
+    } catch (err) {
+      toast({
+        title: 'Failed to load conversation',
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await deleteConversation(id);
+      if (activeConversationId === id) {
+        resetChat();
+      }
+      loadConversations();
+    } catch (err) {
+      toast({
+        title: 'Failed to delete conversation',
+        status: 'error',
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleNewConversation = () => {
+    resetChat();
+  };
+
+  const handleSend = useCallback(
+    async (message: string) => {
+      if (isStreaming) return;
+
+      // Add user message to UI immediately
+      addMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: message,
+      });
+
+      setIsStreaming(true);
+      setError(null);
+      clearToolCalls();
+
+      const controller = new AbortController();
+      setAbortController(controller);
+
+      try {
+        await sendMessageStream(
+          {
+            message,
+            conversation_id: activeConversationId,
+          },
+          // onEvent
+          (event: SSEEvent) => {
+            switch (event.type) {
+              case 'text_delta':
+                updateLastAssistantMessage(
+                  (event.data.content as string) || ''
+                );
+                break;
+
+              case 'tool_call_start':
+                addToolCall({
+                  tool_call_id: (event.data.tool_call_id as string) || '',
+                  tool_name: (event.data.tool_name as string) || '',
+                  arguments: '',
+                  status: 'running',
+                });
+                break;
+
+              case 'tool_call_args_delta':
+                updateToolCallArgs((event.data.content as string) || '');
+                break;
+
+              case 'tool_result':
+                updateToolCallResult(
+                  (event.data.tool_call_id as string) || '',
+                  (event.data.result as string) || '',
+                  'done'
+                );
+                break;
+
+              case 'error':
+                setError((event.data.message as string) || 'Unknown error');
+                break;
+
+              case 'done':
+                break;
+            }
+          },
+          // onConversationId
+          (convId: string) => {
+            setActiveConversationId(convId);
+          },
+          controller.signal
+        );
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setError(err.message);
+          toast({
+            title: 'Chat error',
+            description: err.message,
+            status: 'error',
+            duration: 5000,
+          });
+        }
+      } finally {
+        setIsStreaming(false);
+        setAbortController(null);
+        // Refresh conversation list
+        loadConversations();
+      }
+    },
+    [activeConversationId, isStreaming]
+  );
+
+  const handleStop = useCallback(() => {
+    const controller = useChatStore.getState().abortController;
+    controller?.abort();
+    setIsStreaming(false);
+    setAbortController(null);
+  }, []);
+
   return (
-    <Flex 
-        height="calc(100vh - 340px)" 
-        overflow="hidden" 
-        position="absolute"
-        top="330px"
-        left="8px"
-        zIndex="1010">
+    <Flex
+      height="calc(100vh - 340px)"
+      overflow="hidden"
+      position="absolute"
+      top="330px"
+      left="8px"
+      zIndex="1010"
+    >
       <Box
         bg="gray.800"
         color="white"
@@ -63,12 +231,17 @@ const ChatbotArea: React.FC<ChatbotProps> = ({isLoading = false, error}) => {
           height="100%"
           width={SIDEBAR_WIDTH}
           transition="transform 0.3s ease-in-out"
-          transform={isOpen ? 'translateX(0)' : `translateX(-${SIDEBAR_WIDTH} + ${TOGGLE_WIDTH})`}
+          transform={
+            isOpen
+              ? 'translateX(0)'
+              : `translateX(-${SIDEBAR_WIDTH} + ${TOGGLE_WIDTH})`
+          }
         >
+          {/* Toggle button */}
           <IconButton
             icon={isOpen ? <FiX /> : <FiMenu />}
             onClick={onToggle}
-            aria-label={isOpen ? "Close Sidebar" : "Open Sidebar"}
+            aria-label={isOpen ? 'Close Sidebar' : 'Open Sidebar'}
             position="absolute"
             top="50%"
             transform="translateY(-50%)"
@@ -78,19 +251,50 @@ const ChatbotArea: React.FC<ChatbotProps> = ({isLoading = false, error}) => {
             color="white"
             width="12px"
             height="64px"
-            _hover={{ bg: "blue.600" }}
+            _hover={{ bg: 'blue.600' }}
           />
-          <VStack spacing={4} align="stretch" p="1" pt="1">
-            <Box height="calc(100vh - 260px)">
-              <iframe
-                  src="https://chakra-ui.com"
-                  width="100%"
-                  height="100%"
-                  style={{ border: "none" }}
-                  title="Chakra UI Site"
-                />
-            </Box>
-          </VStack>
+
+          {/* Header */}
+          <HStack
+            px={3}
+            py={2}
+            borderBottom="1px solid"
+            borderColor="gray.600"
+            spacing={2}
+            flexShrink={0}
+          >
+            <IoChatboxEllipses size={16} />
+            <Text fontSize="sm" fontWeight="bold" flexShrink={0}>
+              AI Assistant
+            </Text>
+            <ConversationSelector
+              conversations={conversations}
+              activeConversationId={activeConversationId}
+              onSelect={handleSelectConversation}
+              onDelete={handleDeleteConversation}
+              onNew={handleNewConversation}
+            />
+            <IconButton
+              icon={<FiPlus />}
+              aria-label="New conversation"
+              size="xs"
+              variant="ghost"
+              color="gray.400"
+              _hover={{ color: 'white', bg: 'gray.700' }}
+              onClick={handleNewConversation}
+              ml="auto"
+            />
+          </HStack>
+
+          {/* Message List */}
+          <ChatMessageList />
+
+          {/* Input */}
+          <ChatInput
+            onSend={handleSend}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+          />
         </Flex>
       </Box>
     </Flex>

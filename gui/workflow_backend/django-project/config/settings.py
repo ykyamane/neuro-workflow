@@ -49,8 +49,9 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
-    "app.box.apps.BoxConfig",  
-    "app.workflow.apps.WorkflowConfig",  
+    "app.box.apps.BoxConfig",
+    "app.workflow.apps.WorkflowConfig",
+    "app.chat.apps.ChatConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -162,6 +163,10 @@ CORS_ALLOW_METHODS = [
     "PATCH",
     "POST",
     "PUT",
+]
+
+CORS_EXPOSE_HEADERS = [
+    "X-Conversation-Id",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
