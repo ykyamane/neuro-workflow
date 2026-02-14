@@ -18,7 +18,7 @@ import {
   AlertDialogFooter,
   Tooltip, Icon } from "@chakra-ui/react";
 import { useRef } from 'react';
-import { InfoIcon, DeleteIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
+import { EditIcon, DeleteIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { FiCode } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
 import { createAuthHeaders } from '../../../api/authHeaders';
@@ -215,14 +215,14 @@ export const CalculationNode = ({
               boxShadow="sm"
             />
           </Tooltip>
-          <Tooltip label="Node Info" hasArrow>
+          <Tooltip label="Edit Node" hasArrow>
             <IconButton
-              aria-label="Node Info"
+              aria-label="Edit Node"
               size="xs"
               variant="solid"
               bg="green.400"
               color="white"
-              icon={<InfoIcon boxSize={2.5} />}
+              icon={<EditIcon boxSize={2.5} />}
               onClick={(e) => {
                 e.stopPropagation();
                 callbacks.onInfo?.(id);

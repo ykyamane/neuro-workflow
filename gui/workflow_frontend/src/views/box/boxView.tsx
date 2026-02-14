@@ -35,7 +35,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState, useRef } from 'react';
 import { IconType } from 'react-icons';
-import { FiBox, FiCopy, FiTrash2, FiInfo, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
+import { FiBox, FiCopy, FiTrash2, FiEdit2, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
 import { SchemaFields } from '../home/type';
 import { createAuthHeaders } from '../../api/authHeaders';
 import { useTabContext } from '../../components/tabs/TabManager';
@@ -832,8 +832,8 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                       draggable={false}
                                     />
                                     <IconButton
-                                      aria-label="Node information"
-                                      icon={<FiInfo />}
+                                      aria-label="Edit node"
+                                      icon={<FiEdit2 />}
                                       size="xs"
                                       variant="ghost"
                                       color="gray.400"
