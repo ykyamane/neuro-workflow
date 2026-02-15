@@ -13,6 +13,7 @@ import {
   Textarea,
   IconButton,
   useToast,
+  Checkbox,
 } from '@chakra-ui/react';
 import { EditIcon, CheckIcon, CloseIcon, ViewIcon } from '@chakra-ui/icons';
 import { CalculationNodeData, SchemaFields } from '../type';
@@ -38,7 +39,7 @@ const OpenJupyter = (filename : string, category : string) => {
 const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNodeUpdate, onRefreshNodeData, onViewCode, workflowId, convertToStrIncFloat }) => {
   const [editingInstance, setEditingInstance] = useState<string>('');
   const [editingParam, setEditingParam] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<'default_value' | 'constraints' | null>(null);
+  const [editingField, setEditingField] = useState<'default_value' | 'constraints' | 'optimization_range' | 'objective_range' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [localNodeData, setLocalNodeData] = useState<Node<CalculationNodeData> | null>(nodeData);
   const toast = useToast();
@@ -154,7 +155,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   };
 
   // Update parameters API call
-  const updateParameter = async (parameterKey: string, parameterValue: any, parameterField: 'default_value' | 'constraints') => {
+  const updateParameter = async (parameterKey: string, parameterValue: any, parameterField: 'default_value' | 'constraints' | 'optimizable' | 'optimization_range' | 'is_objective' | 'objective_range') => {
     try {
       // Determine if this is a node in a workflow
       const isWorkflowNode = localNodeData && !localNodeData.id.startsWith('sidebar_');
@@ -390,7 +391,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   };
 
   // Start editing
-  const startEditing = (paramKey: string, field: 'default_value' | 'constraints', currentValue: any) => {
+  const startEditing = (paramKey: string, field: 'default_value' | 'constraints' | 'optimization_range' | 'objective_range', currentValue: any) => {
     setEditingParam(paramKey);
     setEditingField(field);
     
@@ -754,60 +755,132 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   )}
                 </HStack>
 
-                {/* Optimization metadata (read-only) */}
-                {(param.optimizable || param.is_objective) && (
+                {/* Optimization metadata (editable) */}
+                {(param.optimizable !== undefined || param.is_objective !== undefined) && (
                   <Box mt={2} p={2} bg="gray.600" borderRadius="md" borderLeft="3px solid" borderLeftColor="yellow.400">
-                    <Text fontSize="xs" color="yellow.300" fontWeight="bold" mb={1}>Optimization</Text>
+                    <Text fontSize="xs" color="yellow.300" fontWeight="bold" mb={2}>Optimization</Text>
 
-                    {/* optimizable */}
-                    {param.optimizable !== undefined && (
-                      <HStack align="start" spacing={2}>
-                        <Text fontSize="xs" color="gray.400" minW="110px">optimizable:</Text>
-                        <Code
-                          colorScheme={param.optimizable ? "green" : "gray"}
-                          fontSize="xs"
-                          bg={param.optimizable ? "green.600" : "gray.500"}
-                          color="white"
-                        >
-                          {param.optimizable ? "true" : "false"}
-                        </Code>
-                      </HStack>
-                    )}
+                    {/* optimizable + optimization_range */}
+                    <HStack align="center" spacing={3} mb={2}>
+                      <Checkbox
+                        isChecked={param.optimizable || false}
+                        onChange={(e) => updateParameter(key, e.target.checked, 'optimizable' as any)}
+                        colorScheme="green"
+                        size="sm"
+                      >
+                        <Text fontSize="xs" color="gray.300">optimizable</Text>
+                      </Checkbox>
+                      {param.optimizable && (
+                        <>
+                          <Text fontSize="xs" color="gray.400">range:</Text>
+                          {editingParam === key && editingField === 'optimization_range' ? (
+                            <HStack spacing={1}>
+                              <Input
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                size="xs"
+                                bg="gray.700"
+                                color="white"
+                                fontSize="xs"
+                                width="120px"
+                                placeholder="[min, max]"
+                              />
+                              <IconButton
+                                aria-label="Save"
+                                icon={<CheckIcon />}
+                                size="xs"
+                                colorScheme="green"
+                                onClick={saveEdit}
+                              />
+                              <IconButton
+                                aria-label="Cancel"
+                                icon={<CloseIcon />}
+                                size="xs"
+                                colorScheme="red"
+                                onClick={cancelEdit}
+                              />
+                            </HStack>
+                          ) : (
+                            <HStack spacing={1}>
+                              <Code colorScheme="yellow" fontSize="xs" bg="yellow.600" color="white">
+                                {param.optimization_range ? formatDataForDisplay(param.optimization_range) : '[min, max]'}
+                              </Code>
+                              <Tooltip label="Edit range" hasArrow>
+                                <IconButton
+                                  aria-label="Edit optimization range"
+                                  icon={<EditIcon />}
+                                  size="xs"
+                                  colorScheme="yellow"
+                                  variant="ghost"
+                                  onClick={() => startEditing(key, 'optimization_range', param.optimization_range || [])}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          )}
+                        </>
+                      )}
+                    </HStack>
 
-                    {/* optimization_range */}
-                    {param.optimization_range && (
-                      <HStack align="start" spacing={2} mt={1}>
-                        <Text fontSize="xs" color="gray.400" minW="110px">optimization_range:</Text>
-                        <Code colorScheme="yellow" fontSize="xs" bg="yellow.600" color="white">
-                          {formatDataForDisplay(param.optimization_range)}
-                        </Code>
-                      </HStack>
-                    )}
-
-                    {/* is_objective */}
-                    {param.is_objective !== undefined && (
-                      <HStack align="start" spacing={2} mt={1}>
-                        <Text fontSize="xs" color="gray.400" minW="110px">is_objective:</Text>
-                        <Code
-                          colorScheme={param.is_objective ? "purple" : "gray"}
-                          fontSize="xs"
-                          bg={param.is_objective ? "purple.600" : "gray.500"}
-                          color="white"
-                        >
-                          {param.is_objective ? "true" : "false"}
-                        </Code>
-                      </HStack>
-                    )}
-
-                    {/* objective_range */}
-                    {param.objective_range && (
-                      <HStack align="start" spacing={2} mt={1}>
-                        <Text fontSize="xs" color="gray.400" minW="110px">objective_range:</Text>
-                        <Code colorScheme="purple" fontSize="xs" bg="purple.600" color="white">
-                          {formatDataForDisplay(param.objective_range)}
-                        </Code>
-                      </HStack>
-                    )}
+                    {/* is_objective + objective_range */}
+                    <HStack align="center" spacing={3}>
+                      <Checkbox
+                        isChecked={param.is_objective || false}
+                        onChange={(e) => updateParameter(key, e.target.checked, 'is_objective' as any)}
+                        colorScheme="purple"
+                        size="sm"
+                      >
+                        <Text fontSize="xs" color="gray.300">is_objective</Text>
+                      </Checkbox>
+                      {param.is_objective && (
+                        <>
+                          <Text fontSize="xs" color="gray.400">range:</Text>
+                          {editingParam === key && editingField === 'objective_range' ? (
+                            <HStack spacing={1}>
+                              <Input
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                size="xs"
+                                bg="gray.700"
+                                color="white"
+                                fontSize="xs"
+                                width="120px"
+                                placeholder="[min, max]"
+                              />
+                              <IconButton
+                                aria-label="Save"
+                                icon={<CheckIcon />}
+                                size="xs"
+                                colorScheme="green"
+                                onClick={saveEdit}
+                              />
+                              <IconButton
+                                aria-label="Cancel"
+                                icon={<CloseIcon />}
+                                size="xs"
+                                colorScheme="red"
+                                onClick={cancelEdit}
+                              />
+                            </HStack>
+                          ) : (
+                            <HStack spacing={1}>
+                              <Code colorScheme="purple" fontSize="xs" bg="purple.600" color="white">
+                                {param.objective_range ? formatDataForDisplay(param.objective_range) : '[min, max]'}
+                              </Code>
+                              <Tooltip label="Edit range" hasArrow>
+                                <IconButton
+                                  aria-label="Edit objective range"
+                                  icon={<EditIcon />}
+                                  size="xs"
+                                  colorScheme="purple"
+                                  variant="ghost"
+                                  onClick={() => startEditing(key, 'objective_range', param.objective_range || [])}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          )}
+                        </>
+                      )}
+                    </HStack>
                   </Box>
                 )}
               </VStack>
