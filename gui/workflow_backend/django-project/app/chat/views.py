@@ -43,12 +43,16 @@ class _OptionalSupabaseAuthentication(SupabaseAuthentication):
 
 
 def _get_user(request):
-    """Return the authenticated user, or fall back to anonymous_user."""
+    """Return the authenticated user, or fall back to a per-session anonymous user."""
     if request.user and request.user.is_authenticated:
         return request.user
+    # Ensure a session exists so each anonymous visitor gets isolated data.
+    if not request.session.session_key:
+        request.session.create()
+    anonymous_username = f"anonymous_{request.session.session_key}"
     user, _ = User.objects.get_or_create(
-        username="anonymous_user",
-        defaults={"email": "anonymous@example.com", "is_active": True},
+        username=anonymous_username,
+        defaults={"email": "", "is_active": True},
     )
     return user
 
@@ -180,7 +184,7 @@ class ChatStreamView(APIView):
                 except StopAsyncIteration:
                     break
                 except Exception as e:
-                    logger.error(f"Stream error: {e}", exc_info=True)
+                    logger.error("Stream error: %s", e, exc_info=True)
                     yield _format_sse("error", {"message": str(e)})
                     break
         finally:

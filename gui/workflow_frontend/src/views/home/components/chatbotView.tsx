@@ -23,15 +23,10 @@ import ChatMessageList from './ChatMessageList';
 import ChatInput from './ChatInput';
 import ConversationSelector from './ConversationSelector';
 
-interface ChatbotProps {
-  isLoading?: boolean;
-  error?: string;
-}
-
 const SIDEBAR_WIDTH = '600px';
 const TOGGLE_WIDTH = '16px';
 
-const ChatbotArea: React.FC<ChatbotProps> = () => {
+const ChatbotArea: React.FC = () => {
   const toast = useToast();
   const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
 
@@ -52,26 +47,29 @@ const ChatbotArea: React.FC<ChatbotProps> = () => {
   const setError = useChatStore((s) => s.setError);
   const resetChat = useChatStore((s) => s.resetChat);
 
-  // Load conversations on mount
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const data = await listConversations();
       setConversations(data);
     } catch (err) {
       console.error('Failed to load conversations:', err);
     }
-  };
+  }, [setConversations]);
+
+  // Load conversations on mount & cleanup AbortController on unmount
+  useEffect(() => {
+    loadConversations();
+    return () => {
+      useChatStore.getState().abortController?.abort();
+    };
+  }, [loadConversations]);
 
   const handleSelectConversation = async (id: string) => {
     try {
       const data = await getConversation(id);
       setActiveConversationId(id);
       setMessages(
-        data.messages.map((m: Record<string, unknown>) => ({
+        (data.messages?.map((m: Record<string, unknown>) => ({
           id: m.id as string,
           role: m.role as string,
           content: m.content as string,
@@ -79,7 +77,7 @@ const ChatbotArea: React.FC<ChatbotProps> = () => {
           tool_call_id: m.tool_call_id as string,
           tool_name: m.tool_name as string,
           created_at: m.created_at as string,
-        }))
+        })) || [])
       );
       clearToolCalls();
     } catch (err) {
@@ -196,7 +194,22 @@ const ChatbotArea: React.FC<ChatbotProps> = () => {
         loadConversations();
       }
     },
-    [activeConversationId, isStreaming]
+    [
+      activeConversationId,
+      isStreaming,
+      addMessage,
+      setIsStreaming,
+      setError,
+      clearToolCalls,
+      setAbortController,
+      updateLastAssistantMessage,
+      addToolCall,
+      updateToolCallArgs,
+      updateToolCallResult,
+      setActiveConversationId,
+      loadConversations,
+      toast,
+    ]
   );
 
   const handleStop = useCallback(() => {

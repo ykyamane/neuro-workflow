@@ -22,6 +22,10 @@ async def stream_chat_completion(
       - "done": stream finished
       - "error": an error occurred
     """
+    if not OPENAI_API_KEY:
+        yield {"type": "error", "message": "OpenAI API key is not configured"}
+        return
+
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
@@ -87,8 +91,8 @@ async def stream_chat_completion(
                         return
 
     except httpx.HTTPError as e:
-        logger.error(f"OpenAI HTTP error: {e}")
+        logger.error("OpenAI HTTP error: %s", e)
         yield {"type": "error", "message": f"OpenAI connection error: {str(e)}"}
     except Exception as e:
-        logger.error(f"OpenAI unexpected error: {e}", exc_info=True)
+        logger.error("OpenAI unexpected error: %s", e, exc_info=True)
         yield {"type": "error", "message": f"Unexpected error: {str(e)}"}

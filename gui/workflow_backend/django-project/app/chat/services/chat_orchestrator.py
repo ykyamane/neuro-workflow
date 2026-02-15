@@ -58,13 +58,13 @@ async def orchestrate_chat(conversation: Conversation, user_message: str):
     try:
         await mcp.initialize()
     except Exception as e:
-        logger.warning(f"MCP initialize failed (may already be initialized): {e}")
+        logger.warning("MCP initialize failed (may already be initialized): %s", e)
 
     try:
         mcp_tools = await mcp.list_tools()
         openai_tools = mcp_tools_to_openai_functions(mcp_tools)
     except Exception as e:
-        logger.error(f"Failed to get MCP tools: {e}")
+        logger.error("Failed to get MCP tools: %s", e)
         openai_tools = []
 
     # 3. Agent loop
@@ -152,7 +152,7 @@ async def orchestrate_chat(conversation: Conversation, user_message: str):
                     result = await mcp.call_tool(tool_name, arguments)
                 except Exception as e:
                     result = f"Error executing tool: {str(e)}"
-                    logger.error(f"MCP tool call error for {tool_name}: {e}")
+                    logger.error("MCP tool call error for %s: %s", tool_name, e)
 
                 # Save tool result message
                 await _create_message(

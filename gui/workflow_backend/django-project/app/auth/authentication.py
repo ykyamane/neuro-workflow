@@ -90,9 +90,13 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
         jwks_url = f"{supabase_url}/auth/v1/jwks"
         try:
             jwks_response = requests.get(jwks_url, timeout=5)
-            jwks = jwks_response.json()
-        except Exception as e:
+            jwks_response.raise_for_status()
+        except requests.exceptions.RequestException as e:
             raise jwt.InvalidTokenError(f"Failed to fetch JWKS: {e}")
+        try:
+            jwks = jwks_response.json()
+        except ValueError as e:
+            raise jwt.InvalidTokenError(f"Invalid JWKS response: {e}")
 
         keys = jwks.get("keys")
         if not keys:

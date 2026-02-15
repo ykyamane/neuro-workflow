@@ -1921,7 +1921,7 @@ const HomeView = () => {
         onViewCode={handleSidebarViewCode}
         onChangeColor={handleChangeCategoryColor}
       />
-      <ChatbotArea error={error} />
+      <ChatbotArea />
         <style>
           {`
             .react-flow__controls {

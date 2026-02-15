@@ -10,7 +10,12 @@ MCP_ENDPOINT = f"{MCP_PROXY_URL}/mcp"
 
 
 class MCPClient:
-    """Client for communicating with the MCP Streamable HTTP proxy."""
+    """Client for communicating with the MCP Streamable HTTP proxy.
+
+    Lifecycle: a new instance is created per request (in ``orchestrate_chat``)
+    and discarded when the request finishes.  It is **not** shared across
+    requests or stored in long-lived state.
+    """
 
     def __init__(self):
         self._request_id = 0
@@ -57,7 +62,12 @@ class MCPClient:
                 return data.get("result", {})
 
     def _parse_sse_response(self, text: str) -> dict:
-        """Parse SSE response from MCP Streamable HTTP and extract the JSON-RPC result."""
+        """Parse SSE response from MCP Streamable HTTP and extract the JSON-RPC result.
+
+        JSON-RPC over SSE may emit multiple ``data:`` lines (e.g. progress
+        notifications).  We iterate through all of them but only the **last**
+        ``result`` value is used as the return value.
+        """
         result = {}
         for line in text.split("\n"):
             if line.startswith("data: "):
