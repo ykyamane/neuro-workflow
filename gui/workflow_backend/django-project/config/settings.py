@@ -7,6 +7,7 @@ from .config import (
     DB_PORT,
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
+    SUPABASE_JWT_SECRET,
     SECRET_KEY,
 )
 
@@ -49,8 +50,9 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
-    "app.box.apps.BoxConfig",  
-    "app.workflow.apps.WorkflowConfig",  
+    "app.box.apps.BoxConfig",
+    "app.workflow.apps.WorkflowConfig",
+    "app.chat.apps.ChatConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -132,6 +134,7 @@ REST_FRAMEWORK = {
 
 SUPABASE_URL = SUPABASE_URL
 SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
+SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET
 
 # ==============================================================================
 # CORS CONFIGURATION
@@ -162,6 +165,10 @@ CORS_ALLOW_METHODS = [
     "PATCH",
     "POST",
     "PUT",
+]
+
+CORS_EXPOSE_HEADERS = [
+    "X-Conversation-Id",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

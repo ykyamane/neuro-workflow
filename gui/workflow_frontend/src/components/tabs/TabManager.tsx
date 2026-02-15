@@ -111,25 +111,30 @@ export const TabManager: React.FC = () => {
 
   return (
     <TabContext.Provider value={contextValue}>
-      <Box 
-        height="100%" 
-        display="flex" 
+      <Box
+        flex={1}
+        minH={0}
+        display="flex"
         flexDirection="column"
-        //marginLeft="320px"
       >
         {/* tab bar */}
-        <TabBar />
-        
+        <Box flexShrink={0}>
+          <TabBar />
+        </Box>
+
         {/* Content area */}
-        <Box flex="1" overflow="hidden" position="relative">
+        <Box flex="1" minH="0" overflow="hidden" position="relative">
           {tabs.map(tab => {
 
             if (tab.type === 'workflow') {
               return (
                 <Box
                   key={tab.id}
-                  w="100%"
-                  h="100%"
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  right={0}
+                  bottom={0}
                   display={tab.id === activeTabId ? "block" : "none"}
                 >
                   <Routes>
@@ -147,11 +152,11 @@ export const TabManager: React.FC = () => {
               return (
                 <Box
                   key={tab.id}
-                  w="100%"
-                  h="100%"
                   position="absolute"
                   top={0}
                   left={0}
+                  right={0}
+                  bottom={0}
                   display={tab.id === activeTabId ? "block" : "none"}
                 >
                   <iframe

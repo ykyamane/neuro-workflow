@@ -35,7 +35,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState, useRef } from 'react';
 import { IconType } from 'react-icons';
-import { FiBox, FiCopy, FiTrash2, FiInfo, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
+import { FiBox, FiCopy, FiTrash2, FiEdit2, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
 import { SchemaFields } from '../home/type';
 import { createAuthHeaders } from '../../api/authHeaders';
 import { useTabContext } from '../../components/tabs/TabManager';
@@ -530,11 +530,12 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
         position="absolute"
         top="268px"
         left="8px"
+        bottom={0}
     >
       <IconButton
         position="absolute"
-        top="72px"
-        left="16px"
+        top="12px"
+        left="32px"
         zIndex={1000}
         aria-label="メニュー開閉"
         icon={<FiMenu />}
@@ -546,8 +547,8 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
       <Box
         position="absolute"
         left={0}
-        top="64px"
-        height="calc(100vh - 348px)"
+        top="8px"
+        bottom="16px"
         width="320px"
         marginLeft="16px"
         // The width changes depending on isOpen. Smooth transition
@@ -831,8 +832,8 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
                                       draggable={false}
                                     />
                                     <IconButton
-                                      aria-label="Node information"
-                                      icon={<FiInfo />}
+                                      aria-label="Edit node"
+                                      icon={<FiEdit2 />}
                                       size="xs"
                                       variant="ghost"
                                       color="gray.400"

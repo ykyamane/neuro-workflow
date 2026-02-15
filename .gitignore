@@ -13,6 +13,9 @@ ENV/
 .python-version
 .vscode/
 
+# Node
+node_modules/
+
 # Database files
 *.db
 *.sqlite3
