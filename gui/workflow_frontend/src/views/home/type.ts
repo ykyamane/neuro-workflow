@@ -66,6 +66,7 @@ export interface CalculationNodeData {
   nodeParameters?: {
     [key: string]: any;
   };
+  isParamExpand?: boolean;
   color: string;
 }
 

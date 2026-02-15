@@ -111,6 +111,7 @@ const HomeView = () => {
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const updateNodeAPIRef = useRef<(nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => Promise<void>>();
 
   // Node menu related status
   const [nodeMenuPosition, setNodeMenuPosition] = useState<{ x: number, y: number } | null>(null);
@@ -228,6 +229,17 @@ const HomeView = () => {
     }
   }, [sharedNodes, onViewOpen]);
 
+  // Debounced Storage Function
+  const debouncedSave = useCallback((action: () => Promise<void>) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      await action();
+    }, 500);
+  }, []);
+
   const handleNodeUpdate = useCallback((nodeId: string, updatedData: Partial<CalculationNodeData>) => {
     console.log('handleNodeUpdate called for node:', nodeId, 'with data:', updatedData);
     
@@ -253,8 +265,8 @@ const HomeView = () => {
     // selectedNode also updated
     setSelectedNode((prevNode) => {
       if (prevNode?.id === nodeId) {
-        const updatedSelectedNode = { 
-          ...prevNode, 
+        const updatedSelectedNode = {
+          ...prevNode,
           data: { ...prevNode.data, ...updatedData }
         };
         console.log('Selected node updated:', updatedSelectedNode);
@@ -262,7 +274,15 @@ const HomeView = () => {
       }
       return prevNode;
     });
-  }, [setSharedNodes]);
+
+    // Persist to backend via API (ref always points to the latest updateNodeAPI)
+    debouncedSave(async () => {
+      const updatedNode = useFlowStore.getState().sharedNodes.find(n => n.id === nodeId);
+      if (updatedNode) {
+        await updateNodeAPIRef.current?.(nodeId, updatedNode);
+      }
+    });
+  }, [setSharedNodes, debouncedSave]);
 
   // The handleSyncWorkflowNodes function has been removed. - Sidebar and workflow nodes are treated independently
 
@@ -374,6 +394,7 @@ const HomeView = () => {
         onJupyter={handleNodeJupyter}
         onInfo={handleNodeInfo}
         onDelete={handleNodeDelete}
+        onNodeUpdate={handleNodeUpdate}
       />
     );
 
@@ -402,7 +423,7 @@ const HomeView = () => {
     });
 
     return types;
-  }, [handleNodeJupyter, handleNodeInfo, handleNodeDelete, uploadedNodes]);
+  }, [handleNodeJupyter, handleNodeInfo, handleNodeDelete, handleNodeUpdate, uploadedNodes]);
 
 
   // Helper functions for API communication
@@ -546,6 +567,7 @@ const HomeView = () => {
       });
     }
   };
+  updateNodeAPIRef.current = updateNodeAPI;
 
   // Deleting nodes individually
   const deleteNodeAPI = async (nodeId: string) => {
@@ -694,16 +716,7 @@ const HomeView = () => {
     }
   };
 
-  // Debounced Storage Function
-  const debouncedSave = useCallback((action: () => Promise<void>) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = setTimeout(async () => {
-      await action();
-    }, 500);
-  }, []);
+
 
   // Get project list
   useEffect(() => {
