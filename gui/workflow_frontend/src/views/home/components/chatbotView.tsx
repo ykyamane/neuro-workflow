@@ -204,7 +204,7 @@ const ChatbotArea: React.FC<ChatbotProps> = () => {
     controller?.abort();
     setIsStreaming(false);
     setAbortController(null);
-  }, []);
+  }, [setIsStreaming, setAbortController]);
 
   return (
     <Flex
