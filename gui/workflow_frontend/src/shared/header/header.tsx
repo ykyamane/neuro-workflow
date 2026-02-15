@@ -51,8 +51,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <>
-     <Flex
+    <Flex
       as="header"
       width="100%"
       py={4}
@@ -60,9 +59,6 @@ const Header: React.FC = () => {
       alignItems="center"
       bg="gray.900"
       color="white"
-      position="fixed"  
-      top="0"          
-      zIndex="1000"    
     >
       <Heading 
           as={RouterLink} 
@@ -160,8 +156,6 @@ const Header: React.FC = () => {
         )}
       </Flex>
     </Flex>
-    <Box height="72px" /> {/* Spacer to prevent content from being hidden under fixed header */}
-    </>    
   )
 }
 

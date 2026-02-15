@@ -13,6 +13,7 @@ drf-yasg = "^1.21.7"  # Swagger APIドキュメント自動生成
 django-cors-headers = "^4.3.1"
 gunicorn = "^21.2.0"  # 本番用WSGIサーバー
 python-dotenv = "^1.1.0"
+httpx = "^0.28.0"
 pyjwt = "^2.10.1"
 cryptography = "^45.0.3"
 
