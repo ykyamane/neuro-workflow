@@ -113,6 +113,45 @@ c.JupyterHub.cookie_options = {
     'Secure': False,  # Set to True in production with HTTPS
 }
 
+# =============== SERVICE TOKEN FOR BACKEND ===============
+# Allow the Django backend to use the JupyterHub API and
+# access single-user servers (for kernel execution).
+_api_token = os.environ.get("JUPYTERHUB_API_TOKEN", "")
+if not _api_token:
+    import warnings
+    warnings.warn(
+        "JUPYTERHUB_API_TOKEN is not set. Backend API access will not work. "
+        "Set this variable in .env or docker-compose.yml.",
+        stacklevel=1,
+    )
+    _api_token = "unset-token-will-fail"
+elif _api_token == "dev-token-change-in-production":
+    import warnings
+    warnings.warn(
+        "JUPYTERHUB_API_TOKEN is using the default development token. "
+        "Change it for production deployments.",
+        stacklevel=1,
+    )
+c.JupyterHub.services = [
+    {
+        "name": "backend",
+        "api_token": _api_token,
+    }
+]
+# Grant the service token permission to start/stop servers
+# and access user server APIs (kernels, etc.)
+c.JupyterHub.load_roles = [
+    {
+        "name": "backend-role",
+        "scopes": [
+            "admin:servers",   # start / stop user servers
+            "access:servers",  # proxy through to single-user server APIs
+            "admin:users",     # read user model (needed for server status)
+        ],
+        "services": ["backend"],
+    }
+]
+
 # ----Regular cleanup
 c.JupyterHub.shutdown_on_logout = True
 c.JupyterHub.cleanup_servers = True

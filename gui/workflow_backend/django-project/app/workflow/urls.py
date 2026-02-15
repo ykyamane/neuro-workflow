@@ -6,6 +6,7 @@ from .views import (
     SampleFlowView,
     BatchCodeGenerationView,
     BatchWorkflowRunView,
+    WorkflowRunStreamView,
     FlowNodeInstanceNameUpdateView,
     FlowNodeParameterUpdateView,
 )
@@ -83,12 +84,12 @@ urlpatterns = [
         BatchCodeGenerationView.as_view(),
         name="batch-code-generation"
     ),  # POST (generate code in batch from React Flow JSON)
-    # Run Workflow
+    # Run Workflow (SSE streaming via Jupyter kernel)
     path(
         "<uuid:workflow_id>/run/",
-        BatchWorkflowRunView.as_view(),
-        name="batch-workflow-run"
-    ),  # POST (Run workflow program)
+        WorkflowRunStreamView.as_view(),
+        name="workflow-run-stream"
+    ),  # POST (Run workflow on Jupyter, SSE streaming output)
     # Sample Data
     path(
         "sample-flow/", SampleFlowView.as_view(), name="sample-flow"
