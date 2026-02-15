@@ -63,8 +63,8 @@ export const runWorkflowStream = async (
         try {
           const data = JSON.parse(dataStr);
           onEvent({ type: currentEventType, data });
-        } catch {
-          // Ignore JSON parse errors for partial data
+        } catch (e) {
+          console.warn("[workflowRunApi] Failed to parse SSE data:", dataStr, e);
         }
         currentEventType = "";
       }

@@ -784,14 +784,34 @@ def _format_sse(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+# Track in-progress workflow executions to prevent concurrent runs
+_running_workflows: set[str] = set()
+
+# Jupyter notebook home directory (configurable via env)
+JUPYTER_HOME = os.environ.get("JUPYTER_HOME", "/home/jovyan")
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class WorkflowRunStreamView(APIView):
-    """Run workflow code on a Jupyter kernel and stream output via SSE."""
+    """Run workflow code on a Jupyter kernel and stream output via SSE.
+
+    NOTE: This endpoint uses AllowAny + csrf_exempt to match the existing
+    pattern used by all workflow endpoints in this project. In production,
+    add proper authentication (e.g. SupabaseAuthentication).
+    """
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request, workflow_id):
+        workflow_id_str = str(workflow_id)
+
+        if workflow_id_str in _running_workflows:
+            return Response(
+                {"error": "This workflow is already running."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         try:
             project = get_object_or_404(FlowProject, id=workflow_id)
         except Exception:
@@ -813,7 +833,7 @@ class WorkflowRunStreamView(APIView):
         code = script_path.read_text(encoding="utf-8")
 
         # Prepend os.chdir so the script runs in the correct working directory
-        working_dir = f"/home/jovyan/codes/projects/{project_name}"
+        working_dir = f"{JUPYTER_HOME}/codes/projects/{project_name}"
         code = (
             f"import os\nos.makedirs({working_dir!r}, exist_ok=True)\n"
             f"os.chdir({working_dir!r})\n\n"
@@ -821,7 +841,7 @@ class WorkflowRunStreamView(APIView):
         )
 
         response = StreamingHttpResponse(
-            self._sync_event_generator(str(workflow_id), project_name, code),
+            self._sync_event_generator(workflow_id_str, project_name, code),
             content_type="text/event-stream",
         )
         response["Cache-Control"] = "no-cache"
@@ -830,6 +850,7 @@ class WorkflowRunStreamView(APIView):
 
     def _sync_event_generator(self, workflow_id, project_name, code):
         """Wrap the async Jupyter execution into a sync generator for WSGI."""
+        _running_workflows.add(workflow_id)
         loop = asyncio.new_event_loop()
         try:
             yield _format_sse("run_started", {
@@ -856,6 +877,7 @@ class WorkflowRunStreamView(APIView):
                     yield _format_sse("done", {"status": "error"})
                     break
         finally:
+            _running_workflows.discard(workflow_id)
             loop.close()
 
 

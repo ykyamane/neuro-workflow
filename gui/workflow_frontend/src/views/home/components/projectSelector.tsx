@@ -245,9 +245,12 @@ export const ProjectSelector = ({
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsRunning(false);
-    setRunStatus("error");
+    setRunStatus("idle");
     setLogEntries(prev => [...prev, { type: "info", content: "\n--- Execution cancelled by user ---\n" }]);
   }, []);
+
+  // Track whether a "done" event was received (avoids stale closure on runStatus)
+  const receivedDoneRef = useRef(false);
 
   // Run workflow project (SSE streaming)
   const handleRunWorkflow = useCallback(async () => {
@@ -262,11 +265,24 @@ export const ProjectSelector = ({
       return;
     }
 
+    // Prevent concurrent executions
+    if (isRunning) {
+      toast({
+        title: "Already Running",
+        description: "A workflow is already running. Stop it first.",
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
+      return;
+    }
+
     // Reset state and open modal
     setLogEntries([]);
     setIsRunning(true);
     setRunStatus("running");
     setIsLogOpen(true);
+    receivedDoneRef.current = false;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -312,6 +328,7 @@ export const ProjectSelector = ({
               break;
             }
             case "done": {
+              receivedDoneRef.current = true;
               const status = event.data.status as string;
               setRunStatus(status === "ok" ? "ok" : "error");
               setIsRunning(false);
@@ -326,9 +343,9 @@ export const ProjectSelector = ({
         controller.signal
       );
 
-      // Stream ended without "done" event (e.g. connection closed)
-      setIsRunning(false);
-      if (runStatus === "running") {
+      // Stream ended – only update if no "done" event was received
+      if (!receivedDoneRef.current) {
+        setIsRunning(false);
         setRunStatus("ok");
       }
     } catch (error) {
@@ -353,7 +370,7 @@ export const ProjectSelector = ({
     } finally {
       abortControllerRef.current = null;
     }
-  }, [selectedProject, toast, runStatus]);
+  }, [selectedProject, toast, isRunning]);
 
   return (
     <Box

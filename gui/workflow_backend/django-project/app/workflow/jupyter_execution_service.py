@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # JupyterHub / Jupyter Server connection settings
 JUPYTERHUB_API_URL = os.environ.get("JUPYTERHUB_API_URL", "http://jupyterhub:8000")
-JUPYTERHUB_API_TOKEN = os.environ.get("JUPYTERHUB_API_TOKEN", "")
+JUPYTERHUB_API_TOKEN = os.environ.get("JUPYTERHUB_API_TOKEN") or None
 JUPYTER_USER = os.environ.get("JUPYTER_EXECUTION_USER", "user1")
 
 # Timeouts
@@ -32,6 +32,11 @@ class JupyterExecutionService:
     """
 
     def __init__(self, user: str = JUPYTER_USER):
+        if not JUPYTERHUB_API_TOKEN:
+            raise ValueError(
+                "JUPYTERHUB_API_TOKEN environment variable is not set. "
+                "Configure it in docker-compose.yml or .env."
+            )
         self.user = user
         self.hub_url = JUPYTERHUB_API_URL.rstrip("/")
         self.token = JUPYTERHUB_API_TOKEN
@@ -67,7 +72,12 @@ class JupyterExecutionService:
                 headers=self._headers,
             )
             # 201 = started, 202 = already starting/pending
-            if resp.status_code not in (201, 202, 400):
+            if resp.status_code == 400:
+                raise RuntimeError(
+                    f"Failed to start server for {self.user}: "
+                    f"HTTP {resp.status_code} - {resp.text}"
+                )
+            if resp.status_code not in (201, 202):
                 resp.raise_for_status()
 
             # Poll until ready
@@ -147,13 +157,12 @@ class JupyterExecutionService:
 
     async def _stream_execution(self, kernel_id: str, code: str):
         """Connect to the kernel WebSocket and execute *code*."""
-        # Build WebSocket URL – the Hub proxies to the single-user server
-        ws_scheme = "ws"
-        hub_host = self.hub_url.replace("http://", "").replace("https://", "")
+        # Build WebSocket URL – derive scheme from hub_url
+        ws_scheme = "wss" if self.hub_url.startswith("https://") else "ws"
+        hub_host = self.hub_url.split("://", 1)[1] if "://" in self.hub_url else self.hub_url
         ws_url = (
             f"{ws_scheme}://{hub_host}/user/{self.user}"
             f"/api/kernels/{kernel_id}/channels"
-            f"?token={self.token}"
         )
 
         session_id = uuid.uuid4().hex
@@ -185,7 +194,7 @@ class JupyterExecutionService:
 
         async with websockets.connect(
             ws_url,
-            extra_headers={"Authorization": f"token {self.token}"},
+            extra_headers=self._headers,
             max_size=2**23,  # 8 MB
             open_timeout=30,
         ) as ws:
@@ -206,6 +215,10 @@ class JupyterExecutionService:
                             "evalue": f"No output for {EXECUTE_IDLE_TIMEOUT}s",
                             "traceback": [],
                         },
+                    }
+                    yield {
+                        "type": "done",
+                        "data": {"status": "error"},
                     }
                     return
 
