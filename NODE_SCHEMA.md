@@ -156,8 +156,10 @@ class ParameterDefinition:
     default_value: Any = None                # Default value for the parameter
     description: str = ""                    # Human-readable description
     constraints: Dict[str, Any] = field(default_factory=dict)  # Validation constraints
-    optimizable: bool = False                # Whether this parameter can be optimized
-    optimization_range: Optional[List] = None  # Range for optimization [min, max]
+    optimizable: bool = False                # Whether this parameter can be tuned during optimization
+    optimization_range: Optional[List] = None  # Range for parameter tuning [min, max]
+    is_objective: bool = False               # Whether this parameter is an optimization objective/target
+    objective_range: Optional[List] = None   # Acceptable range for the objective value [min, max]
     suggested_values: List[Dict[str, Any]] = field(default_factory=list)  # Optional suggestions
 ```
 
@@ -189,7 +191,11 @@ You can attach optional AI or metadata suggestions to any parameter. These are *
 
 ## Optimization Metadata (Optional)
 
-`optimizable` and `optimization_range` are **optional metadata** for downstream tools. They do not change node behavior by themselves.
+`optimizable`, `optimization_range`, `is_objective`, and `objective_range` are **optional metadata** for downstream optimization tools. They do not change node behavior by themselves.
+
+### Decision Variables (Parameters to Tune)
+
+Use `optimizable` and `optimization_range` for parameters that should be tuned during optimization:
 
 ```python
 'learning_rate': ParameterDefinition(
@@ -200,6 +206,23 @@ You can attach optional AI or metadata suggestions to any parameter. These are *
     optimization_range=[0.0001, 0.1]
 )
 ```
+
+### Objectives (Targets to Achieve)
+
+Use `is_objective` and `objective_range` for parameters that represent optimization targets or goals:
+
+```python
+'mean_firing_rate': ParameterDefinition(
+    default_value=10.0,
+    description='Target mean firing rate (Hz)',
+    is_objective=True,
+    objective_range=[5.0, 50.0]  # Acceptable range for the objective
+)
+```
+
+This separation allows optimization nodes to distinguish between:
+- **Decision variables** (`optimizable=True`): Parameters to tune (e.g., `I_e`, weights)
+- **Objectives** (`is_objective=True`): Metrics to achieve (e.g., firing rate, error)
 
 The `connect` method takes four arguments:
 

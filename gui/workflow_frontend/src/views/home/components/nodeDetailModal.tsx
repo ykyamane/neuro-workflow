@@ -753,6 +753,63 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                     </HStack>
                   )}
                 </HStack>
+
+                {/* Optimization metadata (read-only) */}
+                {(param.optimizable || param.is_objective) && (
+                  <Box mt={2} p={2} bg="gray.600" borderRadius="md" borderLeft="3px solid" borderLeftColor="yellow.400">
+                    <Text fontSize="xs" color="yellow.300" fontWeight="bold" mb={1}>Optimization</Text>
+
+                    {/* optimizable */}
+                    {param.optimizable !== undefined && (
+                      <HStack align="start" spacing={2}>
+                        <Text fontSize="xs" color="gray.400" minW="110px">optimizable:</Text>
+                        <Code
+                          colorScheme={param.optimizable ? "green" : "gray"}
+                          fontSize="xs"
+                          bg={param.optimizable ? "green.600" : "gray.500"}
+                          color="white"
+                        >
+                          {param.optimizable ? "true" : "false"}
+                        </Code>
+                      </HStack>
+                    )}
+
+                    {/* optimization_range */}
+                    {param.optimization_range && (
+                      <HStack align="start" spacing={2} mt={1}>
+                        <Text fontSize="xs" color="gray.400" minW="110px">optimization_range:</Text>
+                        <Code colorScheme="yellow" fontSize="xs" bg="yellow.600" color="white">
+                          {formatDataForDisplay(param.optimization_range)}
+                        </Code>
+                      </HStack>
+                    )}
+
+                    {/* is_objective */}
+                    {param.is_objective !== undefined && (
+                      <HStack align="start" spacing={2} mt={1}>
+                        <Text fontSize="xs" color="gray.400" minW="110px">is_objective:</Text>
+                        <Code
+                          colorScheme={param.is_objective ? "purple" : "gray"}
+                          fontSize="xs"
+                          bg={param.is_objective ? "purple.600" : "gray.500"}
+                          color="white"
+                        >
+                          {param.is_objective ? "true" : "false"}
+                        </Code>
+                      </HStack>
+                    )}
+
+                    {/* objective_range */}
+                    {param.objective_range && (
+                      <HStack align="start" spacing={2} mt={1}>
+                        <Text fontSize="xs" color="gray.400" minW="110px">objective_range:</Text>
+                        <Code colorScheme="purple" fontSize="xs" bg="purple.600" color="white">
+                          {formatDataForDisplay(param.objective_range)}
+                        </Code>
+                      </HStack>
+                    )}
+                  </Box>
+                )}
               </VStack>
             </VStack>
           </Box>

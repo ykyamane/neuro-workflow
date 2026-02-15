@@ -265,7 +265,11 @@ If you want AI or metadata suggestions, you can attach them to parameters. These
 
 ## Optional: Optimization Metadata
 
-`optimizable` and `optimization_range` are optional metadata for optimization tools. If you are not using optimization, you can ignore them.
+Optimization metadata fields are optional and used by downstream optimization tools. If you are not using optimization, you can ignore them.
+
+### Decision Variables (Parameters to Tune)
+
+Use `optimizable` and `optimization_range` for parameters that should be tuned during optimization:
 
 ```python
 'learning_rate': ParameterDefinition(
@@ -276,6 +280,23 @@ If you want AI or metadata suggestions, you can attach them to parameters. These
     optimization_range=[0.001, 0.1]
 )
 ```
+
+### Objectives (Targets to Achieve)
+
+Use `is_objective` and `objective_range` for parameters that represent optimization targets or goals:
+
+```python
+'mean_firing_rate': ParameterDefinition(
+    default_value=10.0,
+    description='Target mean firing rate (Hz)',
+    is_objective=True,
+    objective_range=[5.0, 50.0]  # Acceptable range for the objective
+)
+```
+
+This separation allows optimization nodes to distinguish between:
+- **Decision variables** (`optimizable=True`): Parameters to tune (e.g., `I_e`, weights)
+- **Objectives** (`is_objective=True`): Metrics to achieve (e.g., firing rate, error)
 
 ### Step 4: Define Input Ports
 
@@ -425,12 +446,21 @@ def analyze_results(self, processed_signal: Any) -> Dict[str, Any]:
 Make parameters optimizable for automatic tuning:
 
 ```python
+# Decision variable - parameter to tune
 'amplitude': ParameterDefinition(
     default_value=1.0,
     description='Signal amplitude',
     constraints={'min': 0.1, 'max': 10.0},
     optimizable=True,  # Enable optimization
     optimization_range=[0.1, 5.0]  # Optimization bounds
+)
+
+# Objective - target to achieve
+'target_output': ParameterDefinition(
+    default_value=5.0,
+    description='Target output value',
+    is_objective=True,  # This is an optimization objective
+    objective_range=[1.0, 10.0]  # Acceptable range
 )
 ```
 

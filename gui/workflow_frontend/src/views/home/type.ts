@@ -27,6 +27,11 @@ export interface ParameterField {
   };
   optional?: boolean;
   widget_type?: string;
+  // Optimization metadata
+  optimizable?: boolean;
+  optimization_range?: [number, number] | number[];
+  is_objective?: boolean;
+  objective_range?: [number, number] | number[];
 }
 
 export interface Method {

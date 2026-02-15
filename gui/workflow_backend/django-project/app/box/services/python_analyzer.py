@@ -463,6 +463,10 @@ class PythonNodeAnalyzer:
                 param_info["optimizable"] = self._extract_bool_value(keyword.value)
             elif keyword.arg == "optimization_range":
                 param_info["optimization_range"] = self._extract_value(keyword.value)
+            elif keyword.arg == "is_objective":
+                param_info["is_objective"] = self._extract_bool_value(keyword.value)
+            elif keyword.arg == "objective_range":
+                param_info["objective_range"] = self._extract_value(keyword.value)
             elif keyword.arg == "suggested_values":
                 param_info["suggested_values"] = self._extract_value(keyword.value)
             elif keyword.arg == "type":
@@ -599,6 +603,10 @@ class PythonNodeAnalyzer:
                     param_info["optimizable"] = self._extract_bool_value(value)
                 elif key_name == "optimization_range":
                     param_info["optimization_range"] = self._extract_value(value)
+                elif key_name == "is_objective":
+                    param_info["is_objective"] = self._extract_bool_value(value)
+                elif key_name == "objective_range":
+                    param_info["objective_range"] = self._extract_value(value)
                 elif key_name == "suggested_values":
                     param_info["suggested_values"] = self._extract_value(value)
                 elif key_name == "type":

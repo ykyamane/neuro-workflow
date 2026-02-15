@@ -84,12 +84,25 @@ class PortDefinition:
 
 @dataclass
 class ParameterDefinition:
-    """Definition of a parameter in a node."""
+    """Definition of a parameter in a node.
+
+    Attributes:
+        default_value: Default value for the parameter
+        description: Human-readable description
+        constraints: Validation constraints (min, max, allowed_values, etc.)
+        optimizable: Whether this parameter can be tuned during optimization
+        optimization_range: [min, max] range for parameter tuning
+        is_objective: Whether this parameter serves as an optimization objective/target
+        objective_range: [min, max] acceptable range for the objective value
+        suggested_values: List of suggested values for the parameter
+    """
     default_value: Any = None
     description: str = ""
     constraints: Dict[str, Any] = field(default_factory=dict)
     optimizable: bool = False
     optimization_range: Optional[List[Any]] = None
+    is_objective: bool = False
+    objective_range: Optional[List[Any]] = None
     suggested_values: List[Dict[str, Any]] = field(default_factory=list)
 
 

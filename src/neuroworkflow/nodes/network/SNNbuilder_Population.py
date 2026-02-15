@@ -109,7 +109,7 @@ class SNNbuilder_Population(Node):
             ),
             'mean_firing_rate': ParameterDefinition(
                 default_value=None,
-                description='Average firing rate (Hz) or (min, max) range'
+                description='Average firing rate (Hz) or (min, max) range',
             ),
             # Execution mode
             'execution_mode': ParameterDefinition(
