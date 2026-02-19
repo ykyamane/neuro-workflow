@@ -19,8 +19,6 @@ import { EditIcon, CheckIcon, CloseIcon, ViewIcon } from '@chakra-ui/icons';
 import { CalculationNodeData, SchemaFields } from '../type';
 import { Node } from '@xyflow/react';
 import { createAuthHeaders } from '../../../api/authHeaders';
-import HomeView from '../homeView';
-import convertToStrIncFloat from '/homeView';
  
 interface NodeDetailsContentProps {
   nodeData: Node<CalculationNodeData> | null;

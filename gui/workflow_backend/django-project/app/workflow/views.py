@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import logging
@@ -831,6 +832,15 @@ class WorkflowRunStreamView(APIView):
             )
 
         code = script_path.read_text(encoding="utf-8")
+
+        # Validate generated code syntax before execution
+        try:
+            ast.parse(code)
+        except SyntaxError as e:
+            return Response(
+                {"error": f"Generated code has syntax error at line {e.lineno}: {e.msg}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Prepend os.chdir so the script runs in the correct working directory
         working_dir = f"{JUPYTER_HOME}/codes/projects/{project_name}"

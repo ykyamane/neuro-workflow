@@ -1,6 +1,7 @@
 import re
 import os
 import json
+import keyword
 import textwrap
 from pathlib import Path
 from django.conf import settings
@@ -418,6 +419,8 @@ if __name__ == "__main__":
             sanitized = f"{prefix}_{sanitized}"
         elif not sanitized:
             sanitized = prefix
+        if keyword.iskeyword(sanitized):
+            sanitized = f"{prefix}_{sanitized}"
         return sanitized
 
     def _generate_variable_name_by_category(self, class_name, node_id, category, node_no):
@@ -437,18 +440,6 @@ if __name__ == "__main__":
 
         return f"instance_{class_name}_{node_no_zero}"
         
-        """
-        if category == "network":
-            return f"network_{short_id}"
-        elif category == "simulation":
-            return f"sim_{short_id}"
-        elif category == "analysis":
-            return f"analysis_{short_id}"
-        else:
-            # Other categories
-            return f"{category}_{short_id}"
-        """
-        
     """ Passing Node to the constructor (unused?)"""
     def _generate_constructor_arg_by_category(self, class_name, category):
         """Generate constructor arguments based on category"""
@@ -465,65 +456,6 @@ if __name__ == "__main__":
     def _generate_configure_block_by_category(self, class_name, category, node_data):
         """Generate configure blocks based on category (including parameter changes)"""
         return self._generate_generic_configure_block(class_name, node_data)
-        """
-        if category == "network":
-            return self._generate_network_configure_block(class_name, node_data)
-        elif category == "simulation":
-            return self._generate_simulation_configure_block(class_name, node_data)
-        elif category == "analysis":
-            return self._generate_analysis_configure_block(class_name, node_data)
-        else:
-            return self._generate_generic_configure_block(class_name, node_data)
-        """
-
-    """
-    def _generate_network_configure_block(self, class_name, node_data):
-        #Generate configure blocks for the #network category (only changed parameters)
-        # No default settings needed, only retrieve changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-
-    def _generate_simulation_configure_block(self, class_name, node_data):
-        #Generate configure blocks for the simulation category (only changed parameters)
-        # No default settings needed, only retrieve changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, (int)):
-                return f"            {key}={float(value):.1f}"
-            elif isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-
-    def _generate_analysis_configure_block(self, class_name, node_data):
-        #Generate configure block for #analysis category (only changed parameters)
-        # Get only changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-    """
 
     def _generate_generic_configure_block(self, class_name, node_data):
         """Generate configure blocks for other categories (only changed parameters)"""
@@ -536,7 +468,7 @@ if __name__ == "__main__":
             if isinstance(value, (int)):
               config_lines.append(f'            {key}={float(value):.1f}')
             elif isinstance(value, str):
-              config_lines.append(f'            {key}="{value}"')
+              config_lines.append(f'            {key}={repr(value)}')
             else:
               config_lines.append(f"            {key}={value}")
 
@@ -695,20 +627,25 @@ if __name__ == "__main__":
 
     def _extract_handle_name(self, handle_string):
         """
-        Extract the necessary part from the handle string
-        Example: calc_1757868335061_i6nyja6de-sonata_net-output-object -> sonata_net
+        Extract the port name from handle string.
+        New format: {nodeId}::{fieldName}::{handleType}::{portType}
+        Legacy format: {nodeId}-{fieldName}-{handleType}-{portType}
         """
         if not handle_string:
             return ""
-
         try:
-            # Split on '-' to get the second part
+            # New format (::)
+            if '::' in handle_string:
+                parts = handle_string.split('::')
+                if len(parts) >= 2:
+                    return parts[1]  # fieldName
+                return handle_string
+
+            # Legacy format (-)
             parts = handle_string.split('-')
             if len(parts) >= 2:
-                return parts[1]  # sonata_net part
-            else:
-                # If it cannot be divided, return it as is
-                return handle_string
+                return parts[1]
+            return handle_string
         except Exception as e:
             logger.warning(f"Could not extract handle name from '{handle_string}': {e}")
             return handle_string
@@ -933,63 +870,6 @@ if __name__ == "__main__":
 
             # Insert code blocks into sections by category
             logger.info(f"DEBUG: Categories found: {list(nodes_by_category.keys())}")
-
-            """
-            # Generate nodes for each category (different sections for each category)
-            for category, node_list in nodes_by_category.items():
-                section_name = self._get_section_name_from_category(category)
-                logger.info(
-                    f"DEBUG: Inserting {len(node_list)} nodes into '{section_name}' section"
-                )
-
-                # detect section
-                section_pattern = re.compile(
-                    #rf"^(\s*)# {re.escape(section_name)} field\s*$", re.MULTILINE
-                    rf"# Create nodes", re.MULTILINE
-                )
-                match = section_pattern.search(updated_code)
-
-                if match:
-                    insertion_point = match.end()
-                    logger.info(
-                        f"DEBUG: Found '{section_name}' section at position {insertion_point}"
-                    )
-
-                    # Delete the existing code in the section and replace it with the new code
-                    # Search to the next section or workflow builder marker
-                    next_section_pattern = re.compile(
-                        #r'^(\s*)# (Analysis|IO|Network|Optimization|Simulation|Stimulus|Test|Create workflow) field\s*$',
-                        r'^(\s*)# workflow_builder_ready\s*$',
-                        re.MULTILINE
-                    )
-
-                    # Find next section after insertion_point
-                    remaining_code = updated_code[insertion_point:]
-                    next_match = next_section_pattern.search(remaining_code)
-
-                    if next_match:
-                        # If the next section is found, replace it up to that point
-                        section_end = insertion_point + next_match.start()
-                    else:
-                        # If the next section is not found, continue to the end of the file.
-                        section_end = len(updated_code)
-
-                    # Combine code blocks in sections
-                    section_code_blocks = [
-                        node_info["code_block"] for node_info in node_list
-                    ]
-                    section_code = "\n".join(section_code_blocks)
-
-                    # Replace section content (delete existing code and insert new code)
-                    before_section = updated_code[:insertion_point]
-                    after_section = updated_code[section_end:]
-                    updated_code = f"{before_section}\n{section_code}\n{after_section}"
-                    logger.info(
-                        f"DEBUG: Replaced section content with {len(section_code_blocks)} code blocks in '{section_name}' section"
-                    )
-                else:
-                    logger.error(f"DEBUG: Could not find '{section_name}' section")
-            """
 
             # Create a node for each category (create all categories in one section)
             section_codes = ""

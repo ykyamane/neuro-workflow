@@ -56,13 +56,14 @@ export interface SchemaFields {
 }
 
 export interface CalculationNodeData {
+  [key: string]: unknown;
   file_name: string;
   label: string;
-  instanceName: string,
+  instanceName: string;
   schema: SchemaFields;
   nodeType?: string;
   operation?: string;
-  // Node-specific parameter values ​​(overrides the default_value in the schema)
+  // Node-specific parameter values (overrides the default_value in the schema)
   nodeParameters?: {
     [key: string]: any;
   };

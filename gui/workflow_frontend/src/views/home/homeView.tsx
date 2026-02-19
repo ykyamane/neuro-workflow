@@ -1,28 +1,10 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  Viewport,
-  MiniMap,
-  Controls,
-  Background,
-  useNodesState,
-  useEdgesState,
-  addEdge,
   Node,
-  Edge,
-  BackgroundVariant,
-  Connection,
   ReactFlowInstance,
-  NodeMouseHandler,
-  EdgeMouseHandler,
   NodeProps,
-  NodeChange,
-  EdgeChange,
 } from '@xyflow/react';
 import {
-  HStack,
   Box,
   Button,
   Modal,
@@ -35,67 +17,27 @@ import {
   useDisclosure,
   Text,
   useToast,
-  VStack,
-  Badge,
-  IconButton,
 } from '@chakra-ui/react';
-import { ViewIcon } from '@chakra-ui/icons';
 import { CodeEditorModal } from './components/codeEditorModal';
 import '@xyflow/react/dist/style.css';
 import SideBoxArea from '../box/boxView';
 import ChatbotArea from './components/chatbotView';
-import {SchemaFields,CalculationNodeData,Project,FlowData } from './type'
+import { CalculationNodeData, Project, FlowData } from './type';
 import { ProjectSelector } from './components/projectSelector';
 import { EdgeMenu } from './components/edgeMenu';
 import { NodeMenu } from './components/nodeMenu';
-import {CalculationNode} from './components/calculationNode';
-import {controlsStyle, minimapStyle} from './style';
+import { CalculationNode } from './components/calculationNode';
+import { WorkflowCanvasProvider } from './WorkflowCanvas';
+import { WorkflowToolbar } from './WorkflowToolbar';
 import { createAuthHeaders } from '../../api/authHeaders';
 import { useUploadedNodes } from '../../hooks/useUploadedNodes';
+import { useWorkflowApi } from '../../hooks/useWorkflowApi';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import NodeDetailsContent from './components/nodeDetailModal';
 import { DeleteConfirmDialog } from './components/deleteConfirmDialog';
 import { useTabContext } from '../../components/tabs/TabManager';
-import { FiMenu } from 'react-icons/fi';
-import { create } from "zustand";
-
-// Viewport for each projectId
-type Viewport = {
-    projectId: string;
-    x: number;
-    y: number;
-    zoom: number;
-};
-
-// Common State
-type FlowStore = {
-  sharedNodes: Node<CalculationNodeData>[];
-  sharedEdges: Edge[];
-  setSharedNodes: (nodes: Node<CalculationNodeData>[]) => void;
-  setSharedEdges: (edges: Edge[]) => void;
-};
-
-// Common State Export
-const useFlowStore = create<FlowStore>((set) => ({
-  sharedNodes: [],
-  sharedEdges: [],
-  //setSharedNodes: (sharedNodes) => set({ sharedNodes }),
-  //setSharedEdges: (sharedEdges) => set({ sharedEdges }),
-  setSharedNodes: (valueOrFn) =>
-    set((state) => ({
-      sharedNodes: typeof valueOrFn === 'function'
-        ? (valueOrFn as (prev: Node<CalculationNodeData>[]) => Node<CalculationNodeData>[])(state.sharedNodes)
-        : valueOrFn
-    })),
-  setSharedEdges: (valueOrFn) =>
-    set((state) => ({
-      sharedEdges: typeof valueOrFn === 'function'
-        ? (valueOrFn as (prev: Edge[]) => Edge[])(state.sharedEdges)
-        : valueOrFn
-    })),
-}));
-
-const FLOW_STATE_KEY = 'reactflow-viewport';
-const PROJECT_ID_KEY = 'projectId';
+import { useFlowStore, PROJECT_ID_KEY } from '../../stores/flowStore';
+import { convertToStrIncFloat } from '../../utils/typeConversion';
 
 const HomeView = () => {
   const toast = useToast();
@@ -133,13 +75,6 @@ const HomeView = () => {
   const setSharedNodes = useFlowStore(state => state.setSharedNodes);
   const sharedEdges = useFlowStore(state => state.sharedEdges);
   const setSharedEdges = useFlowStore(state => state.setSharedEdges);
-  
-  /*
-  const enterTimer = useRef<number | null>(null);
-  const leaveTimer = useRef<number | null>(null);
-  const openDelay = 120; // ms
-  const closeDelay = 180; // ms
-  */
 
   // Use the tab system context
   const { addJupyterTab } = useTabContext();
@@ -426,10 +361,14 @@ const HomeView = () => {
   }, [handleNodeJupyter, handleNodeInfo, handleNodeDelete, handleNodeUpdate, uploadedNodes]);
 
 
-  // Helper functions for API communication
-  const createAuthHeadersLocal = async () => {
-    return await createAuthHeaders();
-  };
+  // Workflow API hooks
+  const { createNodeAPI, updateNodeAPI, deleteNodeAPI, createEdgeAPI, deleteEdgeAPI } = useWorkflowApi({
+    selectedProject,
+    autoSaveEnabled,
+    toast,
+    setIsConnected,
+  });
+  updateNodeAPIRef.current = updateNodeAPI;
 
   // Monitor connection status
   useEffect(() => {
@@ -451,7 +390,7 @@ const HomeView = () => {
 
     checkConnection();
     const interval = setInterval(checkConnection, 30000);
-    
+
     return () => clearInterval(interval);
   });
 
@@ -461,260 +400,6 @@ const HomeView = () => {
 
     handleProjectChange( projectId );
   }, []);
-
-  // Creating individual nodes
-  const createNodeAPI = async (nodeData: Node<CalculationNodeData>) => {
-    if (!selectedProject || !autoSaveEnabled) {
-      console.log('Skipping node creation API call:', { selectedProject, autoSaveEnabled });
-      return;
-    }
-
-    console.log('Creating node via API:', nodeData);
-  
-    try {
-      const headers = await createAuthHeadersLocal();
-      const requestBody = {
-        id: nodeData.id,
-        position: nodeData.position,
-        type: nodeData.type,
-        data: nodeData.data,
-      };
-      
-      console.log('Request body:', requestBody);
-      
-      const response = await fetch(`/api/workflow/${selectedProject}/nodes/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = await response.json();
-      console.log('Create node response:', responseData);
-
-      if (!response.ok) {
-        setIsConnected(false);
-        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to create node'}`);
-      }
-      
-      setIsConnected(true);
-      console.log('Node created successfully:', responseData);
-    } catch (error) {
-      console.error('Error creating node:', error);
-      setIsConnected(false);
-      toast({
-        title: "Save Error",
-        description: `Failed to save node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  // Individual node updates
-  const updateNodeAPI = async (nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => {
-    if (!selectedProject || !autoSaveEnabled) {
-      console.log('Skipping node update API call:', { selectedProject, autoSaveEnabled });
-      return;
-    }
-
-    // Send all updates to the server (including nodeParameters updates)
-
-    console.log('Updating node via API:', { nodeId, nodeData });
-
-    try {
-      const headers = await createAuthHeadersLocal();
-      const requestBody = {
-        position: nodeData.position,
-        type: nodeData.type,
-        data: nodeData.data,
-      };
-      
-      console.log('Update request body:', requestBody);
-
-      const response = await fetch(`/api/workflow/${selectedProject}/nodes/${nodeId}/`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = await response.json();
-      console.log('Update node response:', responseData);
-
-      if (!response.ok) {
-        setIsConnected(false);
-        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to update node'}`);
-      }
-      
-      setIsConnected(true);
-    } catch (error) {
-      console.error('Error updating node:', error);
-      setIsConnected(false);
-      toast({
-        title: "Save Error",
-        description: `Failed to update node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
-    }
-  };
-  updateNodeAPIRef.current = updateNodeAPI;
-
-  // Deleting nodes individually
-  const deleteNodeAPI = async (nodeId: string) => {
-    if (!selectedProject || !autoSaveEnabled) {
-      console.log('Skipping node deletion API call:', { selectedProject, autoSaveEnabled });
-      return;
-    }
-
-    console.log('Deleting node via API:', nodeId);
-
-    try {
-      const headers = await createAuthHeadersLocal();
-      const response = await fetch(`/api/workflow/${selectedProject}/nodes/${nodeId}/`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          ...headers,
-        },
-      });
-
-      // 204 No Content means there is no response body
-      let responseData;
-      if (response.status !== 204) {
-        responseData = await response.json();
-        console.log('Delete node response:', responseData);
-      }
-
-      if (!response.ok) {
-        setIsConnected(false);
-        throw new Error(`HTTP ${response.status}: ${responseData?.error || 'Failed to delete node'}`);
-      }
-      
-      setIsConnected(true);
-      console.log('Node deleted successfully');
-    } catch (error) {
-      console.error('Error deleting node:', error);
-      setIsConnected(false);
-      toast({
-        title: "Save Error",
-        description: `Failed to delete node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
-    }
-  };
-
-  // Creating edges individually
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const createEdgeAPI = async (edgeData: Edge) => {
-    if (!selectedProject || !autoSaveEnabled) {
-      console.log('Skipping edge creation API call:', { selectedProject, autoSaveEnabled });
-      return;
-    }
-
-    console.log('Creating edge via API:', edgeData);
-
-    try {
-      const headers = await createAuthHeadersLocal();
-      const requestBody = {
-        id: edgeData.id,
-        source: edgeData.source,
-        target: edgeData.target,
-        sourceHandle: edgeData.sourceHandle,
-        targetHandle: edgeData.targetHandle,
-        data: edgeData.data || {},
-      };
-      
-      console.log('Edge request body:', requestBody);
-
-      const response = await fetch(`/api/workflow/${selectedProject}/edges/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const responseData = await response.json();
-      console.log('Create edge response:', responseData);
-
-      if (!response.ok) {
-        setIsConnected(false);
-        throw new Error(`HTTP ${response.status}: ${responseData.error || 'Failed to create edge'}`);
-      }
-      
-      setIsConnected(true);
-    } catch (error) {
-      console.error('Error creating edge:', error);
-      setIsConnected(false);
-      toast({
-        title: "Save Error",
-        description: `Failed to save connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
-    }
-  };
-
-  // Deleting individual edges
-  const deleteEdgeAPI = async (edgeId: string) => {
-    if (!selectedProject || !autoSaveEnabled) {
-      console.log('Skipping edge deletion API call:', { selectedProject, autoSaveEnabled });
-      return;
-    }
-
-    console.log('Deleting edge via API:', edgeId);
-
-    try {
-      const headers = await createAuthHeadersLocal();
-      const response = await fetch(`/api/workflow/${selectedProject}/edges/${edgeId}/`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          ...headers,
-        },
-      });
-
-      // 204 No Content or 200 OK
-      let responseData;
-      if (response.status !== 204) {
-        responseData = await response.json();
-        console.log('Delete edge response:', responseData);
-      }
-
-      if (!response.ok) {
-        setIsConnected(false);
-        throw new Error(`HTTP ${response.status}: ${responseData?.error || 'Failed to delete edge'}`);
-      }
-      
-      setIsConnected(true);
-      console.log('Edge deleted successfully');
-    } catch (error) {
-      console.error('Error deleting edge:', error);
-      setIsConnected(false);
-      toast({
-        title: "Save Error",
-        description: `Failed to delete connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
-    }
-  };
 
 
 
@@ -891,92 +576,19 @@ const HomeView = () => {
     }
   };
 
-  // Comment out the information display function when clicking a node
-  /*
-  const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
-    event.preventDefault();
-  
-    setNodeMenuPosition({
-      x: event.clientX,
-      y: event.clientY,
-    });
-
-    console.log("Clicked", node)
-
-    setSelectedNodeId(node.id);
-    setSelectedNode(node);
-
-    onViewOpen();
-  }, []);
-  */
-
-  // Keyboard event handler (deletion process)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Disable deletion when modal is open
-      if (isViewOpen || isCodeOpen) {
-        return;
-      }
-      
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        const selectedEdges = sharedEdges.filter(edge => edge.selected);
-        if (selectedEdges.length > 0) {
-          event.preventDefault();
-          if (autoSaveEnabled) {
-            selectedEdges.forEach(edge => {
-              deleteEdgeAPI(edge.id);
-            });
-          }
-          setSharedEdges((eds) => eds.filter(edge => !edge.selected));
-          
-          toast({
-            title: "Deleted",
-            description: `${selectedEdges.length} edge(s) deleted`,
-            status: "info",
-            duration: 2000,
-            isClosable: true,
-          });
-        }
-        
-        const selectedNodes = sharedNodes.filter(node => node.selected);
-        if (selectedNodes.length > 0) {
-          event.preventDefault();
-          const nodeIds = selectedNodes.map(node => node.id);
-          
-          if (autoSaveEnabled) {
-            selectedNodes.forEach(node => {
-              deleteNodeAPI(node.id);
-            });
-            
-            const relatedEdges = sharedEdges.filter(
-              (edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target)
-            );
-            relatedEdges.forEach(edge => {
-              deleteEdgeAPI(edge.id);
-            });
-          }
-          
-          setSharedNodes((nds) => nds.filter(node => !node.selected));
-          setSharedEdges((eds) => eds.filter(
-            (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
-          ));
-          
-          toast({
-            title: "Deleted",
-            description: `${selectedNodes.length} node(s) deleted`,
-            status: "info",
-            duration: 2000,
-            isClosable: true,
-          });
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [sharedNodes, sharedEdges, setSharedNodes, setSharedEdges, toast, autoSaveEnabled, isViewOpen, isCodeOpen, uploadedNodes]);
+  // Keyboard shortcuts (Delete/Backspace for selected nodes/edges)
+  useKeyboardShortcuts({
+    sharedNodes,
+    sharedEdges,
+    setSharedNodes,
+    setSharedEdges,
+    toast,
+    autoSaveEnabled,
+    isViewOpen,
+    isCodeOpen,
+    deleteEdgeAPI,
+    deleteNodeAPI,
+  });
 
   // handleRefreshNodeData
   const handleRefreshNodeData = useCallback(async (filename: string) => {
@@ -1061,7 +673,7 @@ const HomeView = () => {
         deleteEdgeAPI(selectedEdgeId);
       }
       
-      setEdges((eds) => eds.filter((edge) => edge.id !== selectedEdgeId));
+      setSharedEdges((eds) => eds.filter((edge) => edge.id !== selectedEdgeId));
       
       toast({
         title: "Deleted",
@@ -1253,39 +865,6 @@ const HomeView = () => {
     };
   }, []);
 
-  // Determine if it is a string
-  const isNumeric = (str: string): boolean => {
-    return /^\d+$/.test(str);
-  };
-
-  // Converting numbers to floats
-  const convertToStrIncFloat = (value: any): any => {
-    if (Array.isArray(value)) {
-      // For arrays, recursively process each element
-      return value.map(v => convertToStrIncFloat(v));
-    } else if (value !== null && typeof value === "object") {
-      // For objects, recursively process each property
-      const result: Record<string, any> = {};
-      for (const [key, val] of Object.entries(value)) {
-        result[key] = convertToStrIncFloat(val);
-      }
-      return result;
-    } else if (typeof value === "number") {
-      // Numbers are always converted to strings with decimal points
-      // Example: 1 → "1.0", 0.25 → "0.25"
-      return value % 1 === 0 ? value.toFixed(1) : value.toString();
-    } else {
-      if (typeof value === "string") {
-        if (isNumeric(value)){
-          const valueF = parseFloat(value);
-          return valueF % 1 === 0 ? valueF.toFixed(1) : valueF.toString();
-        }
-      }
-      // Others (string, null, boolean, etc.) remain as is
-      return value;
-    }
-  };
-
   // ReactFlow closeMenu(onPanelClick)
   const closeMenu = useCallback(() => {
     setNodeMenuPosition(null);
@@ -1300,612 +879,7 @@ const HomeView = () => {
   }, [closeMenu]);
 
 
-  //////////////////////////////////////////////////////////////
-  // ReactFlow: Workflow Diagram
-  //////////////////////////////////////////////////////////////
-  const OistWorkFlow: React.FC = () => {
-    //const [nodes, setNodes, onNodesChange] = useNodesState<Node<CalculationNodeData>>([]);
-    //const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-
-    //const { sharedNodes, sharedEdges, setSharedNodes, setSharedEdges } = useFlowStore();
-
-    const sharedNodes = useFlowStore((state) => state.sharedNodes);
-    const sharedEdges = useFlowStore((state) => state.sharedEdges);
-    const setSharedNodes = useFlowStore((state) => state.setSharedNodes);
-    const setSharedEdges = useFlowStore((state) => state.setSharedEdges);
-
-    const [nodes, setNodes, onNodesChange] = useNodesState<Node<CalculationNodeData>>(sharedNodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(sharedEdges);
-
-    // import
-    useEffect(() => {
-      if (sharedNodes.length > 0){
-        setNodes(sharedNodes);
-      }
-    }, [sharedNodes]);
-
-    useEffect(() => {
-      if (sharedEdges.length > 0){
-        setEdges(sharedEdges);
-      }
-    }, [sharedEdges]);
-
-    /*
-    // export
-    useEffect(() => {
-      if(nodes.length > 0) {
-        setSharedNodes(nodes);
-      }
-    }, [nodes]);
-
-    useEffect(() => {
-      if(edges.length > 0){
-        setSharedEdges(edges);
-      }
-    }, [edges]);
-    */
-    
-    const projectId = localStorage.getItem(PROJECT_ID_KEY);
-
-    let vps: Viewport[] = [];
-    const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-    if (viewportStr) { 
-      vps = JSON.parse(viewportStr); 
-    }
-    let fvp: ViewPort = vps.find(view => view.projectId === projectId);
-    if(fvp == undefined){
-      fvp  = {
-        projectId: projectId,
-        x: 0,
-        y: 0,
-        zoom: 1,
-      };
-    }
-    /* Enable this to save zoom and pan ===> */
-    const [initialViewport, setInitialViewport] = useState<Viewport>(fvp);
-    const { setViewport } = useReactFlow();
-
-    // onLoad: Read localStorage value
-    useEffect(() => {
-      const saved = localStorage.getItem(FLOW_STATE_KEY);
-      if (saved) {
-        let vps: Viewport[] = [];
-        const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-        if (viewportStr) { 
-          vps = JSON.parse(viewportStr); 
-          let fvp: ViewPort = vps.find(view => vps.projectId == projectId);
-          if(fvp != undefined){
-            setViewport(fvp);
-            requestAnimationFrame(() => setViewport(fvp));
-          }
-        }
-      }
-    }, [setViewport]);
-    /* <=== Enable this to save zoom and pan */
-
-    // ReactFlow onInit
-    const onInit = useCallback((instance: ReactFlowInstance) => {
-      reactFlowInstance.current = instance;
-    }, []);
-
-    // ReactFlow onDrop
-    const onDrop = useCallback(
-      (event: React.DragEvent<HTMLDivElement>) => {
-        event.preventDefault();
-
-        if (!reactFlowInstance.current) {
-          console.log('ReactFlow instance not ready');
-          return;
-        }
-
-        if (!selectedProject) {
-          console.log('No project selected');
-          toast({
-            title: "No Project",
-            description: "Please select a project first",
-            status: "warning",
-            duration: 2000,
-            isClosable: true,
-          });
-          return;
-        }
-
-        const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-        const position = reactFlowInstance.current.screenToFlowPosition({
-          x: event.clientX - reactFlowBounds.left,
-          y: event.clientY - reactFlowBounds.top,
-        });
-
-        const nodeDataString = event.dataTransfer.getData('application/nodedata');
-        let nodeData;
-        try {
-          nodeData = JSON.parse(nodeDataString);
-        } catch (error) {
-          console.error('Invalid node data:', error);
-          return;
-        }
-
-        if (!nodeData) {
-          console.log('No node data received');
-          return;
-        }
-
-        console.log('====================================');
-        console.log('🔄 NEW DROP EVENT');
-        console.log('Dropped nodeData:', nodeData);
-        console.log('NodeData ID:', nodeData.id);
-        console.log('NodeData Label:', nodeData.label);
-        console.log('====================================');
-        
-        let schema: SchemaFields = {
-          inputs: {},
-          outputs: {},
-          parameters: {},
-          methods: {}
-        };
-        let nodeType = 'calculationNode';
-        let label = nodeData.label || nodeData.name || 'New Calculator';
-        let fileName: string = "";
-        let categories = {};
-        let color: string = nodeData.color;
-        // Get the schema of the corresponding node from uploadedNodes
-        if (uploadedNodes?.nodes && Array.isArray(uploadedNodes.nodes)) {
-          console.log('Available nodes in uploadedNodes:', uploadedNodes.nodes.length);
-          
-          // Matching process
-          let matchedNode: UploadedNode | null = null;
-          
-          // Attempt an exact match on the ID
-          if (nodeData.id) {
-            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.id === nodeData.id);
-            if (matchedNode) {
-              console.log('✅ Matched by ID:', nodeData.id);
-            }
-          }
-          
-          // If no match by ID, try by label
-          if (!matchedNode && nodeData.label) {
-            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.label === nodeData.label);
-            if (matchedNode) {
-              console.log('✅ Matched by label:', nodeData.label);
-            }
-          }
-          
-          // If that doesn't match, try by name
-          if (!matchedNode && nodeData.name) {
-            matchedNode = uploadedNodes.nodes.find((node: UploadedNode) => node.name === nodeData.name);
-            if (matchedNode) {
-              console.log('✅ Matched by name:', nodeData.name);
-            }
-          }
-          
-          if (matchedNode && matchedNode.schema) {
-            console.log('📋 Processing schema for:', matchedNode.label);
-            console.log('Original schema structure:', matchedNode.schema);
-
-            // Get category
-            categories = nodeData.categories;
-            
-            // Use the new structure schema as is
-            schema = matchedNode.schema;
-            
-            // Check the contents of the schema
-            const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
-            const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
-            const paramCount = schema.parameters ? Object.keys(schema.parameters).length : 0;
-            const methodCount = schema.methods ? Object.keys(schema.methods).length : 0;
-            
-            console.log(`✅ Schema loaded: ${inputCount} inputs, ${outputCount} outputs, ${paramCount} parameters, ${methodCount} methods`);
-            
-            // If you need a default schema
-            if (inputCount === 0 && outputCount === 0) {
-              console.warn('⚠️ No ports found, using default schema');
-              schema = {
-                inputs: {
-                  "default_input": {
-                    name: "default_input",
-                    type: "any",
-                    description: "Default input",
-                    port_direction: "input"
-                  }
-                },
-                outputs: {
-                  "default_output": {
-                    name: "default_output",
-                    type: "any",
-                    description: "Default output",
-                    port_direction: "output"
-                  }
-                },
-                parameters: {},
-                methods: {}
-              };
-            }
-            
-            // Get the correct label and type from matchedNode
-            nodeType = matchedNode.category || matchedNode.nodeType || matchedNode.type || 'calculationNode';
-            label = matchedNode.label || matchedNode.name || label;
-            fileName = matchedNode.file_name || "" ; 
-            // add ".py"
-            const chkPy = fileName.includes(".py");
-            if (!chkPy) {
-              fileName += ".py";
-            } 
-
-            //color = matchedNode;   //'#FFFF00'; //categories[matchedNode.category].color || '#6b46c1' ;
-          } else {
-            console.log('❌ No matching node found, using fallback schema');
-            // fallback schema
-            schema = {
-              inputs: {
-                "input": {
-                  name: "input",
-                  type: "any",
-                  description: "Input",
-                  port_direction: "input"
-                }
-              },
-              outputs: {
-                "output": {
-                  name: "output",
-                  type: "any",
-                  description: "Output",
-                  port_direction: "output"
-                }
-              },
-              parameters: {},
-              methods: {}
-            };
-          }
-        } else {
-          console.warn('❌ uploadedNodes not available, using default schema');
-        }
-
-        // Generate new ID
-        const newNodeId = `calc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // Create a deep copy of the schema so that each node has independent parameter values
-        const independentSchema = JSON.parse(JSON.stringify(schema));
-        //const tmpSchema = JSON.parse(JSON.stringify(schema));
-
-        const newNode: Node<CalculationNodeData> = {
-          id: newNodeId,
-          type: nodeType,
-          position,
-          data: {
-            file_name: fileName,
-            label: label,
-            instanceName: label,  // Default instance name
-            schema: independentSchema,
-            nodeType: nodeType,
-            // Initialize with empty nodeParameters (for future parameter changes)
-            nodeParameters: {},
-            color: color,
-          },
-        };
-
-        console.log('🎯 Creating NEW node:');
-        console.log('Node data', newNode)
-        console.log('  ID:', newNodeId);
-        console.log('  Label:', label);
-        console.log('  Schema:', schema);
-        console.log(' file name:', fileName);
-        console.log('====================================');
-
-        // UI updates
-        setNodes((nds) => {
-          const updated = nds.concat(newNode);
-          console.log('Total nodes after adding:', updated.length);
-          return updated;
-        });
-
-        // Send to API
-        if (autoSaveEnabled) {
-          createNodeAPI(newNode);
-        }
-        
-        // For workflow nodes, auto-refresh is skipped to preserve individual parameter values
-        console.log('Skipping auto-refresh for workflow node to maintain independent parameters:', newNodeId);
-        
-        // Count calculation (supports new structure)
-        const inputCount = schema.inputs ? Object.keys(schema.inputs).length : 0;
-        const outputCount = schema.outputs ? Object.keys(schema.outputs).length : 0;
-        
-        toast({
-          title: "Node Added",
-          description: `"${label}" (${inputCount} inputs, ${outputCount} outputs)`,
-          status: "success",
-          duration: 2000,
-          isClosable: true,
-        });
-      },
-      [setNodes, toast, selectedProject, autoSaveEnabled, uploadedNodes, handleRefreshNodeData, handleNodeUpdate]
-    );
-
-    // ReactFlow onDragOver
-    const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-    }, []);
-
-    // Mouse Moveed (Zoom Pan)
-    const onMoveEnd: OnMoveEnd = useCallback((_, viewport) => {
-      console.log("Move End:", viewport);
-
-      const projectId = localStorage.getItem(PROJECT_ID_KEY);
-      const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-      let viewportList: Viewport[] = [];
-      if (viewportStr) { 
-        viewportList = JSON.parse(viewportStr); 
-      }
-
-      // New Viewport
-      const vp = {
-        projectId: projectId,
-        x: viewport.x,
-        y: viewport.y,
-        zoom: viewport.zoom,
-      };
-
-      // Update or Add
-      const index = viewportList.findIndex(item => item.projectId === projectId);
-      if (index !== -1) {
-        viewportList[index] = vp;
-      } else {
-        viewportList.push(vp);
-      }
-
-      localStorage.setItem(FLOW_STATE_KEY, JSON.stringify(viewportList));
-    }, []);
-
-    // ReactFlow: Node change handlers (overrides)
-    const handleNodesChange = useCallback((changes: NodeChange[]) => {
-      onNodesChange(changes);
-
-      setSharedNodes(nodes);
-      setSharedEdges(edges);
-      
-      if (!autoSaveEnabled) return;
-      
-      changes.forEach((change) => {
-        switch (change.type) {
-          case 'position':
-            if (change.position) {
-              debouncedSave(() => updateNodeAPI(change.id, { 
-                position: change.position 
-              }));
-            }
-            break;
-            
-          case 'remove':
-            deleteNodeAPI(change.id);
-            break;
-        }
-      });
-    }, [onNodesChange, debouncedSave, autoSaveEnabled]);
-    
-    // ReactFlow: Edge change handler (override)
-    const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-      onEdgesChange(changes);
-      
-      if (!autoSaveEnabled) return;
-      
-      changes.forEach((change) => {
-        switch (change.type) {
-          case 'remove':
-            deleteEdgeAPI(change.id);
-            break;
-        }
-      });
-    }, [onEdgesChange, autoSaveEnabled]);
-    
-    // ReactFlow: On connect handler (edge ​​creation) - with type checking
-    const onConnect = useCallback(
-      (params: Connection) => {
-        // Extract type information directly from handle ID
-        // Format: {nodeId}-{portName}-{portDirection}-{type}
-        let sourceType = null;
-        let targetType = null;
-        let sourcePortName = null;
-        let targetPortName = null;
-        
-        if (params.sourceHandle) {
-          const sourceParts = params.sourceHandle.split('-');
-          // The last one is type
-          sourceType = sourceParts[sourceParts.length - 1];
-          // The second to last is port_direction
-          const sourcePortDirection = sourceParts[sourceParts.length - 2];
-          // The part excluding nodeId, port_direction, and type is the port name
-          sourcePortName = sourceParts.slice(1, -2).join('-');
-          
-          console.log('Source handle parsing:', {
-            handle: params.sourceHandle,
-            portName: sourcePortName,
-            portDirection: sourcePortDirection,
-            type: sourceType
-          });
-        }
-        
-        if (params.targetHandle) {
-          const targetParts = params.targetHandle.split('-');
-          // The last one is type
-          targetType = targetParts[targetParts.length - 1];
-          // The second to last is port_direction
-          const targetPortDirection = targetParts[targetParts.length - 2];
-          // The part excluding nodeId, port_direction, and type is the port name
-          targetPortName = targetParts.slice(1, -2).join('-');
-          
-          console.log('Target handle parsing:', {
-            handle: params.targetHandle,
-            portName: targetPortName,
-            portDirection: targetPortDirection,
-            type: targetType
-          });
-        }
-        
-        // If the type cannot be obtained
-        if (!sourceType || !targetType) {
-          toast({
-            title: "Connection Failed",
-            description: "Could not determine port types",
-            status: "error",
-            duration: 3000,
-            isClosable: true,
-          });
-          return;
-        }
-        
-        // If the type cannot be obtained
-        if (sourceType.toUpperCase() !== targetType.toUpperCase()) {
-          toast({
-            title: "Type Mismatch",
-            description: `Cannot connect: ${sourcePortName || 'output'} (${sourceType}) and ${targetPortName || 'input'} (${targetType}) have different types`,
-            status: "warning",
-            duration: 4000,
-            isClosable: true,
-          });
-          console.warn(
-            `Type mismatch: ${sourcePortName} (${sourceType}) → ${targetPortName} (${targetType})`
-          );
-          return;
-        }
-        
-        // Create a connection if the types match
-        const edgeId = `${params.source}-${params.sourceHandle || 'output'}-to-${params.target}-${params.targetHandle || 'input'}`;
-        
-        const newEdge = { 
-          id: edgeId,
-          ...params, 
-          /* style: { stroke: '#8b5cf6', strokeWidth: 2 } */
-          style: { stroke: '#aaaaaa', strokeWidth: 2 }
-        };
-        
-        console.log('Creating new edge:', {
-          edge: newEdge,
-          sourcePort: `${sourcePortName} (${sourceType})`,
-          targetPort: `${targetPortName} (${targetType})`,
-          typesMatch: true
-        });
-        
-        setEdges((eds) => {
-          const updatedEdges = addEdge(newEdge, eds);
-          console.log('Updated edges state:', updatedEdges.length);
-          return updatedEdges;
-        });
-
-        // Send to API (executed asynchronously)
-        if (autoSaveEnabled) {
-          console.log('Calling createEdgeAPI...');
-          createEdgeAPI(newEdge).then(() => {
-            console.log('Edge creation API call completed');
-          });
-        } else {
-          console.log('Auto-save disabled, skipping edge API call');
-        }
-        
-        toast({
-          title: "Connected",
-          description: `Connected ${sourcePortName || 'output'} (${sourceType}) → ${targetPortName || 'input'} (${targetType})`,
-          status: "success",
-          duration: 2000,
-          isClosable: true,
-        });
-      },
-      [setEdges, toast, autoSaveEnabled, createEdgeAPI],
-    );
-
-    // Comment out the information display function when clicking a node
-    /*
-    const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
-      event.preventDefault();
-    
-      setNodeMenuPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      console.log("Clicked", node)
-
-      setSelectedNodeId(node.id);
-      setSelectedNode(node);
-
-      onViewOpen();
-    }, []);
-    */
-
-    // ReactFlow onNodeClick
-    const onNodeClick: NodeMouseHandler<Node<CalculationNodeData>> = useCallback((event, node) => {
-      // Only select the node (information display is available from the icon button)
-      console.log("Node clicked:", node.id);
-    }, []);
-
-    // ReactFlow onNodeDragStop
-    const onNodeDragStop = useCallback((event, node) => {
-      console.log("Node Drag Stop:", selectedProject, node.id, node.position.x, node.position.y);
-
-      debouncedSave(() => updateNodeAPI(node.id, node));
-    }, [selectedProject]);
-
-    // ReactFlow onEdgeClick
-    const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
-      event.preventDefault();
-      
-      setEdgeMenuPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      
-      setSelectedEdgeId(edge.id);
-    }, []);
-
-    // ReactFlow Page
-    return (
-      <ReactFlow
-        position="absolute"
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onConnect={onConnect}
-        onInit={onInit}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onNodeClick={onNodeClick}
-        onNodeDragStop={onNodeDragStop}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onMoveEnd={onMoveEnd}
-        defaultViewport={initialViewport}
-        nodeTypes={nodeTypes} 
-        //fitView
-        attributionPosition="bottom-right"
-        connectionLineStyle={{ stroke: '#8b5cf6', strokeWidth: 2 }}
-        defaultEdgeOptions={{
-          /* style: { stroke: '#8b5cf6', strokeWidth: 2 },*/
-          style: { stroke: '#aaaaaa', strokeWidth: 2 },
-          type: 'default',
-        }}
-        //defaultViewport={{ x: 0, y: 0, zoom: 5 }}
-      >
-        <Controls {...controlsStyle} />
-        <MiniMap {...minimapStyle} />
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#cbd5e0" />
-      </ReactFlow>
-    );
-  };
-
-  //////////////////////////////////////////////////////////////
-  // ReactFlowProvider: Wrapping ReactFlow
-  //////////////////////////////////////////////////////////////
-  const OistWorkFlowProvider: React.FC = () => {
-    // ReactFlow Provider Page
-    return (
-      <ReactFlowProvider>
-        {/* OistWorkFlow: ReactFlow definition */}
-        <OistWorkFlow />
-      </ReactFlowProvider>
-    );
-  }
+  // OistWorkFlow extracted to WorkflowCanvas.tsx
 
   //////////////////////////////////////////////////////////////
   // homeView: Main Page
@@ -1970,136 +944,40 @@ const HomeView = () => {
           autoSaveEnabled={autoSaveEnabled}
           isConnected={isConnected}
         />
-        <IconButton
-          position="absolute"
-          top="16px"
-          right="16px"
-          zIndex={1000}
-          aria-label="Open/close menu"
-          icon={<FiMenu />}
-          onClick={() => setIslandCodeOpen(!isIslandCodeOpen)}
-          colorScheme="gray"
-          bg="gray.300"
-          _hover={{ bg: 'gray.600' }}
+        <WorkflowToolbar
+          isIslandCodeOpen={isIslandCodeOpen}
+          setIslandCodeOpen={setIslandCodeOpen}
+          isConnected={isConnected}
+          autoSaveEnabled={autoSaveEnabled}
+          selectedProject={selectedProject}
+          projects={projects}
+          sharedNodes={sharedNodes}
+          isGeneratingCode={isGeneratingCode}
+          handleOpenJupyter={handleOpenJupyter}
+          handleGenerateCode={handleGenerateCode}
+          handleExportFlowJSON={handleExportFlowJSON}
         />
-        {/* explanation */}
-        <Box
-          position="absolute"
-          top="10px"
-          right="10px"          
-          display={isIslandCodeOpen ? 'block' : 'none'}
-          p={4}
-          bg="white"
-          borderRadius="lg"
-          boxShadow="lg"
-          maxWidth="340px"
-          zIndex={5}
-          borderWidth={1}
-          borderColor="gray.200"
-        >
-          <VStack spacing={4} align="stretch">
-            {/* header */}
-            <Box paddingRight={12}>
-              <HStack justify="space-between" align="center">
-                <Text fontWeight="bold" fontSize="md" color="gray.800">
-                  🔬 Flow Designer
-                </Text>
-                {isConnected ? (
-                  <Badge colorScheme="green" size="sm" variant="subtle">
-                    Online
-                  </Badge>
-                ) : (
-                  <Badge colorScheme="red" size="sm" variant="subtle">
-                    Offline
-                  </Badge>
-                )}
-              </HStack>
-            </Box>
-            {/* Explanatory text */}
-            <Box>
-              <Text fontSize="sm" color="gray.600" lineHeight="1.4">
-                Drag nodes from the left panel to build mathematical workflows. Connect outputs to inputs to create calculations.
-              </Text>
-            </Box>
-          
-            {/* Tips & Status */}
-            <Box>
-              <Text fontSize="xs" color="blue.600" mb={1}>
-                💡 Tips: Click edges to delete • Press Delete key for selected items
-              </Text>
-              {!autoSaveEnabled && (
-                <Text fontSize="xs" color="orange.600">
-                  ⚠️ Auto-save disabled
-                </Text>
-              )}
-            </Box>
-          
-            {/* Action Buttons */}
-            <VStack spacing={2} align="stretch">
-              <Button
-                leftIcon={<ViewIcon />}
-                colorScheme="purple"
-                variant="outline"
-                size="sm"
-                onClick={handleOpenJupyter}  
-                isDisabled={!selectedProject}
-                _hover={{ bg: "purple.50", transform: "translateY(-1px)" }}
-                _disabled={{ 
-                  opacity: 0.4,
-                  cursor: "not-allowed"
-                }}
-                transition="all 0.2s"
-              >
-                {selectedProject ? "🚀 Open JupyterLab Tab" : "Select Project First"}
-              </Button>
-              
-              <Button
-                colorScheme="blue"
-                variant="solid"
-                size="sm"
-                onClick={handleGenerateCode}
-                isDisabled={!selectedProject || sharedNodes.length === 0}
-                isLoading={isGeneratingCode}
-                loadingText="Generating..."
-                _hover={{ bg: "blue.600", transform: "translateY(-1px)" }}
-                _disabled={{ 
-                  opacity: 0.4,
-                  cursor: "not-allowed"
-                }}
-                transition="all 0.2s"
-              >
-                {!selectedProject ? "Select Project First" : 
-                sharedNodes.length === 0 ? "Add Nodes to Generate" : 
-                "📝 Generate Code"}
-              </Button>
-              
-              <Button
-                colorScheme="green"
-                variant="outline"
-                size="sm"
-                onClick={handleExportFlowJSON}
-                isDisabled={!selectedProject || sharedNodes.length === 0}
-                _hover={{ bg: "green.50", transform: "translateY(-1px)" }}
-                _disabled={{ 
-                  opacity: 0.4,
-                  cursor: "not-allowed"
-                }}
-                transition="all 0.2s"
-              >
-                {sharedNodes.length === 0 ? "No Flow to Export" : "📋 Export Flow JSON"}
-              </Button>
-              
-              {selectedProject && (
-                <Text fontSize="xs" color="gray.500" textAlign="center">
-                  Project: {projects.find(p => p.id === selectedProject)?.name || 'Unknown'}
-                </Text>
-              )}
-            </VStack>
-          </VStack>
-        </Box>
           
         {/* ReactFlow: Needs to be wrapped in ReactFlowProvider */}
-        <OistWorkFlowProvider />
+        <WorkflowCanvasProvider
+          reactFlowInstance={reactFlowInstance}
+          selectedProject={selectedProject}
+          autoSaveEnabled={autoSaveEnabled}
+          toast={toast}
+          nodeTypes={nodeTypes}
+          onPaneClick={onPaneClick}
+          setEdgeMenuPosition={setEdgeMenuPosition}
+          setSelectedEdgeId={setSelectedEdgeId}
+          createNodeAPI={createNodeAPI}
+          updateNodeAPI={updateNodeAPI}
+          deleteNodeAPI={deleteNodeAPI}
+          createEdgeAPI={createEdgeAPI}
+          deleteEdgeAPI={deleteEdgeAPI}
+          debouncedSave={debouncedSave}
+          uploadedNodes={uploadedNodes}
+          handleRefreshNodeData={handleRefreshNodeData}
+          handleNodeUpdate={handleNodeUpdate}
+        />
         {isLoading && (
           <Box
             position="absolute"
