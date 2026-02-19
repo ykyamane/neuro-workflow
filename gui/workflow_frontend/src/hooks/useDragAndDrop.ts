@@ -154,18 +154,14 @@ export const useDragAndDrop = ({
             schema = {
               inputs: {
                 "default_input": {
-                  name: "default_input",
                   type: "any",
                   description: "Default input",
-                  port_direction: "input"
                 }
               },
               outputs: {
                 "default_output": {
-                  name: "default_output",
                   type: "any",
                   description: "Default output",
-                  port_direction: "output"
                 }
               },
               parameters: {},
@@ -188,18 +184,14 @@ export const useDragAndDrop = ({
           schema = {
             inputs: {
               "input": {
-                name: "input",
                 type: "any",
                 description: "Input",
-                port_direction: "input"
               }
             },
             outputs: {
               "output": {
-                name: "output",
                 type: "any",
                 description: "Output",
-                port_direction: "output"
               }
             },
             parameters: {},

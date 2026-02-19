@@ -642,8 +642,12 @@ if __name__ == "__main__":
                 return handle_string
 
             # Legacy format (-)
+            # {nodeId}-{fieldName}-{handleType}-{portType}
+            # fieldName may contain '-', so join everything between nodeId and handleType
             parts = handle_string.split('-')
-            if len(parts) >= 2:
+            if len(parts) >= 4 and parts[-2] in ('input', 'output'):
+                return '-'.join(parts[1:-2])
+            elif len(parts) >= 2:
                 return parts[1]
             return handle_string
         except Exception as e:
