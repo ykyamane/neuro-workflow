@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Handle, NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { CalculationNodeData } from "../type";
 import { 
@@ -21,7 +21,7 @@ import { useRef } from 'react';
 import { EditIcon, DeleteIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { FiCode } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
-import { createAuthHeaders } from '../../../api/authHeaders';
+import { generateHandleId } from '@/utils/handleId';
 
 interface NodeCallbacks {
   onJupyter?: (nodeId: string) => void;
@@ -48,11 +48,6 @@ export const CalculationNode = ({
   //console.log("This is the schema data", schema);
   //console.log("Node data timestamp:", data.__timestamp || 'no timestamp');
 
-  // A function that generates a unique handle ID
-  const generateHandleId = (nodeId: string, fieldName: string, handleType: 'input' | 'output', portType: string) => {
-    return `${nodeId}-${fieldName}-${handleType}-${portType}`;
-  };
-  
   // Convert inputs and outputs to arrays
   const inputEntries = schema.inputs ? Object.entries(schema.inputs) : [];
   const outputEntries = schema.outputs ? Object.entries(schema.outputs) : [];

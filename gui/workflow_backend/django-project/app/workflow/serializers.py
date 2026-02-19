@@ -78,12 +78,21 @@ class FlowNodeSerializer(serializers.ModelSerializer):
     def validate(self, data):
         # React Flow-style validation
         if "data" in data:
+            node_data = data["data"]
             required_keys = ["label"]
             for key in required_keys:
-                if key not in data["data"]:
+                if key not in node_data:
                     raise serializers.ValidationError(
                         f"Node data must contain '{key}' field"
                     )
+            # Validate schema structure if present
+            if "schema" in node_data:
+                schema = node_data["schema"]
+                for section in ["inputs", "outputs", "parameters", "methods"]:
+                    if section in schema and not isinstance(schema[section], dict):
+                        raise serializers.ValidationError(
+                            f"Node data schema.{section} must be a dictionary"
+                        )
         return data
 
 
@@ -133,6 +142,10 @@ class FlowDataSerializer(serializers.Serializer):
                 )
             if "data" not in node:
                 raise serializers.ValidationError("Each node must have a 'data' field")
+            if "label" not in node.get("data", {}):
+                raise serializers.ValidationError(
+                    "Each node's data must contain a 'label' field"
+                )
         return value
 
     def validate_edges(self, value):
