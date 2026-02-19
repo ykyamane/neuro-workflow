@@ -158,12 +158,35 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+            # Validate nodeType in data
+            data_field = request.data.get("data", {})
+            node_type_val = data_field.get("nodeType") if isinstance(data_field, dict) else None
+            if not node_type_val:
+                return Response(
+                    {
+                        "error": "Missing required field: data.nodeType. "
+                        "Each node's data must contain a non-empty 'nodeType' field "
+                        "(e.g. 'analysis', 'simulation')."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from app.box.models import get_categories
+            valid_categories = [cat[0] for cat in get_categories()]
+            if node_type_val.lower() not in valid_categories:
+                return Response(
+                    {
+                        "error": f"Invalid data.nodeType '{node_type_val}'. "
+                        f"Must be one of: {valid_categories}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Create a node using FlowService (same as existing process)
             node_data = {
                 "id": request.data["id"],
                 "position": request.data["position"],
                 "type": request.data.get("type", "default"),
-                "data": request.data.get("data", {}),
+                "data": data_field,
             }
 
             # Check for existing nodes (avoid creating duplicates)

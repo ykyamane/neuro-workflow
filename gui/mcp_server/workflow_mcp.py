@@ -214,9 +214,14 @@ async def update_flow(workflow_id: str, flow_payload: dict) -> dict[str, Any]:
     Args:
         workflow_id: UUID of the workflow to update.
         flow_payload: Dict with "nodes" and "edges" arrays. Each node requires:
-            {"id": str, "position": {"x": float, "y": float}, "data": {"label": str, ...}}.
+            {"id": str, "position": {"x": float, "y": float},
+             "data": {"label": str, "nodeType": str, ...}}.
             Each edge requires: {"id": str, "source": str, "target": str}.
             Optional edge fields: sourceHandle, targetHandle, data.
+
+            IMPORTANT: Every node's data MUST include "nodeType" with a valid category
+            name (e.g. "analysis", "io", "network", "optimization", "simulation",
+            "stimulus"). Missing or invalid nodeType will cause a 400 error.
     """
     url = f"{DJANGO_API_URL}/workflow/{workflow_id}/flow/"
     data = await _make_put_request(url, flow_payload)
@@ -259,8 +264,14 @@ async def create_node(workflow_id: str, payload: dict) -> dict[str, Any]:
         workflow_id: UUID of the workflow.
         payload: Node data. Required fields:
             {"id": str, "position": {"x": float, "y": float},
-             "data": {"label": str, "schema": {"inputs": {}, "outputs": {}, "parameters": {}, "methods": {}}}}.
-            Optional: {"type": str, "data.instanceName": str}.
+             "data": {"label": str, "nodeType": str,
+                      "schema": {"inputs": {}, "outputs": {}, "parameters": {}, "methods": {}}}}.
+            Optional: {"type": str, "data.instanceName": str, "data.color": str}.
+
+            IMPORTANT: data.nodeType is REQUIRED and must be a valid category name
+            (e.g. "analysis", "io", "network", "optimization", "simulation", "stimulus").
+            The frontend uses nodeType to look up the display color for the node.
+            Missing or invalid nodeType will cause a 400 error.
 
     Returns the created node object.
     """
@@ -300,6 +311,10 @@ async def update_node(workflow_id: str, node_id: str, payload: dict) -> dict[str
         payload: Fields to update. Accepted:
             {"position": {"x": float, "y": float}, "type": str, "data": dict}.
             The data dict replaces the entire node data including label, schema, and instanceName.
+
+            IMPORTANT: If "data" is provided, it MUST include "nodeType" with a valid
+            category name (e.g. "analysis", "io", "network", "optimization", "simulation",
+            "stimulus"). Missing or invalid nodeType will cause a 400 error.
 
     Returns the updated node object.
     """
