@@ -465,12 +465,14 @@ if __name__ == "__main__":
         # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
+            # Sanitize parameter key to avoid Python keyword collisions
+            safe_key = f"{key}_" if keyword.iskeyword(key) else key
             if isinstance(value, (int)):
-              config_lines.append(f'            {key}={float(value):.1f}')
+              config_lines.append(f'            {safe_key}={float(value):.1f}')
             elif isinstance(value, str):
-              config_lines.append(f'            {key}={repr(value)}')
+              config_lines.append(f'            {safe_key}={repr(value)}')
             else:
-              config_lines.append(f"            {key}={value}")
+              config_lines.append(f"            {safe_key}={value}")
 
         return ",\n".join(config_lines)
 

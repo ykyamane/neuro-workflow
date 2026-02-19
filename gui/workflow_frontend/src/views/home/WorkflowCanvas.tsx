@@ -119,7 +119,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         }
       }
     }
-  }, [setViewport]);
+  }, [setViewport, projectId]);
   /* <=== Enable this to save zoom and pan */
 
   // ReactFlow onInit
@@ -185,7 +185,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       let nodeType = 'calculationNode';
       let label = nodeData.label || nodeData.name || 'New Calculator';
       let fileName: string = "";
-      let categories = {};
       let color: string = nodeData.color;
       // Get the schema of the corresponding node from uploadedNodes
       if (uploadedNodes?.nodes && Array.isArray(uploadedNodes.nodes)) {
@@ -221,9 +220,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         if (matchedNode && matchedNode.schema) {
           console.log('📋 Processing schema for:', matchedNode.label);
           console.log('Original schema structure:', matchedNode.schema);
-
-          // Get category
-          categories = nodeData.categories;
 
           // Use the new structure schema as is
           schema = matchedNode.schema;
@@ -343,7 +339,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         isClosable: true,
       });
     },
-    [addNode, toast, selectedProject, autoSaveEnabled, uploadedNodes, handleRefreshNodeData, handleNodeUpdate]
+    [addNode, toast, selectedProject, autoSaveEnabled, uploadedNodes, handleRefreshNodeData, handleNodeUpdate, createNodeAPI]
   );
 
   // ReactFlow onDragOver
@@ -356,7 +352,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const onMoveEnd: OnMoveEnd = useCallback((_, viewport) => {
     console.log("Move End:", viewport);
 
-    const projectId = localStorage.getItem(PROJECT_ID_KEY);
     const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
     let viewportList: ProjectViewport[] = [];
     if (viewportStr) {
@@ -365,14 +360,14 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
     // New Viewport
     const vp = {
-      projectId: projectId,
+      projectId: selectedProject,
       x: viewport.x,
       y: viewport.y,
       zoom: viewport.zoom,
     };
 
     // Update or Add
-    const index = viewportList.findIndex(item => item.projectId === projectId);
+    const index = viewportList.findIndex(item => item.projectId === selectedProject);
     if (index !== -1) {
       viewportList[index] = vp;
     } else {
@@ -380,7 +375,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
 
     localStorage.setItem(FLOW_STATE_KEY, JSON.stringify(viewportList));
-  }, []);
+  }, [selectedProject]);
 
   // ReactFlow: Node change handler with API side-effects
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -539,7 +534,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     console.log("Node Drag Stop:", selectedProject, node.id, node.position.x, node.position.y);
 
     debouncedSave(() => updateNodeAPI(node.id, node));
-  }, [selectedProject]);
+  }, [selectedProject, debouncedSave, updateNodeAPI]);
 
   // ReactFlow onEdgeClick
   const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
