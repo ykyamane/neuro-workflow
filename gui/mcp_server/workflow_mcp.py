@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Configuration via environment variables
-DJANGO_API_URL = os.environ.get("DJANGO_API_URL", "http://localhost:8000/api")
+DJANGO_API_URL = os.environ.get("DJANGO_API_URL", "http://localhost:3000/api")
 DJANGO_API_TOKEN = os.environ.get("DJANGO_API_TOKEN")
 USER_AGENT = os.environ.get("MCP_USER_AGENT", "workflow-mcp/1.0")
 
@@ -55,6 +55,24 @@ async def _make_put_request(url: str, payload: dict | None = None, timeout: floa
             return r.json()
         except Exception as e:
             logger.error(f"PUT request failed for {url}: {e}")
+            return None
+
+
+async def _make_multipart_post_request(
+    url: str, files: dict, data: dict | None = None, timeout: float = 60.0
+) -> dict | None:
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    if DJANGO_API_TOKEN:
+        headers["Authorization"] = f"Bearer {DJANGO_API_TOKEN}"
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                url, headers=headers, files=files, data=data or {}, timeout=timeout
+            )
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            logger.error(f"Multipart POST failed for {url}: {e}")
             return None
 
 
@@ -352,6 +370,28 @@ async def update_node_parameter(workflow_id: str, node_id: str, parameter_key: s
     return {"status": "success", "result": data}
 
 
+@mcp.tool()
+async def update_node_instance_name(
+    workflow_id: str, node_id: str, instance_name: str
+) -> dict[str, Any]:
+    """Update the instance name of a node.
+
+    Args:
+        workflow_id: The ID of the workflow.
+        node_id: The ID of the node.
+        instance_name: The new instance name for the node.
+    """
+    url = f"{DJANGO_API_URL}/workflow/{workflow_id}/nodes/{node_id}/instance_name/"
+    payload = {"instance_name": instance_name}
+    data = await _make_put_request(url, payload)
+    if data is None:
+        return {
+            "status": "error",
+            "error": f"Failed to update instance name for node {node_id}",
+        }
+    return {"status": "success", "result": data}
+
+
 # Batch code generation
 @mcp.tool()
 async def generate_code_batch(workflow_id: str, nodes: list[Any], edges: list[Any]) -> dict[str, Any]:
@@ -401,21 +441,21 @@ async def health() -> dict[str, Any]:
 
 # File upload
 @mcp.tool()
-async def upload_python_file(file_payload: dict) -> dict[str, Any]:
+async def upload_python_file(
+    code: str, name: str, description: str = "", category: str = "analysis"
+) -> dict[str, Any]:
     """Upload a Python file to the backend.
 
     Args:
-        file_payload: Dict containing fields expected by the backend (e.g. file path, metadata or upload reference).
-
-    Note:
-        If the backend expects multipart/form-data, handle upload on the frontend and pass a JSON payload
-        describing the uploaded file location or metadata to this tool.
-
-    Returns:
-        Dict with status and either "file" containing backend response or an "error" message.
+        code: Python source code content.
+        name: Filename (e.g. "MyNode.py").
+        description: Optional file description.
+        category: Node category (default "analysis").
     """
     url = f"{DJANGO_API_URL}/box/upload/"
-    data = await _make_post_request(url, file_payload)
+    files = {"file": (name, code.encode("utf-8"), "text/x-python")}
+    form_data = {"name": name, "description": description, "category": category}
+    data = await _make_multipart_post_request(url, files=files, data=form_data)
     if data is None:
         return {"status": "error", "error": "Failed to upload python file"}
     return {"status": "success", "file": data}
@@ -451,6 +491,20 @@ async def get_python_file(pk: str) -> dict[str, Any]:
     if data is None:
         return {"status": "error", "error": f"Failed to fetch python file {pk}"}
     return {"status": "success", "file": data}
+
+
+@mcp.tool()
+async def delete_python_file(pk: str) -> dict[str, Any]:
+    """Delete an uploaded Python file by its primary key.
+
+    Args:
+        pk: Primary key (UUID) of the file to delete.
+    """
+    url = f"{DJANGO_API_URL}/box/files/{pk}/"
+    data = await _make_delete_request(url)
+    if data is None:
+        return {"status": "error", "error": f"Failed to delete python file {pk}"}
+    return {"status": "success", "result": data}
 
 
 # list of node definitions
