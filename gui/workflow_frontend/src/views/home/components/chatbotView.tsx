@@ -12,6 +12,7 @@ import { FiMenu, FiX, FiPlus } from 'react-icons/fi';
 import { IoChatboxEllipses } from 'react-icons/io5';
 
 import useChatStore from '@/stores/chatStore';
+import { useFlowStore } from '@/stores/flowStore';
 import {
   listConversations,
   getConversation,
@@ -25,6 +26,12 @@ import ConversationSelector from './ConversationSelector';
 
 const SIDEBAR_WIDTH = '600px';
 const TOGGLE_WIDTH = '16px';
+
+const FLOW_MODIFYING_TOOLS = new Set([
+  'add_node', 'update_node', 'delete_node',
+  'update_node_parameter', 'update_node_instance_name',
+  'add_edge', 'delete_edge', 'update_flow',
+]);
 
 const ChatbotArea: React.FC = () => {
   const toast = useToast();
@@ -46,6 +53,8 @@ const ChatbotArea: React.FC = () => {
   const clearToolCalls = useChatStore((s) => s.clearToolCalls);
   const setError = useChatStore((s) => s.setError);
   const resetChat = useChatStore((s) => s.resetChat);
+
+  const requestFlowRefresh = useFlowStore((s) => s.requestFlowRefresh);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -161,6 +170,9 @@ const ChatbotArea: React.FC = () => {
                   (event.data.result as string) || '',
                   'done'
                 );
+                if (FLOW_MODIFYING_TOOLS.has((event.data.tool_name as string) || '')) {
+                  requestFlowRefresh();
+                }
                 break;
 
               case 'error':
@@ -208,6 +220,7 @@ const ChatbotArea: React.FC = () => {
       updateToolCallResult,
       setActiveConversationId,
       loadConversations,
+      requestFlowRefresh,
       toast,
     ]
   );

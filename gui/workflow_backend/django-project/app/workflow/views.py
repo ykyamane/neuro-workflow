@@ -128,6 +128,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
     """CRUD operations for flow nodes (real-time support)"""
 
     authentication_classes = []
+    lookup_url_kwarg = "node_id"
 
     serializer_class = FlowNodeSerializer
     permission_classes = [AllowAny]

@@ -453,22 +453,118 @@ async def list_edges(workflow_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def create_edge(workflow_id: str, payload: dict) -> dict[str, Any]:
-    """Create a new edge (connection) between two nodes in a workflow.
+async def add_edge(
+    workflow_id: str,
+    source_node_id: str,
+    target_node_id: str,
+    source_port_name: str = "",
+    target_port_name: str = "",
+) -> dict[str, Any]:
+    """High-level tool to connect two nodes in a workflow.
 
-    Source and target nodes must belong to the same project. Self-referencing edges are not allowed.
+    Automatically resolves handle IDs from node schemas and generates a
+    proper edge ID — mirroring what the frontend does when a user drags
+    a connection between ports.
+
+    If source/target nodes each have only one output/input port,
+    port names can be omitted and will be auto-resolved.
+    If multiple ports exist, specify port names to select the correct ones.
 
     Args:
         workflow_id: UUID of the workflow.
-        payload: Edge data. Required: {"id": str, "source": str (source node ID), "target": str (target node ID)}.
-            Optional: {"sourceHandle": str, "targetHandle": str, "data": dict}.
+        source_node_id: ID of the source node (the node with the output port).
+        target_node_id: ID of the target node (the node with the input port).
+        source_port_name: Name of the output port on the source node.
+            Optional if the source node has only one output.
+        target_port_name: Name of the input port on the target node.
+            Optional if the target node has only one input.
 
-    Returns the created edge object.
+    Returns a dict with status and the created edge object on success.
     """
-    url = f"{DJANGO_API_URL}/workflow/{workflow_id}/edges/"
-    data = await _make_post_request(url, payload)
+    HANDLE_SEPARATOR = "::"
+
+    # 1. Fetch both nodes
+    src_url = f"{DJANGO_API_URL}/workflow/{workflow_id}/nodes/{source_node_id}/"
+    tgt_url = f"{DJANGO_API_URL}/workflow/{workflow_id}/nodes/{target_node_id}/"
+    source_node = await _make_get_request(src_url)
+    target_node = await _make_get_request(tgt_url)
+
+    if source_node is None:
+        return {"status": "error", "error": f"Source node '{source_node_id}' not found in workflow {workflow_id}"}
+    if target_node is None:
+        return {"status": "error", "error": f"Target node '{target_node_id}' not found in workflow {workflow_id}"}
+
+    # 2. Extract schemas
+    src_schema = (source_node.get("data") or {}).get("schema") or {}
+    tgt_schema = (target_node.get("data") or {}).get("schema") or {}
+    src_outputs = src_schema.get("outputs") or {}
+    tgt_inputs = tgt_schema.get("inputs") or {}
+
+    # 3. Resolve source output port
+    if source_port_name:
+        if source_port_name not in src_outputs:
+            return {
+                "status": "error",
+                "error": f"Output port '{source_port_name}' not found on source node '{source_node_id}'. "
+                         f"Available outputs: {list(src_outputs.keys())}",
+            }
+        src_port_key = source_port_name
+    else:
+        if len(src_outputs) == 0:
+            return {"status": "error", "error": f"Source node '{source_node_id}' has no output ports."}
+        if len(src_outputs) == 1:
+            src_port_key = next(iter(src_outputs))
+        else:
+            return {
+                "status": "error",
+                "error": f"Source node '{source_node_id}' has multiple output ports. "
+                         f"Specify source_port_name. Available: {list(src_outputs.keys())}",
+            }
+
+    # 4. Resolve target input port
+    if target_port_name:
+        if target_port_name not in tgt_inputs:
+            return {
+                "status": "error",
+                "error": f"Input port '{target_port_name}' not found on target node '{target_node_id}'. "
+                         f"Available inputs: {list(tgt_inputs.keys())}",
+            }
+        tgt_port_key = target_port_name
+    else:
+        if len(tgt_inputs) == 0:
+            return {"status": "error", "error": f"Target node '{target_node_id}' has no input ports."}
+        if len(tgt_inputs) == 1:
+            tgt_port_key = next(iter(tgt_inputs))
+        else:
+            return {
+                "status": "error",
+                "error": f"Target node '{target_node_id}' has multiple input ports. "
+                         f"Specify target_port_name. Available: {list(tgt_inputs.keys())}",
+            }
+
+    # 5. Resolve port types
+    src_port_type = (src_outputs[src_port_key].get("type") or "any")
+    tgt_port_type = (tgt_inputs[tgt_port_key].get("type") or "any")
+
+    # 6. Build handle IDs (matching frontend generateHandleId)
+    source_handle = f"{source_node_id}{HANDLE_SEPARATOR}{src_port_key}{HANDLE_SEPARATOR}output{HANDLE_SEPARATOR}{src_port_type}"
+    target_handle = f"{target_node_id}{HANDLE_SEPARATOR}{tgt_port_key}{HANDLE_SEPARATOR}input{HANDLE_SEPARATOR}{tgt_port_type}"
+
+    # 7. Generate edge ID (matching frontend generateEdgeId)
+    edge_id = f"{source_node_id}{HANDLE_SEPARATOR}{source_handle}{HANDLE_SEPARATOR}to{HANDLE_SEPARATOR}{target_node_id}{HANDLE_SEPARATOR}{target_handle}"
+
+    # 8. Create edge via API
+    payload = {
+        "id": edge_id,
+        "source": source_node_id,
+        "target": target_node_id,
+        "sourceHandle": source_handle,
+        "targetHandle": target_handle,
+    }
+    create_url = f"{DJANGO_API_URL}/workflow/{workflow_id}/edges/"
+    data = await _make_post_request(create_url, payload)
     if data is None:
-        return {"status": "error", "error": f"Failed to create edge for {workflow_id}"}
+        return {"status": "error", "error": f"Failed to create edge from '{source_node_id}' to '{target_node_id}'"}
     return {"status": "success", "edge": data}
 
 
