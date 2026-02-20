@@ -95,6 +95,7 @@ export const sendMessageStream = async (
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let currentEventType = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -105,8 +106,6 @@ export const sendMessageStream = async (
     // Parse SSE lines
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
-
-    let currentEventType = "";
 
     for (const line of lines) {
       if (line.startsWith("event: ")) {
