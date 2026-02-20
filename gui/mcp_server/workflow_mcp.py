@@ -1,5 +1,8 @@
+import copy
 import logging
 import os
+import secrets
+import time
 from typing import Any
 
 import httpx
@@ -279,6 +282,114 @@ async def create_node(workflow_id: str, payload: dict) -> dict[str, Any]:
     data = await _make_post_request(url, payload)
     if data is None:
         return {"status": "error", "error": f"Failed to create node for {workflow_id}"}
+    return {"status": "success", "node": data}
+
+
+@mcp.tool()
+async def add_node(
+    workflow_id: str,
+    node_name: str,
+    position_x: float = 0.0,
+    position_y: float = 0.0,
+    instance_name: str = "",
+) -> dict[str, Any]:
+    """High-level tool to add a node to a workflow by name, automatically resolving all metadata.
+
+    Unlike create_node (which requires a fully constructed payload), this tool only needs
+    the node class name and position. It automatically looks up the node definition,
+    resolves the schema, category color, file name, and generates a unique ID — mirroring
+    exactly what the frontend does when a user drags a node from the sidebar.
+
+    Args:
+        workflow_id: UUID of the workflow to add the node to.
+        node_name: Node class name (e.g. "PoissonGenerator", "IafPscAlpha").
+            Matching priority: exact class_name > exact label > exact id > case-insensitive class_name.
+        position_x: X coordinate on the canvas. Defaults to 0.0.
+        position_y: Y coordinate on the canvas. Defaults to 0.0.
+        instance_name: Display name and variable name for the node instance.
+            Defaults to the node's label (class name) if not provided.
+
+    Returns a dict with status and the created node object on success,
+    or status "error" with available node names on failure.
+    """
+    # 1. Fetch node definitions and category colors
+    defs_url = f"{DJANGO_API_URL}/box/uploaded-nodes/"
+    defs_data = await _make_get_request(defs_url)
+    if defs_data is None:
+        return {"status": "error", "error": "Failed to fetch node definitions from backend"}
+
+    nodes_list = defs_data.get("nodes", [])
+    categories = defs_data.get("categories", {})
+
+    if not nodes_list:
+        return {"status": "error", "error": "No node definitions available. Upload node files first."}
+
+    # 2. Match node_name with priority: class_name > label > id > case-insensitive class_name
+    matches = [n for n in nodes_list if n.get("class_name") == node_name]
+    if not matches:
+        matches = [n for n in nodes_list if n.get("label") == node_name]
+    if not matches:
+        matches = [n for n in nodes_list if n.get("id") == node_name]
+    if not matches:
+        name_lower = node_name.lower()
+        matches = [n for n in nodes_list if (n.get("class_name") or "").lower() == name_lower]
+
+    if not matches:
+        available = sorted(set(n.get("class_name", n.get("label", "unknown")) for n in nodes_list))
+        return {
+            "status": "error",
+            "error": f"Node '{node_name}' not found. Available nodes: {available}",
+        }
+
+    if len(matches) > 1:
+        candidates = [n.get("class_name", n.get("label", "unknown")) for n in matches]
+        return {
+            "status": "error",
+            "error": f"Ambiguous node name '{node_name}'. Matches: {candidates}",
+        }
+
+    node_def = matches[0]
+
+    # 3. Resolve metadata from the matched definition
+    label = node_def.get("label") or node_def.get("class_name", node_name)
+    class_name = node_def.get("class_name", label)
+    file_name = node_def.get("file_name", f"{class_name}.py")
+    if not file_name.endswith(".py"):
+        file_name += ".py"
+    category = node_def.get("category", "analysis")
+    schema = copy.deepcopy(node_def.get("schema", {"inputs": {}, "outputs": {}, "parameters": {}, "methods": {}}))
+    resolved_instance_name = instance_name or label
+
+    # 4. Resolve color from categories
+    cat_info = categories.get(category, {})
+    color = cat_info.get("color", "#6b46c1")
+
+    # 5. Generate unique node ID (matching frontend format)
+    timestamp_ms = int(time.time() * 1000)
+    random_hex = secrets.token_hex(5)
+    node_id = f"calc_{timestamp_ms}_{random_hex}"
+
+    # 6. Build payload matching frontend structure
+    payload = {
+        "id": node_id,
+        "position": {"x": position_x, "y": position_y},
+        "type": category,
+        "data": {
+            "file_name": file_name,
+            "label": label,
+            "instanceName": resolved_instance_name,
+            "schema": schema,
+            "nodeType": category,
+            "nodeParameters": {},
+            "color": color,
+        },
+    }
+
+    # 7. Create the node via API
+    create_url = f"{DJANGO_API_URL}/workflow/{workflow_id}/nodes/"
+    data = await _make_post_request(create_url, payload)
+    if data is None:
+        return {"status": "error", "error": f"Failed to create node '{node_name}' for workflow {workflow_id}"}
     return {"status": "success", "node": data}
 
 
