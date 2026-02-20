@@ -260,32 +260,6 @@ async def list_nodes(workflow_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def create_node(workflow_id: str, payload: dict) -> dict[str, Any]:
-    """Create a new node in a workflow project.
-
-    Args:
-        workflow_id: UUID of the workflow.
-        payload: Node data. Required fields:
-            {"id": str, "position": {"x": float, "y": float},
-             "data": {"label": str, "nodeType": str,
-                      "schema": {"inputs": {}, "outputs": {}, "parameters": {}, "methods": {}}}}.
-            Optional: {"type": str, "data.instanceName": str, "data.color": str}.
-
-            IMPORTANT: data.nodeType is REQUIRED and must be a valid category name
-            (e.g. "analysis", "io", "network", "optimization", "simulation", "stimulus").
-            The frontend uses nodeType to look up the display color for the node.
-            Missing or invalid nodeType will cause a 400 error.
-
-    Returns the created node object.
-    """
-    url = f"{DJANGO_API_URL}/workflow/{workflow_id}/nodes/"
-    data = await _make_post_request(url, payload)
-    if data is None:
-        return {"status": "error", "error": f"Failed to create node for {workflow_id}"}
-    return {"status": "success", "node": data}
-
-
-@mcp.tool()
 async def add_node(
     workflow_id: str,
     node_name: str,
