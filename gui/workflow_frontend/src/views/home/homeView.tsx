@@ -53,6 +53,7 @@ const HomeView = () => {
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const updateNodeAPIRef = useRef<(nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => Promise<void>>();
 
   // Node menu related status
@@ -75,6 +76,9 @@ const HomeView = () => {
   const setSharedNodes = useFlowStore(state => state.setSharedNodes);
   const sharedEdges = useFlowStore(state => state.sharedEdges);
   const setSharedEdges = useFlowStore(state => state.setSharedEdges);
+  const flowRefreshRequestedAt = useFlowStore(state => state.flowRefreshRequestedAt);
+  const setFlowRefreshInProgress = useFlowStore(state => state.setFlowRefreshInProgress);
+  const clearFlowRefreshRequest = useFlowStore(state => state.clearFlowRefreshRequest);
 
   // Use the tab system context
   const { addJupyterTab } = useTabContext();
@@ -166,6 +170,11 @@ const HomeView = () => {
 
   // Debounced Storage Function
   const debouncedSave = useCallback((action: () => Promise<void>) => {
+    if (useFlowStore.getState().flowRefreshInProgress ||
+        useFlowStore.getState().flowRefreshRequestedAt > 0) {
+      return;
+    }
+
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
@@ -862,8 +871,65 @@ const HomeView = () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
     };
   }, []);
+
+  // Watch for flow refresh requests from MCP tool completions
+  useEffect(() => {
+    if (flowRefreshRequestedAt === 0) return;
+
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+
+    refreshTimeoutRef.current = setTimeout(async () => {
+      const projectId = localStorage.getItem(PROJECT_ID_KEY);
+      if (!projectId) {
+        clearFlowRefreshRequest();
+        return;
+      }
+
+      setFlowRefreshInProgress(true);
+      try {
+        const header = await createAuthHeaders();
+        const response = await fetch(`/api/workflow/${projectId}/flow/`, {
+          credentials: 'include',
+          headers: { ...header },
+        });
+        if (response.ok) {
+          const flowData: FlowData = await response.json();
+
+          // Apply category colors (same logic as handleProjectChange)
+          for (let i = 0; i < flowData.nodes.length; i++) {
+            const cat_name = flowData.nodes[i].data.nodeType.toLowerCase();
+            if (uploadedNodes?.categories != null) {
+              const node_color = uploadedNodes?.categories[cat_name]?.color;
+              if (node_color && flowData.nodes[i].data.color !== node_color) {
+                flowData.nodes[i].data.color = node_color;
+              }
+            }
+          }
+
+          setSharedNodes(flowData.nodes as Node<CalculationNodeData>[] || []);
+          setSharedEdges(flowData.edges || []);
+        }
+      } catch (error) {
+        console.error('Failed to refresh flow data after MCP tool:', error);
+      } finally {
+        clearFlowRefreshRequest();
+        setFlowRefreshInProgress(false);
+      }
+    }, 750);
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, [flowRefreshRequestedAt, uploadedNodes, setSharedNodes, setSharedEdges, setFlowRefreshInProgress, clearFlowRefreshRequest]);
 
   // ReactFlow closeMenu(onPanelClick)
   const closeMenu = useCallback(() => {

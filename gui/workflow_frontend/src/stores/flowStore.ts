@@ -33,6 +33,11 @@ export type FlowStore = {
   removeNode: (nodeId: string) => void;
   removeEdge: (edgeId: string) => void;
   updateNodeData: (nodeId: string, data: Partial<CalculationNodeData>) => void;
+  flowRefreshRequestedAt: number;
+  flowRefreshInProgress: boolean;
+  requestFlowRefresh: () => void;
+  setFlowRefreshInProgress: (v: boolean) => void;
+  clearFlowRefreshRequest: () => void;
 };
 
 // Common State Store with temporal middleware for undo/redo
@@ -42,6 +47,11 @@ export const useFlowStore = create<FlowStore>()(
     (set) => ({
       sharedNodes: [],
       sharedEdges: [],
+      flowRefreshRequestedAt: 0,
+      flowRefreshInProgress: false,
+      requestFlowRefresh: () => set({ flowRefreshRequestedAt: Date.now() }),
+      setFlowRefreshInProgress: (v) => set({ flowRefreshInProgress: v }),
+      clearFlowRefreshRequest: () => set({ flowRefreshRequestedAt: 0 }),
       setSharedNodes: (valueOrFn) =>
         set((state) => ({
           sharedNodes: typeof valueOrFn === 'function'
