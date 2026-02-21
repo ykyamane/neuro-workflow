@@ -70,8 +70,19 @@ const Header: React.FC = () => {
         >
           Neuro-Workflow
       </Heading>
-      
-      <Box 
+
+      <Text
+        fontSize="xs"
+        color="gray.500"
+        ml={3}
+        fontFamily="mono"
+        userSelect="all"
+      >
+        v{__APP_VERSION__}
+        {__GIT_COMMIT_HASH__ !== "unknown" && ` (${__GIT_COMMIT_HASH__})`}
+      </Text>
+
+      <Box
           marginLeft={5}
           fontSize="sm"
       >
