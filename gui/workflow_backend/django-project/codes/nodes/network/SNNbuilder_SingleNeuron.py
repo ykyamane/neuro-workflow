@@ -28,7 +28,6 @@ from neuroworkflow.core.port import PortType
 try:
     import nest
     NEST_AVAILABLE = True
-    nest.ResetKernel() # reset the kernel # this may be added to a new "start NEST model" node in the future, along with the scale of the model. 
 except ImportError:
     NEST_AVAILABLE = False
     print("Warning: NEST not available. Node will work in script generation mode only.")
@@ -158,7 +157,16 @@ class SNNbuilder_SingleNeuron(Node):
                 default_value={'V_th': -55.0, 'C_m': 250.0, 'tau_m': 20.0},
                 description='Custom NEST model parameters to override'
             ),
-            
+
+            # External current - separate parameter for optimization support
+            'I_e': ParameterDefinition(
+                default_value=0.0,
+                description='External DC current injection (pA). Primary parameter for firing rate optimization.',
+                constraints={'min': 0.0, 'max': 1000.0},
+                optimizable=True,
+                optimization_range=[0.0, 500.0]
+            ),
+
             'template_suffix': ParameterDefinition(
                 default_value='_custom',
                 description='Suffix for the custom model template name'
@@ -495,7 +503,15 @@ class SNNbuilder_SingleNeuron(Node):
             
             if applied_cell_params:
                 print(f"[{self.name}] Applied {cell_class} cell class defaults: {applied_cell_params}")
-            
+
+            # Step 2c: Apply I_e from top-level parameter (if not already in nest_params)
+            if 'I_e' not in nest_params:
+                I_e_value = validated_params.get('I_e', 0.0)
+                nest_params['I_e'] = I_e_value
+                print(f"[{self.name}] Applied I_e from parameter: {I_e_value} pA")
+            else:
+                print(f"[{self.name}] Using user-specified I_e in nest_parameters: {nest_params['I_e']} pA")
+
             # Step 3: Set default parameters
             if nest_params:
                 print(f"[{self.name}] Setting defaults: {nest_params}")
@@ -629,7 +645,17 @@ class SNNbuilder_SingleNeuron(Node):
             script_lines.append(f"# {cell_class.capitalize()} cell class defaults applied:")
             for param, value in applied_cell_params.items():
                 script_lines.append(f"# {param}: {value}")
-        
+
+        # Apply I_e from top-level parameter (same logic as execution mode)
+        if 'I_e' not in nest_params:
+            I_e_value = validated_params.get('I_e', 0.0)
+            nest_params['I_e'] = I_e_value
+            script_lines.append("")
+            script_lines.append(f"# I_e (external current) from optimizable parameter: {I_e_value} pA")
+        else:
+            script_lines.append("")
+            script_lines.append(f"# I_e from user-specified nest_parameters: {nest_params['I_e']} pA")
+
         # SetDefaults command
         if nest_params:
             # Format parameters nicely

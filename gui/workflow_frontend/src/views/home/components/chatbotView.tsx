@@ -6,6 +6,7 @@ import {
   HStack,
   useDisclosure,
   useToast,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useCallback } from 'react';
 import { FiMenu, FiX, FiPlus } from 'react-icons/fi';
@@ -36,6 +37,13 @@ const FLOW_MODIFYING_TOOLS = new Set([
 const ChatbotArea: React.FC = () => {
   const toast = useToast();
   const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
+
+  const bg = useColorModeValue('white', 'gray.800');
+  const borderColor = useColorModeValue('#e5e5e5', 'gray.600');
+  const textColor = useColorModeValue('#1a1a1a', 'white');
+  const subtextColor = useColorModeValue('gray.500', 'gray.400');
+  const hoverBg = useColorModeValue('#f5f5f5', 'gray.700');
+  const toggleBg = useColorModeValue('#f5f5f5', 'gray.700');
 
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -242,8 +250,8 @@ const ChatbotArea: React.FC = () => {
       zIndex="1010"
     >
       <Box
-        bg="gray.800"
-        color="white"
+        bg={bg}
+        color={textColor}
         height="100%"
         width={isOpen ? SIDEBAR_WIDTH : TOGGLE_WIDTH}
         transition="width 0.3s ease-in-out"
@@ -273,11 +281,11 @@ const ChatbotArea: React.FC = () => {
             transform="translateY(-50%)"
             right="0"
             zIndex="1020"
-            bg="gray.700"
-            color="white"
+            bg={toggleBg}
+            color={textColor}
             width="12px"
             height="64px"
-            _hover={{ bg: 'blue.600' }}
+            _hover={{ bg: 'blue.600', color: 'white' }}
           />
 
           {/* Header */}
@@ -285,7 +293,7 @@ const ChatbotArea: React.FC = () => {
             px={3}
             py={2}
             borderBottom="1px solid"
-            borderColor="gray.600"
+            borderColor={borderColor}
             spacing={2}
             flexShrink={0}
           >
@@ -305,8 +313,8 @@ const ChatbotArea: React.FC = () => {
               aria-label="New conversation"
               size="xs"
               variant="ghost"
-              color="gray.400"
-              _hover={{ color: 'white', bg: 'gray.700' }}
+              color={subtextColor}
+              _hover={{ color: textColor, bg: hoverBg }}
               onClick={handleNewConversation}
               ml="auto"
             />

@@ -12,6 +12,7 @@ import {
   HStack,
   Spinner,
   Text,
+  useColorModeValue,
 } from "@chakra-ui/react";
 
 export interface LogEntry {
@@ -45,6 +46,10 @@ export default function LogViewModal({
   onStop,
 }: LogViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const panelBg = useColorModeValue('#f7f7f8', 'gray.900');
+  const subtextColor = useColorModeValue('gray.500', 'gray.500');
+  const logTextColor = useColorModeValue('gray.800', 'gray.100');
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -84,8 +89,8 @@ export default function LogViewModal({
 
         <ModalBody>
           <Box
-            bg="gray.900"
-            color="gray.100"
+            bg={panelBg}
+            color={logTextColor}
             fontFamily="mono"
             fontSize="sm"
             p={4}
@@ -96,7 +101,7 @@ export default function LogViewModal({
             wordBreak="break-all"
           >
             {logEntries.length === 0 && isRunning && (
-              <Text color="gray.500">Waiting for output...</Text>
+              <Text color={subtextColor}>Waiting for output...</Text>
             )}
             {logEntries.map((entry, i) => {
               const style = typeStyles[entry.type] || typeStyles.info;

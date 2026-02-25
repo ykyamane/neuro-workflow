@@ -348,12 +348,17 @@ const HomeView = () => {
       default: calculationNodeComponent, // fallback
     };
 
-    // Dynamically add category types from uploadedNodes
+    // Dynamically add category types from uploadedNodes.
+    // Normalize to lowercase folder name (e.g. 'I/O' → 'io') so the registered
+    // type matches what WorkflowCanvas stores in node.data.nodeType.
     if (uploadedNodes?.nodes) {
       const categories = new Set(uploadedNodes.nodes.map(node => node.category));
       categories.forEach(category => {
-        if (category && !types[category]) {
-          types[category] = calculationNodeComponent;
+        if (category) {
+          const normalizedCategory = category.toLowerCase().replace('/', '');
+          if (!types[normalizedCategory]) {
+            types[normalizedCategory] = calculationNodeComponent;
+          }
         }
       });
     }

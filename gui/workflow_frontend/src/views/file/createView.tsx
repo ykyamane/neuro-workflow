@@ -13,6 +13,7 @@ import {
   GridItem,
   Divider,
   Spinner,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { createAuthHeaders } from '../../api/authHeaders'; // for authentication header
@@ -50,6 +51,9 @@ const CreateFlowPj: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
 
+  const panelBg = useColorModeValue('#f7f7f8', 'gray.900');
+  const textColor = useColorModeValue('#1a1a1a', 'white');
+
   // Backend Workflow API endpoints
   const API_ENDPOINT = `/api/workflow/`;
 
@@ -57,10 +61,10 @@ const CreateFlowPj: React.FC = () => {
   const createFlowProject = async (data: CreateFlowProjectRequest): Promise<CreateFlowProjectResponse> => {
     try {
       console.log('Creating flow project with data:', data);
-      
+
       // Get authentication header
       const authHeaders = await createAuthHeaders();
-      
+
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         credentials: 'include',  // Include Cookies (Sessions)
@@ -152,13 +156,13 @@ const CreateFlowPj: React.FC = () => {
 
     } catch (error) {
       console.error('Error creating flow project:', error);
-      
+
       let errorMessage = 'An unexpected error occurred';
-      
+
       if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       // Detailed message for the specific error
       if (errorMessage.includes('401')) {
         errorMessage = 'Authentication required. Please login first.';
@@ -169,7 +173,7 @@ const CreateFlowPj: React.FC = () => {
       } else if (errorMessage.includes('500')) {
         errorMessage = 'Server error. Please try again later.';
       }
-      
+
       toast({
         title: 'Creation Failed',
         description: errorMessage,
@@ -192,13 +196,13 @@ const CreateFlowPj: React.FC = () => {
   };
 
   return (
-    <Box height="100%" width="100%" overflow="auto" bg="gray.900">
+    <Box height="100%" width="100%" overflow="auto" bg={panelBg}>
       <VStack spacing={6} width="100%" p={6} maxWidth="600px" mx="auto" minHeight="100vh">
-      <Text fontSize="2xl" fontWeight="bold" mb={2} color="white">
+      <Text fontSize="2xl" fontWeight="bold" mb={2} color={textColor}>
         🚀 Create Flow Project
       </Text>
 
-      <Text fontSize="md" color="white" textAlign="center" mb={2}>
+      <Text fontSize="md" color={textColor} textAlign="center" mb={2}>
         Create a new workflow project to design mathematical calculations
       </Text>
 
@@ -206,11 +210,11 @@ const CreateFlowPj: React.FC = () => {
 
       <VStack width="100%" spacing={5} align="start">
         <FormControl isRequired>
-          <FormLabel htmlFor="projectName" fontSize="sm" fontWeight="semibold" color="white">
+          <FormLabel htmlFor="projectName" fontSize="sm" fontWeight="semibold" color={textColor}>
             Project Name
           </FormLabel>
-          <Input 
-            id="projectName" 
+          <Input
+            id="projectName"
             placeholder="Enter your project name..."
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
@@ -223,7 +227,7 @@ const CreateFlowPj: React.FC = () => {
         </FormControl>
 
         <FormControl>
-          <FormLabel htmlFor="note" fontSize="sm" fontWeight="semibold" color="white">
+          <FormLabel htmlFor="note" fontSize="sm" fontWeight="semibold" color={textColor}>
             Description (Optional)
           </FormLabel>
           <Textarea
@@ -264,8 +268,8 @@ const CreateFlowPj: React.FC = () => {
             onClick={handleRegistration}
             boxShadow="sm"
             color="white"
-            _hover={{ 
-              boxShadow: "md", 
+            _hover={{
+              boxShadow: "md",
               transform: "translateY(-2px)",
               bg: "green.600",
               color: "white"
@@ -284,7 +288,7 @@ const CreateFlowPj: React.FC = () => {
             size="lg"
             width="100%"
             onClick={handleCancel}
-            _hover={{ 
+            _hover={{
               bg: "red.50",
               borderColor: "red.300",
               color: "red.600"

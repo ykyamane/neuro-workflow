@@ -253,8 +253,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             };
           }
 
-          // Get the correct label and type from matchedNode
-          nodeType = matchedNode.category || matchedNode.nodeType || matchedNode.type || 'calculationNode';
+          // Get the correct label and type from matchedNode.
+          // Normalize to lowercase folder name (e.g. 'I/O' → 'io') to match
+          // backend validation which expects the directory name, not display name.
+          const rawCategory = matchedNode.category || matchedNode.nodeType || matchedNode.type || 'calculationNode';
+          nodeType = rawCategory.toLowerCase().replace('/', '');
           label = matchedNode.label || matchedNode.name || label;
           fileName = matchedNode.file_name || "" ;
           // add ".py"

@@ -6,6 +6,7 @@ import {
   Flex,
   useDisclosure,
   Collapse,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { FiCheck, FiAlertCircle, FiChevronDown, FiChevronRight } from "react-icons/fi";
 import type { ActiveToolCall } from "@/stores/chatStore";
@@ -16,6 +17,14 @@ interface ToolCallDisplayProps {
 
 const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
   const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
+
+  const bg = useColorModeValue('white', 'gray.800');
+  const borderColor = useColorModeValue('#e5e5e5', 'gray.600');
+  const hoverBg = useColorModeValue('#f5f5f5', 'gray.700');
+  const subtextColor = useColorModeValue('gray.500', 'gray.400');
+  const monoTextColor = useColorModeValue('gray.700', 'gray.300');
+  // gray.750 does not exist — map to gray.700 (dark) / #ebebeb (light)
+  const outerBg = useColorModeValue('#ebebeb', 'gray.700');
 
   const statusIcon =
     toolCall.status === "running" ? (
@@ -36,9 +45,9 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
 
   return (
     <Box
-      bg="gray.750"
+      bg={outerBg}
       border="1px solid"
-      borderColor="gray.600"
+      borderColor={borderColor}
       borderRadius="md"
       fontSize="xs"
       overflow="hidden"
@@ -51,7 +60,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
         py={1.5}
         cursor="pointer"
         onClick={onToggle}
-        _hover={{ bg: "gray.700" }}
+        _hover={{ bg: hoverBg }}
       >
         {statusIcon}
         <Badge colorScheme="purple" fontSize="xs" variant="subtle">
@@ -66,11 +75,11 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
         <Box px={2} pb={2}>
           {toolCall.arguments && (
             <Box mb={1}>
-              <Text color="gray.400" fontSize="xs" mb={0.5}>
+              <Text color={subtextColor} fontSize="xs" mb={0.5}>
                 Arguments:
               </Text>
               <Box
-                bg="gray.800"
+                bg={bg}
                 p={1.5}
                 borderRadius="sm"
                 maxH="100px"
@@ -79,7 +88,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
                 <Text
                   fontFamily="mono"
                   fontSize="xs"
-                  color="gray.300"
+                  color={monoTextColor}
                   whiteSpace="pre-wrap"
                   wordBreak="break-all"
                 >
@@ -91,11 +100,11 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
 
           {toolCall.result && (
             <Box>
-              <Text color="gray.400" fontSize="xs" mb={0.5}>
+              <Text color={subtextColor} fontSize="xs" mb={0.5}>
                 Result:
               </Text>
               <Box
-                bg="gray.800"
+                bg={bg}
                 p={1.5}
                 borderRadius="sm"
                 maxH="150px"
@@ -104,7 +113,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
                 <Text
                   fontFamily="mono"
                   fontSize="xs"
-                  color="gray.300"
+                  color={monoTextColor}
                   whiteSpace="pre-wrap"
                   wordBreak="break-all"
                 >

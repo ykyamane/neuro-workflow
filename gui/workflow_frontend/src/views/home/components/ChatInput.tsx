@@ -1,4 +1,4 @@
-import { Box, IconButton, Textarea, HStack } from "@chakra-ui/react";
+import { Box, IconButton, Textarea, HStack, useColorModeValue } from "@chakra-ui/react";
 import { useState, useRef, useCallback } from "react";
 import { FiSend, FiSquare } from "react-icons/fi";
 
@@ -18,6 +18,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+
+  const borderColor = useColorModeValue('#e5e5e5', 'gray.600');
+  const inputBg = useColorModeValue('white', 'gray.700');
+  const inputBorder = useColorModeValue('#e5e5e5', 'gray.600');
+  const textColor = useColorModeValue('#1a1a1a', 'white');
+  const subtextColor = useColorModeValue('gray.500', 'gray.400');
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
@@ -48,7 +54,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <Box p={2} borderTop="1px solid" borderColor="gray.600">
+    <Box p={2} borderTop="1px solid" borderColor={borderColor}>
       <HStack spacing={2} align="end">
         <Textarea
           ref={textareaRef}
@@ -58,15 +64,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={() => { composingRef.current = false; }}
           placeholder="Type a message..."
-          bg="gray.700"
+          bg={inputBg}
           border="1px solid"
-          borderColor="gray.600"
-          color="white"
+          borderColor={inputBorder}
+          color={textColor}
           resize="none"
           rows={2}
           minH="56px"
           maxH="200px"
-          _placeholder={{ color: "gray.400" }}
+          _placeholder={{ color: subtextColor }}
           _focus={{ borderColor: "blue.400", boxShadow: "none" }}
           disabled={disabled}
           fontSize="sm"

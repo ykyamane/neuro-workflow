@@ -1,7 +1,7 @@
-import { 
-  Flex, 
-  Heading, 
-  Button, 
+import {
+  Flex,
+  Heading,
+  Button,
   Spacer,
   Menu,
   MenuButton,
@@ -11,15 +11,29 @@ import {
   Avatar,
   HStack,
   Text,
+  IconButton,
+  Tooltip,
   useToast,
+  useColorMode,
+  useColorModeValue,
 } from '@chakra-ui/react'
 import { Link as RouterLink } from 'react-router-dom'
-import { ChevronDownIcon } from '@chakra-ui/icons'
+import { ChevronDownIcon, MoonIcon, SunIcon } from '@chakra-ui/icons'
 import { useAuth } from '../../auth/authContext'
 
 const Header: React.FC = () => {
   const { user, signOut } = useAuth();
   const toast = useToast();
+  const { colorMode, toggleColorMode } = useColorMode();
+
+  // dark: original colors | light: OpenAI-inspired clean whites
+  const headerBg      = useColorModeValue('#ffffff', 'gray.900');
+  const headerBorder  = useColorModeValue('#e5e5e5', 'gray.700');
+  const headerColor   = useColorModeValue('#1a1a1a', 'white');
+  const menuBg        = useColorModeValue('white', 'gray.800');
+  const menuBorder    = useColorModeValue('#e5e5e5', 'gray.700');
+  const menuHoverBg   = useColorModeValue('#f5f5f5', 'gray.700');
+  const subtextColor  = useColorModeValue('gray.500', 'gray.500');
 
   const handleSignOut = async () => {
     try {
@@ -57,23 +71,26 @@ const Header: React.FC = () => {
       py={4}
       px={6}
       alignItems="center"
-      bg="gray.900"
-      color="white"
+      bg={headerBg}
+      color={headerColor}
+      borderBottom="1px solid"
+      borderColor={headerBorder}
     >
-      <Heading 
-          as={RouterLink} 
-          to="/" 
-          size="md" 
-          letterSpacing="tight" 
-          fontWeight="bold"
-          cursor="pointer" 
-        >
-          Neuro-Workflow
+      <Heading
+        as={RouterLink}
+        to="/"
+        size="md"
+        letterSpacing="tight"
+        fontWeight="bold"
+        cursor="pointer"
+        color={headerColor}
+      >
+        Neuro-Workflow
       </Heading>
 
       <Text
         fontSize="xs"
-        color="gray.500"
+        color={subtextColor}
         ml={3}
         fontFamily="mono"
         userSelect="all"
@@ -82,64 +99,87 @@ const Header: React.FC = () => {
         {__GIT_COMMIT_HASH__ !== "unknown" && ` (${__GIT_COMMIT_HASH__})`}
       </Text>
 
-      <Box
-          marginLeft={5}
-          fontSize="sm"
-      >
+      <Box marginLeft={5} fontSize="sm">
         <Text>Brain/MINDS 2.0</Text>
         <Text>Okinawa Institute of Science and Technology / RIKEN CBS</Text>
       </Box>
 
       <Spacer />
-      
+
       <Flex alignItems="center">
-        {/* File Menu */}
+        {/* Color mode toggle */}
+        <Tooltip label={colorMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <IconButton
+            aria-label="Toggle color mode"
+            icon={colorMode === 'dark' ? <SunIcon /> : <MoonIcon />}
+            onClick={toggleColorMode}
+            variant="ghost"
+            size="md"
+            mx={2}
+            color={headerColor}
+          />
+        </Tooltip>
+
+        {/* Project Menu */}
         <Menu>
-          <MenuButton 
+          <MenuButton
             as={Button}
-            variant="ghost" 
-            colorScheme="white" 
-            size="md" 
+            variant="ghost"
+            size="md"
             mx={2}
             rightIcon={<ChevronDownIcon />}
+            color={headerColor}
           >
             Project
           </MenuButton>
-          <MenuList bg="gray.800" borderColor="gray.700">
-            <MenuItem as={RouterLink} to="/file/new" bg="gray.800" _hover={{ bg: "gray.700" }}>New</MenuItem>
-            {/* <MenuItem as={RouterLink} to="/file/open" bg="gray.800" _hover={{ bg: "gray.700" }}>Open</MenuItem>
-            <MenuItem as={RouterLink} to="/file/save" bg="gray.800" _hover={{ bg: "gray.700" }}>Save</MenuItem>
-            <MenuItem as={RouterLink} to="/file/close" bg="gray.800" _hover={{ bg: "gray.700" }}>Close</MenuItem> */}
+          <MenuList bg={menuBg} borderColor={menuBorder}>
+            <MenuItem
+              as={RouterLink}
+              to="/file/new"
+              bg={menuBg}
+              color={headerColor}
+              _hover={{ bg: menuHoverBg }}
+            >
+              New
+            </MenuItem>
           </MenuList>
         </Menu>
 
-        {/* Box Menu */}
+        {/* Nodes Menu */}
         <Menu>
-          <MenuButton 
+          <MenuButton
             as={Button}
-            variant="ghost" 
-            colorScheme="white" 
-            size="md" 
+            variant="ghost"
+            size="md"
             mx={2}
             rightIcon={<ChevronDownIcon />}
+            color={headerColor}
           >
             Nodes
           </MenuButton>
-          <MenuList bg="gray.800" borderColor="gray.700">
-            <MenuItem as={RouterLink} to="/box/upload" bg="gray.800" _hover={{ bg: "gray.700" }}>Upload</MenuItem>        
+          <MenuList bg={menuBg} borderColor={menuBorder}>
+            <MenuItem
+              as={RouterLink}
+              to="/box/upload"
+              bg={menuBg}
+              color={headerColor}
+              _hover={{ bg: menuHoverBg }}
+            >
+              Upload
+            </MenuItem>
           </MenuList>
         </Menu>
 
-        {/* User Menu - Show only for authenticated users */}
+        {/* User Menu */}
         {user && (
           <Menu>
-            <MenuButton 
+            <MenuButton
               as={Button}
-              variant="ghost" 
-              colorScheme="white" 
-              size="md" 
+              variant="ghost"
+              size="md"
               mx={2}
               rightIcon={<ChevronDownIcon />}
+              color={headerColor}
             >
               <HStack spacing={2}>
                 <Avatar
@@ -153,11 +193,11 @@ const Header: React.FC = () => {
                 </Text>
               </HStack>
             </MenuButton>
-            <MenuList bg="gray.800" borderColor="gray.700" minW="160px">
-              <MenuItem 
-                bg="gray.800" 
-                _hover={{ bg: "red.600" }}
-                color="red.300"
+            <MenuList bg={menuBg} borderColor={menuBorder} minW="160px">
+              <MenuItem
+                bg={menuBg}
+                _hover={{ bg: 'red.500', color: 'white' }}
+                color="red.400"
                 onClick={handleSignOut}
               >
                 Logout

@@ -11,7 +11,8 @@ import numpy as np
 import h5py
 import hdf5storage
 import nibabel as nib
-import vneumodpy as vnm
+#import vneumodpy as vnm
+from neuroworkflow.utils import vneumodpy as vnm
 
 from neuroworkflow.core.node import Node
 from neuroworkflow.core.schema import NodeDefinitionSchema, PortDefinition, ParameterDefinition, MethodDefinition
@@ -30,36 +31,81 @@ class VNMSimulatorNode(Node):
                 description='Modulation target ROI atlas file (.nii.gz)'
             ),
             'target_ROI': ParameterDefinition(
-                default_value='',
-                description='Modulation target ROI numbers (list)',
+                default_value=[],
+                description=(
+                    'List of modulation target ROI label numbers (list of ints). '
+                    'Each value must match a label in the target ROI atlas. '
+                    'The simulation will loop over each ROI independently. '
+                    'Example: [4525] for a single target, [4525, 4526] for two targets.'
+                ),
+                constraints={'min_length': 1}
             ),
             'subject_perm_path': ParameterDefinition(
                 default_value='.',
-                description='Subject permutation file path',
+                description=(
+                    'Directory path where subject permutation files (.mat) are saved and loaded. '
+                    'Permutation files are reused across runs if they already exist. '
+                    'File naming: perm{trial}_{simulation_name}.mat'
+                ),
             ),
-            'simulation_name':ParameterDefinition(
+            'simulation_name': ParameterDefinition(
                 default_value='vnmSimName',
-                description='unique simulation name of virtual neuromodulation'
+                description=(
+                    'Unique name for this simulation run (string). '
+                    'Used to construct output and permutation filenames. '
+                    'Choose a descriptive name, e.g. "ppmi81CXAllenCube2s34".'
+                )
             ),
-            'number_of_trials':ParameterDefinition(
-                default_value='1',
-                description='Number of trials (Each trial generates a permutation of the subjects)',
+            'number_of_trials': ParameterDefinition(
+                default_value=1,
+                description=(
+                    'Number of simulation trials (int). Each trial generates an independent '
+                    'permutation of subjects and produces one set of surrogate time-series. '
+                    'More trials = more robust statistics but longer computation.'
+                ),
+                constraints={'min': 1}
             ),
-            'number_of_surrogate':ParameterDefinition(
-                default_value='40',
-                description='Number of surrogates time-series in each trial (Fixed value)',
+            'number_of_surrogate': ParameterDefinition(
+                default_value=40,
+                description=(
+                    'Number of surrogate time-series generated per trial (int). '
+                    'Fixed by the group surrogate model — must match the number of surrogates '
+                    'in the loaded model. Typical value: 40.'
+                ),
+                constraints={'min': 1}
             ),
             'modulation_params': ParameterDefinition(
-                default_value='28,22,160,0.15',
-                description='Virtual neuromodulation params: on/off/total duration (sec), and modulation power (Fixed value)',
+                default_value=[28.0, 22.0, 160.0, 0.15],
+                description=(
+                    'Virtual neuromodulation parameters (list of 4 floats): '
+                    '[on_duration_sec, off_duration_sec, total_duration_sec, modulation_power]. '
+                    'on_duration_sec: stimulation ON period in seconds (e.g. 28.0). '
+                    'off_duration_sec: stimulation OFF period in seconds (e.g. 22.0). '
+                    'total_duration_sec: total session length in seconds (e.g. 160.0). '
+                    'modulation_power: strength of the modulation signal (e.g. 0.15). '
+                    'These are fixed by the experimental protocol.'
+                ),
+                constraints={'min_length': 4, 'max_length': 4}
             ),
             'fmri_tr': ParameterDefinition(
-                default_value='1',
-                description='fMRI TR (sec) (Fixed value)',
+                default_value=1.0,
+                description=(
+                    'fMRI repetition time TR in seconds (float). '
+                    'Used to convolve the modulation signal with the HRF. '
+                    'Must match the TR of the subject time-series data (e.g. 1.0, 2.0).'
+                ),
+                constraints={'min': 0.1}
             ),
             'hrf_params': ParameterDefinition(
-                default_value='16,8',
-                description='Canonical Hemodynamic Response Function (HRF) params (Fixed value)',
+                default_value=[16, 8],
+                description=(
+                    'Canonical Hemodynamic Response Function (HRF) parameters (list of 2 ints): '
+                    '[peak_delay, undershoot_delay] in seconds. '
+                    'peak_delay: time to peak of the HRF (default 16 sec). '
+                    'undershoot_delay: time to undershoot trough (default 8 sec). '
+                    'These are the standard SPM canonical HRF values and are rarely changed.'
+                ),
+                constraints={'min_length': 2, 'max_length': 2}
             ),
         },
         inputs={
@@ -129,14 +175,6 @@ class VNMSimulatorNode(Node):
         )
     
         
-    def str2numlist(self, str_data, ctype):
-        slist = str_data.split(',')
-        clist = []
-        for i in range(len(slist)):
-            clist.append(ctype(slist[i]))
-        return clist
-
-
     def initialize_modulation(self, CX: Dict[str, Any], atlasV: Dict[str, Any]) -> Dict[str, Any]:
         """Setup HRF and neuromodulation."""
         if CX is None:
@@ -156,12 +194,11 @@ class VNMSimulatorNode(Node):
         targetV = targetDat.get_fdata()
         targetV = vnm.adjust_volume_dir(targetV, targetDat)
 
-        # init param string to list
-        trois = self.str2numlist(target_ROI, int)
-        vnpm = self.str2numlist(self._parameters['modulation_params'], float)
-        hrfpm = self.str2numlist(self._parameters['hrf_params'], int)
-        tr = float(self._parameters['fmri_tr'])
-        n_surr = int(self._parameters['number_of_surrogate'])
+        trois = target_ROI                              # list of ints
+        vnpm = self._parameters['modulation_params']   # list of floats
+        hrfpm = self._parameters['hrf_params']         # list of ints
+        tr = self._parameters['fmri_tr']               # float
+        n_surr = self._parameters['number_of_surrogate']  # int
 
         dbsidxs = []
         for i in range(len(trois)):
@@ -203,10 +240,10 @@ class VNMSimulatorNode(Node):
 
         simulation_name = self._parameters['simulation_name']
         subject_perm_path = self._parameters['subject_perm_path']
-        n_trials = int(self._parameters['number_of_trials'])
-        n_surr = int(self._parameters['number_of_surrogate'])
-        vnpm = self.str2numlist(self._parameters['modulation_params'], float)
-        trois = self.str2numlist(self._parameters['target_ROI'], int)
+        n_trials = self._parameters['number_of_trials']    # int
+        n_surr = self._parameters['number_of_surrogate']   # int
+        vnpm = self._parameters['modulation_params']       # list of floats
+        trois = self._parameters['target_ROI']             # list of ints
         srframes = int(vnpm[2])
 
         trials = [None] * n_trials

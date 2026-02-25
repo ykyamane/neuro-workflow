@@ -2,7 +2,6 @@
 Node for loading and visualizing the structural connectivity matrix that represents 
 the set of all existing anatomical connections between brain areas in the virtual brain (TVB)
 """
-#### change this line test 
 
 from typing import Dict, Any, Optional
 import numpy as np
@@ -39,6 +38,11 @@ class TVBConnectivitySetUpNode(Node):
         },
         
         inputs={
+            'connectivity_file_path': PortDefinition(
+                type=PortType.STR,
+                description='Path to TVB connectivity ZIP file (overrides connectivity_file parameter)',
+                optional=True
+            ),
         },
         
         outputs={
@@ -50,7 +54,7 @@ class TVBConnectivitySetUpNode(Node):
         methods={
             'sc_initialization': MethodDefinition(
                 description='Initialize the connectivity',
-                inputs=[],
+                inputs=['connectivity_file_path'],
                 outputs=['tvb_connectivity']
             ),
             'sc_visualization': MethodDefinition(
@@ -82,13 +86,24 @@ class TVBConnectivitySetUpNode(Node):
             method_key="sc_visualization"
         )
         
-    def sc_initialization(self) -> Dict[str, Any]:
+    def sc_initialization(self, connectivity_file_path: str = None) -> Dict[str, Any]:
         """read a zip file and setup connectivity matrix as TVB object
+        
+        Args:
+            connectivity_file_path: Optional path to connectivity file from input port
             
         Returns:
             connectivity matrix object in TVB format
         """
-        con = connectivity.Connectivity.from_file(self._parameters['connectivity_file'])      
+        # Use input port path if provided, otherwise use parameter
+        if connectivity_file_path:
+            file_path = connectivity_file_path
+            print(f"[{self.name}] Using connectivity file from input port: {file_path}")
+        else:
+            file_path = self._parameters['connectivity_file']
+            print(f"[{self.name}] Using connectivity file from parameter: {file_path}")
+            
+        con = connectivity.Connectivity.from_file(file_path)      
         nregions = len(con.region_labels)                               #number of regions
         con.weights = con.weights - con.weights * np.eye((nregions))    #remove self-connection
         con.speed = np.array([sys.float_info.max])                      #set conduction speed (here we neglect it)

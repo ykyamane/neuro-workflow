@@ -2,10 +2,13 @@
 Node for set the visualization of a TVB simulation. up and run the simulation. The simulator is created as an iterable object, so all we need to do is iterate for some length, which we provide in ms, and collect the output.
 """
 
+import os
 import h5py
 import numpy as np
 import nibabel as nib
-import vneumodpy as vnm
+#import vneumodpy as vnm
+from neuroworkflow.utils import vneumodpy as vnm
+
 
 from typing import Dict, Any, Optional
 from neuroworkflow.core.node import Node
@@ -30,20 +33,41 @@ class VNMGlmAnalysisNode(Node):
                 description='2nd level GLM analysis result (NIfTI file) path',
             ),
             'tukey_taper_size': ParameterDefinition(
-                default_value='8',
-                description='Tukey-taper size for GLM analysis',
+                default_value=8,
+                description=(
+                    'Tukey taper window size for spectral estimation in the GLM (int). '
+                    'Controls the bandwidth of the Tukey window applied before computing '
+                    'the GLM covariance. Larger values = smoother spectral estimates. '
+                    'Typical value: 8. Must be at least 1; the 2nd-level Y vector length '
+                    'must exceed this value (so keep it ≤ number_of_surrogate).'
+                ),
+                constraints={'min': 1}
             ),
             'number_of_jobs': ParameterDefinition(
-                default_value='8',
-                description='number of multiprocessing jobs for GLM analysis',
+                default_value=8,
+                description=(
+                    'Number of parallel jobs for the 2nd-level GLM computation (int). '
+                    'Uses multiprocessing to speed up the Tukey GLM across voxels. '
+                    'Set to 1 to disable parallelism (safer on macOS/Jupyter). '
+                    'Set to -1 to use all available CPU cores.'
+                ),
+                constraints={'min': 1}
             ),
             'simulation_name': ParameterDefinition(
                 default_value='',
-                description='(for DEBUG) unique simulation name of virtual neuromodulation',
+                description=(
+                    '(DEBUG only) Unique simulation name — used to construct the output '
+                    'NIfTI filename when the simulation_name input port is not connected. '
+                    'Leave empty when using the input port.'
+                ),
             ),
             'target_ROI': ParameterDefinition(
-                default_value='',
-                description='(for DEBUG) Modulation target ROI numbers',
+                default_value=0,
+                description=(
+                    '(DEBUG only) Single modulation target ROI number (int) — used when '
+                    'the trials input port is not connected and a .mat trial file is loaded '
+                    'manually via trial_mat_file. Corresponds to the ROI label value in the atlas.'
+                ),
             ),
             'trial_mat_file': ParameterDefinition(
                 default_value='',
@@ -74,14 +98,18 @@ class VNMGlmAnalysisNode(Node):
             'glm_volumes': PortDefinition(
                 type=PortType.OBJECT,
                 description='list of 2nd level GLM analysis result'
+            ),
+            'nifti_files': PortDefinition(
+                type=PortType.LIST,
+                description='list of output NIfTI file paths (.nii.gz)'
             )
         },
-        
+
         methods={
             'glm_analysis': MethodDefinition(
                 description='2nd level GLM analysis of the Virtual Neuromodulation',
                 inputs=['simulation_name','trials','Chrf'],
-                outputs=[]
+                outputs=['glm_volumes', 'nifti_files']
             ),
         }
     )
@@ -110,7 +138,7 @@ class VNMGlmAnalysisNode(Node):
         """
         if trials is None:
             trial_mat_file = self._parameters["trial_mat_file"]  # for DEBUG
-            target_ROI = int(self._parameters["target_ROI"])  # for DEBUG
+            target_ROI = self._parameters["target_ROI"]  # for DEBUG (int)
             if len(trial_mat_file) == 0:
                 raise ValueError("trials input not set")
             print('(DEBUG) loading trial mat file : ' + trial_mat_file)
@@ -144,8 +172,8 @@ class VNMGlmAnalysisNode(Node):
 
         result_nifti_path = self._parameters["result_nifti_path"]
         atlas_file = self._parameters["atlas_file"]
-        tuM = int(self._parameters["tukey_taper_size"])  # GLM tukey-taper size
-        njobs = int(self._parameters["number_of_jobs"])
+        tuM = self._parameters["tukey_taper_size"]    # int
+        njobs = self._parameters["number_of_jobs"]    # int
 
         print(f"Loading Cube ROI atlas : {atlas_file}")
         atlasDat = nib.load(atlas_file)
@@ -153,6 +181,7 @@ class VNMGlmAnalysisNode(Node):
         atlasV = vnm.adjust_volume_dir(atlasV, atlasDat)
 
         glmVs = []
+        nifti_file_paths = []
         for i in range(len(trials)):
             S_rois = trials[i]
             V_rois = []
@@ -160,6 +189,18 @@ class VNMGlmAnalysisNode(Node):
                 S = S_rois[j][0]
                 roi = S_rois[j][1]
                 surrNum = len(S)
+
+                # check if output file already exists and skip computation
+                sessionName = simulation_name + '_' + str(roi) + 'sr' + str(surrNum) + 'pr' + str(i + 1)
+                outniiname = result_nifti_path + '/' + sessionName + '_2nd-Tukey' + str(tuM) + '.nii.gz'
+                if os.path.isfile(outniiname):
+                    print(f'output file already exists, skipping: {outniiname}')
+                    existingDat = nib.load(outniiname)
+                    V2 = existingDat.get_fdata().astype(np.float32)
+                    V2 = vnm.adjust_volume_dir(V2, existingDat)
+                    V_rois.append([V2, roi])
+                    nifti_file_paths.append(outniiname)
+                    continue
 
                 # calc 1st-level GLM
                 print('calc 1st-level GLM. trial=' +str(i)+', target roi=' +str(roi))
@@ -197,12 +238,11 @@ class VNMGlmAnalysisNode(Node):
                 # output nifti file
                 V2 = vnm.adjust_volume_dir(V2.astype(np.float32), atlasDat)
                 nifti_image = nib.Nifti1Image(V2, atlasDat.affine)
-                sessionName = simulation_name + '_' + str(roi) + 'sr' + str(surrNum) + 'pr' + str(i + 1)
-                outniiname = result_nifti_path + '/' + sessionName + '_2nd-Tukey' + str(tuM) + '.nii.gz'
                 nib.save(nifti_image, outniiname)
                 print('save nifti file : ' + outniiname)
+                nifti_file_paths.append(outniiname)
 
                 V_rois.append([V2, roi])
             glmVs.append(V_rois)
 
-        return {"glm_volumes": glmVs}
+        return {"glm_volumes": glmVs, "nifti_files": nifti_file_paths}
