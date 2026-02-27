@@ -467,12 +467,13 @@ if __name__ == "__main__":
         for key, value in modified_params.items():
             # Sanitize parameter key to avoid Python keyword collisions
             safe_key = f"{key}_" if keyword.iskeyword(key) else key
-            if isinstance(value, (int)):
-              config_lines.append(f'            {safe_key}={float(value):.1f}')
-            elif isinstance(value, str):
-              config_lines.append(f'            {safe_key}={repr(value)}')
+            if isinstance(value, str):
+                config_lines.append(f'            {safe_key}={repr(value)}')
             else:
-              config_lines.append(f"            {safe_key}={value}")
+                # int, float, bool, list, dict all render correctly via f-string.
+                # Note: bool must be checked before int since bool subclasses int,
+                # but f"{True}" already produces "True" so the else branch handles both.
+                config_lines.append(f"            {safe_key}={value}")
 
         return ",\n".join(config_lines)
 
@@ -809,6 +810,11 @@ if __name__ == "__main__":
                     enhanced_node_data = db_node.data.copy()
                     # Location information etc. is obtained from JSON
                     enhanced_node_data.update(node_data.get("data", {}))
+                    # Restore parameter_modifications from DB — the frontend React Flow state
+                    # only updates schema on parameter change, so its parameter_modifications
+                    # is stale. The DB is always the canonical source for this field.
+                    enhanced_node_data['parameter_modifications'] = db_node.data.get('parameter_modifications', {})
+                    enhanced_node_data['has_parameter_modifications'] = db_node.data.get('has_parameter_modifications', False)
 
                     logger.info(f"DEBUG: Enhanced node data with parameter modifications: {enhanced_node_data}")
                 except FlowNode.DoesNotExist:
