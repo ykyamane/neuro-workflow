@@ -126,6 +126,7 @@ This work has been presented at several conferences and workshops, receiving val
 - **INCF/EBrains Summit**
   - _"NeuroWorkflow: A Node-Based Framework for Scalable Computational Neuroscience with AI-Ready Infrastructure"_
   - [📄 Abstract](posters_conferences/abstract_INCF_EBrains_summit.pdf)
+  - [📄 Poster](posters_conferences/EBRAINS-Summit-2025-Poster.pdf)
 
 ## License
 
