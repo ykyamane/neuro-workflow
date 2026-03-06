@@ -5,6 +5,7 @@ import {
   Box,
   Text,
   Code,
+  Badge,
   SimpleGrid,
   Flex,
   Button,
@@ -408,7 +409,22 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     } else if (typeof currentValue === 'object' && currentValue !== null) {
       setEditValue(JSON.stringify(currentValue, null, 2));
     } else if (typeof currentValue === 'string') {
-      setEditValue(currentValue);
+      // If the string looks like a serialised dict/list (e.g. previously stored as
+      // a JSON string), try to parse it and show it as formatted JSON so the user
+      // sees it in the expected double-quote format rather than raw.
+      const trimmed = currentValue.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(currentValue);
+          setEditValue(JSON.stringify(parsed, null, 2));
+        } catch {
+          // Not valid JSON (e.g. Python single-quote repr); show as-is.
+          // The save step will show an error if the user tries to save it unchanged.
+          setEditValue(currentValue);
+        }
+      } else {
+        setEditValue(currentValue);
+      }
     } else {
       setEditValue(JSON.stringify(currentValue));
     }
@@ -419,6 +435,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     if (!editingParam || !editingField) return;
 
     let parsedValue: any;
+    const trimmed = editValue.trim();
     try {
       // First try parsing as JSON
       parsedValue = JSON.parse(editValue);
@@ -428,7 +445,21 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         console.log('Parsed array value:', parsedValue);
       }
     } catch (error) {
-      // If JSON parsing fails, treat it as a string
+      // If the value looks like a dict or list but failed JSON parsing, the user
+      // likely typed Python-style single quotes instead of JSON double quotes.
+      // Reject it to prevent the value being stored as a plain string (which would
+      // break code generation).
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        toast({
+          title: 'Invalid format',
+          description: 'Dictionary and list values must use JSON format with double quotes. Example: {"key": "value"} instead of {\'key\': \'value\'}',
+          status: 'error',
+          duration: 6000,
+          isClosable: true,
+        });
+        return;
+      }
+      // For scalar values (plain strings, numbers, etc.) treat as string
       console.log('JSON parse failed, treating as string:', editValue);
       parsedValue = editValue;
     }
@@ -525,10 +556,26 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     }
 
     if (typeof data === 'object' && data !== null) {
-      return JSON.stringify(data);
+      const entries = Object.entries(data);
+      if (entries.length === 0) return '{}';
+      const preview = entries.slice(0, 3).map(([k, v]) =>
+        `${k}: ${typeof v === 'string' ? `"${v}"` : v}`
+      ).join(', ');
+      return entries.length > 3 ? `{${preview}, ...}` : `{${preview}}`;
     }
 
     return String(data);
+  };
+
+  // Infer a Python-style type name from a raw (pre-conversion) JS value.
+  const getInferredType = (value: any): string => {
+    if (value === null || value === undefined) return 'None';
+    if (typeof value === 'boolean') return 'bool';
+    if (Array.isArray(value)) return 'list';
+    if (typeof value === 'object') return 'dict';
+    if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';
+    if (typeof value === 'string') return 'str';
+    return 'any';
   };
 
   const renderInstanceNameSection = () => {
@@ -646,6 +693,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                             bg={inputBg}
                             color={textColor}
                             fontSize="xs"
+                            placeholder="string or number — no quotes needed"
                           />
                         )}
                         <HStack spacing={1}>
@@ -667,19 +715,33 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                       </VStack>
                     ) : (
                       <HStack flex="1" spacing={1}>
-                        <Code colorScheme="gray" fontSize="xs" bg={codeBg} color={textColor} flex="1" maxW="360">
-                          {(() => {
-                            var currentValue = getNodeParameterValue(key, 'default_value');
-                            return currentValue ? formatDataForDisplay(convertToStrIncFloat(currentValue)) : 'None';
-                            /*
-                            return Array.isArray(currentValue) || typeof currentValue === 'object'
-                              ? formatDataForDisplay(currentValue)
-                              : typeof currentValue === 'string'
-                                ? `"${currentValue}"`
-                                : String(currentValue);
-                            */
-                          })()}
-                        </Code>
+                        {(() => {
+                          const rawValue = getNodeParameterValue(key, 'default_value');
+                          const inferredType = getInferredType(rawValue);
+                          // Show strings with quotes so users know the type at a glance.
+                          // For all other types use the existing float-aware formatter.
+                          const displayStr =
+                            rawValue !== undefined && rawValue !== null
+                              ? typeof rawValue === 'string'
+                                ? `"${rawValue}"`
+                                : formatDataForDisplay(convertToStrIncFloat(rawValue))
+                              : 'None';
+                          return (
+                            <>
+                              <Badge
+                                colorScheme={renderDataTypeColor(inferredType)}
+                                fontSize="9px"
+                                variant="subtle"
+                                flexShrink={0}
+                              >
+                                {inferredType}
+                              </Badge>
+                              <Code colorScheme="gray" fontSize="xs" bg={codeBg} color={textColor} flex="1" maxW="320">
+                                {displayStr}
+                              </Code>
+                            </>
+                          );
+                        })()}
                         <Tooltip label="Edit default value" hasArrow>
                           <IconButton
                             aria-label="Edit default value"

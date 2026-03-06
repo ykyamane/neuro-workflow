@@ -1,5 +1,6 @@
 import re
 import os
+import ast
 import json
 import keyword
 import textwrap
@@ -222,8 +223,13 @@ class CodeGenerationService:
                     main_lines.append(lines[i])
                     i += 1
 
-                # Create the main execution cell
-                cell = self._create_code_cell("\n".join(main_lines))
+                # Create the main execution cell.
+                # Replace sys.exit(main()) with main() so the notebook cell
+                # does not raise SystemExit(0) when executed in a Jupyter kernel.
+                main_source = "\n".join(main_lines).replace(
+                    "sys.exit(main())", "main()"
+                )
+                cell = self._create_code_cell(main_source)
                 if cell:
                     cells.append(cell)
                 break  # Create the main execution cell
@@ -468,6 +474,18 @@ if __name__ == "__main__":
             # Sanitize parameter key to avoid Python keyword collisions
             safe_key = f"{key}_" if keyword.iskeyword(key) else key
             if isinstance(value, str):
+                # If the string looks like a Python dict/list literal (e.g. it was
+                # saved with single quotes before frontend validation was in place),
+                # recover it with ast.literal_eval so the generated code gets a real
+                # dict/list rather than a quoted string.
+                trimmed = value.strip()
+                if trimmed.startswith(('{', '[')):
+                    try:
+                        parsed = ast.literal_eval(value)
+                        config_lines.append(f"            {safe_key}={parsed!r}")
+                        continue
+                    except (ValueError, SyntaxError):
+                        pass
                 config_lines.append(f'            {safe_key}={repr(value)}')
             else:
                 # int, float, bool, list, dict all render correctly via f-string.

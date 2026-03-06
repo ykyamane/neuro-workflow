@@ -28,7 +28,7 @@ class TVBSimulatorNode(Node):
         
         parameters={
             'simulation_length': ParameterDefinition(
-                default_value='50000', 
+                default_value=50000,
                 description='length for the iteration of the simulation object',
                 constraints={},
                 optimizable=False,
@@ -105,7 +105,7 @@ class TVBSimulatorNode(Node):
         # Initialise the Simulator.
         sim = simulator.Simulator(model=tvb_model,
                           connectivity=tvb_connectivity,
-                          conduction_speed=np.float64(tvb_connectivity.speed),
+                          conduction_speed=float(np.asarray(tvb_connectivity.speed).flat[0]),
                           coupling=tvb_coupling,
                           integrator=tvb_integrator,
                           monitors=[tvb_monitor])

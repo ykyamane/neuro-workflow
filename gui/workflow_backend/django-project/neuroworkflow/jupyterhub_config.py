@@ -29,10 +29,6 @@ if not host_project_path:
     raise ValueError("HOST_PROJECT_PATH environment variable is required")
 
 c.DockerSpawner.volumes = {
-    f"{host_project_path}/neuroworkflow/neuro": {
-        "bind": "/home/jovyan/neuro",
-        "mode": "ro",
-    },
     f"{host_project_path}/codes/nodes": {
         "bind": "/home/jovyan/codes/nodes",
         "mode": "rw",

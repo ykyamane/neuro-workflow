@@ -1021,26 +1021,13 @@ class PythonFileParameterUpdateView(APIView):
         return updated_code
 
     def _format_value_for_python(self, value):
-        """Format values ​​for Python code"""
+        """Format values for Python code as valid Python literals."""
         logger.info(f"Formatting value: {value} (type: {type(value)})")
-
-        if isinstance(value, str):
-            return f'"{value}"'
-        elif isinstance(value, bool):
-            return str(value)
-        elif isinstance(value, list):
-            # Properly format each element of an array
-            formatted_elements = []
-            for item in value:
-                if isinstance(item, str):
-                    formatted_elements.append(f'"{item}"')
-                else:
-                    formatted_elements.append(str(item))
-            return f"[{', '.join(formatted_elements)}]"
-        elif isinstance(value, dict):
-            return str(value).replace("'", '"')
-        else:
-            return str(value)
+        # repr() always produces a valid, correctly-escaped Python literal for all
+        # built-in types (str, int, float, bool, None, list, dict, tuple).
+        # This avoids the previous str().replace("'", '"') approach for dicts, which
+        # failed for string values containing apostrophes, booleans, nested dicts, etc.
+        return repr(value)
 
     def _update_parameter_metadata_in_code(
         self, source_code, parameter_key, field_name, field_value

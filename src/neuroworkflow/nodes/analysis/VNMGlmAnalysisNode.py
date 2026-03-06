@@ -44,12 +44,12 @@ class VNMGlmAnalysisNode(Node):
                 constraints={'min': 1}
             ),
             'number_of_jobs': ParameterDefinition(
-                default_value=8,
+                default_value=1,
                 description=(
                     'Number of parallel jobs for the 2nd-level GLM computation (int). '
-                    'Uses multiprocessing to speed up the Tukey GLM across voxels. '
-                    'Set to 1 to disable parallelism (safer on macOS/Jupyter). '
-                    'Set to -1 to use all available CPU cores.'
+                    'Default is 1 (single-threaded, safe for Jupyter/Docker). '
+                    'Set to a higher value only when running outside a Jupyter kernel, '
+                    'as fork()-based parallelism crashes BLAS thread pools inside kernels.'
                 ),
                 constraints={'min': 1}
             ),

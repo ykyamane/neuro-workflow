@@ -10,7 +10,14 @@ docker build -t nest-jupyterlab -f Dockerfile.nest .
 Edit the .env files to set environment variables.
 rename env.template to .env and set environment variables
 
-- ./gui/.env
+**`gui/.env`** — Docker Compose level:
+| Variable | Description |
+|---|---|
+| `NODES_DIR` | Path to the nodes directory (`./workflow_backend/django-project/codes/nodes`) |
+| `HOST_PROJECT_PATH` | Absolute path to `gui/workflow_backend/django-project` on the host machine |
+
+Add 2 more .env files based on the templates.
+
 - ./gui/workflow_backend/.env
 - ./gui/workflow_frontend/.env
 
@@ -21,7 +28,6 @@ cd ./gui
 docker-compose build
 docker-compose up
 ```
-
 
 Open your web browser
 
