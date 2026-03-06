@@ -1680,20 +1680,37 @@ class BulkSyncNodesView(APIView):
             ).first()
 
             if existing_file:
-                # Provides more detailed reasons for duplication
                 if existing_file.file_hash == file_hash:
-                    reason = "Identical content already exists"
+                    # Identical content — nothing to do
+                    return {
+                        "status": "skipped",
+                        "filename": filename,
+                        "category": category,
+                        "reason": "Identical content already exists",
+                        "existing_id": str(existing_file.id),
+                        "existing_name": existing_file.name,
+                    }
                 else:
-                    reason = "File with same name in same category already exists"
-
-                return {
-                    "status": "skipped",
-                    "filename": filename,
-                    "category": category,
-                    "reason": reason,
-                    "existing_id": str(existing_file.id),
-                    "existing_name": existing_file.name,
-                }
+                    # File content changed — update and re-analyze
+                    try:
+                        file_service = PythonFileService()
+                        file_service.update_file_content(existing_file, file_content)
+                        return {
+                            "status": "added",
+                            "filename": filename,
+                            "category": category,
+                            "file_id": str(existing_file.id),
+                            "analyzed": existing_file.is_analyzed,
+                            "reason": "Updated existing file with new content",
+                        }
+                    except Exception as e:
+                        logger.warning(f"Update failed for {filename}: {e}")
+                        return {
+                            "status": "error",
+                            "filename": filename,
+                            "category": category,
+                            "error": str(e),
+                        }
 
             # Create a new file (DB registration only, no file copying)
             python_file = PythonFile.objects.create(
