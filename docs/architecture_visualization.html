@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroWorkflow - Full-Scale Architecture</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 2.5em; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 40px; font-size: 1.1em; }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .btn.active { background: #764ba2; }
+        .diagram-container {
+            position: relative;
+            min-height: 800px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 40px;
+            overflow: visible;
+        }
+        .layer { margin-bottom: 50px; position: relative; }
+        .layer-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            text-align: center;
+        }
+        .components {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: center;
+            position: relative;
+        }
+        .component {
+            background: white;
+            border: 3px solid #667eea;
+            border-radius: 12px;
+            padding: 16px;
+            min-width: 180px;
+            max-width: 280px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+            border-color: #764ba2;
+        }
+        .component.expanded {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            max-width: 560px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .component-header {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #667eea;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .component-close {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            display: none;
+        }
+        .component.expanded .component-close { display: block; }
+        .component-summary { color: #666; font-size: 0.85em; margin-bottom: 0; }
+        .component-detail { display: none; }
+        .component.expanded .component-detail { display: block; }
+        .component.expanded .component-summary { margin-bottom: 10px; }
+        .component-description { color: #666; font-size: 0.85em; margin-bottom: 10px; }
+        .component-features { list-style: none; padding: 0; }
+        .component-features li {
+            padding: 4px 0;
+            color: #555;
+            font-size: 0.8em;
+            border-bottom: 1px solid #eee;
+        }
+        .component-features li:before { content: "\25B8 "; color: #667eea; font-weight: bold; }
+        .component-port { font-size: 0.75em; color: #888; margin-top: 6px; }
+        .connection {
+            position: absolute;
+            pointer-events: none;
+            stroke-width: 2;
+            fill: none;
+            opacity: 0.6;
+            transition: all 0.3s;
+        }
+        .connection.conn-http { stroke: #2b6cb0; }
+        .connection.conn-lib { stroke: #276749; }
+        .connection.conn-db { stroke: #9c4221; }
+        .connection.highlighted { opacity: 1; stroke-width: 3; stroke: #764ba2; stroke-dasharray: none; }
+        @keyframes dash { to { stroke-dashoffset: -20; } }
+        .connection:not(.highlighted) { animation: dash 2s linear infinite; }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        .overlay.active { display: block; }
+        .legend {
+            margin-top: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .legend h3 { margin-bottom: 15px; color: #333; }
+        .legend-item { display: inline-block; margin: 5px 15px; font-size: 0.9em; }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .data-flow {
+            margin-top: 30px;
+            padding: 20px;
+            background: #e8f4f8;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+            display: none;
+        }
+        .data-flow.visible { display: block; }
+        .data-flow h3 { color: #333; margin-bottom: 15px; }
+        .flow-step {
+            padding: 10px;
+            margin: 10px 0;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .flow-step-number {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 28px;
+            margin-right: 10px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .opt-badge { font-size: 0.7em; color: #888; font-weight: normal; }
+        svg#connections {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+        .reference-diagram-container { display: none; width: 100%; max-height: 85vh; background: #f8f9fa; border-radius: 15px; padding: 20px; overflow: auto; border: 2px solid #667eea; }
+        .reference-diagram-container.active { display: block; }
+        .diagram-controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; padding: 10px; background: white; border-radius: 8px; border: 1px solid #ddd; }
+        .diagram-controls label { font-size: 0.9em; color: #666; font-weight: 500; }
+        .scale-slider { width: 200px; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; }
+        .scale-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #667eea; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .scale-slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #667eea; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .scale-value { min-width: 50px; text-align: center; font-weight: bold; color: #667eea; font-size: 0.9em; }
+        .reference-diagram-wrapper { width: 100%; max-height: 80vh; overflow: auto; border: 1px solid #ddd; border-radius: 10px; background: white; padding: 20px; display: flex; justify-content: center; align-items: flex-start; }
+        .reference-diagram-wrapper img { max-width: none; height: auto; display: block; }
+        .enhanced-view { display: none; position: relative; min-height: 800px; background: #f8f9fa; border-radius: 15px; padding: 40px; overflow: visible; }
+        .enhanced-view.active { display: block; }
+        .sub-component { background: #f0f4ff; border: 2px solid #8c4fff; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 0.85em; }
+        .sub-component-header { font-weight: bold; color: #8c4fff; margin-bottom: 5px; }
+        .component-category-1 { border-color: #dd344c; background: #ffe6e6; }
+        .component-category-2 { border-color: #e7157b; background: #ffe6f0; }
+        .component-category-3 { border-color: #c925d1; background: #f5e6ff; }
+        .component-category-4 { border-color: #8c4fff; background: #f0e6ff; }
+        .component-category-5 { border-color: #7aa116; background: #f0ffe6; }
+        .component-category-6 { border-color: #01a88d; background: #e6fff5; }
+        .component-category-7 { border-color: #00a4a6; background: #e6f5ff; }
+        .component-category-8 { border-color: #232f3e; background: #e6e6e6; }
+        .component-category-9 { border-color: #3a414a; background: #f0f0f0; }
+        .color-legend { margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 10px; border: 2px solid #667eea; }
+        .color-legend h4 { margin-bottom: 15px; color: #667eea; text-align: center; }
+        .color-legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .color-legend-item { display: flex; align-items: center; padding: 8px; background: white; border-radius: 5px; border: 1px solid #ddd; }
+        .color-legend-swatch { width: 30px; height: 30px; border-radius: 5px; margin-right: 10px; border: 2px solid; flex-shrink: 0; }
+        #enhanced-connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NeuroWorkflow - Full-Scale Architecture</h1>
+        <p class="subtitle">Interactive architecture with all components and connections (from ARCHITECTURE_FULL.md)</p>
+
+        <div class="controls">
+            <button class="btn active" onclick="showView('overview')">Overview</button>
+            <button class="btn" onclick="showView('dataflow')">Data Flow</button>
+            <button class="btn" onclick="showView('lucid')">Reference Diagram</button>
+            <button class="btn" onclick="showView('enhanced')">Enhanced Architecture</button>
+            <button class="btn" onclick="resetView()">Reset</button>
+        </div>
+
+        <div class="diagram-container" id="diagram">
+            <svg id="connections"></svg>
+
+            <!-- Layer 1: User interfaces -->
+            <div class="layer" id="layer-ui">
+                <div class="layer-title">User interfaces</div>
+                <div class="components">
+                    <div class="component" data-id="web-ui" onclick="expandComponent(this)">
+                        <div class="component-header">Web UI (React) <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Visual workflow editor with React Flow. Node-based design, real-time workflow management.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Core features</div><ul class="component-features"><li>React Flow visual editor, drag-and-drop nodes and edges</li><li>Node parameter editing, instance names, parameter suggestions UI</li><li>Project list, create/select/delete projects</li><li>Code generation trigger, workflow run</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Key components</div><ul class="component-features"><li>NodeDetailModal – parameter editing, suggestions</li><li>ProjectSelector – project management</li><li>EdgeMenu – connection configuration</li><li>Workflow canvas – main editor</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Tech stack</div><ul class="component-features"><li>React 19, TypeScript, Vite, Chakra UI</li><li>@xyflow/react (React Flow), Aspida API client, Supabase client</li></ul></div>
+                        <div class="component-port">Port: 5173 · gui/workflow_frontend</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="python-api" onclick="expandComponent(this)">
+                        <div class="component-header">Python API / CLI <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Programmatic workflow creation and execution from command line or Python scripts.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Core classes</div><ul class="component-features"><li>WorkflowBuilder – builder pattern for workflows</li><li>Node base class, node classes from nodes/</li><li>Connection – port connections, execution order</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Features</div><ul class="component-features"><li>neuroworkflow run &lt;file.py&gt;, info and other CLI commands</li><li>Type-safe node instantiation, workflow validation</li><li>Script / notebook / SnakeMake export</li><li>Entry point: neuroworkflow.cli.commands:main</li></ul></div>
+                        <div class="component-port">src/neuroworkflow</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="jupyter" onclick="expandComponent(this)">
+                        <div class="component-header">Jupyter Notebooks <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Interactive exploration and execution of workflows; generated .ipynb from code generation.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Capabilities</div><ul class="component-features"><li>Interactive workflow execution, data exploration</li><li>Visualization, parameter exploration</li><li>examples/, notebooks/ in repo</li></ul></div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="llm-cursor" onclick="expandComponent(this)">
+                        <div class="component-header">LLM / Cursor <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Model Context Protocol: AI assistants interact with workflows via MCP tools.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Tools</div><ul class="component-features"><li>List projects, get flow JSON</li><li>Workflow tools exposed via MCP proxy</li><li>Calls DJANGO_API_URL (backend)</li></ul></div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="brainscaler" onclick="expandComponent(this)">
+                        <div class="component-header">BrainScaler <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Separate product: knowledge graph + conversational AI frontend. Can link to workflow UI.</div>
+                        <div class="component-detail">
+                        <ul class="component-features"><li>Tech: FastHTML, Neo4j, Supabase</li><li>Links to workflow at e.g. localhost:5173</li></ul>
+                        <div class="component-port">Port: 5001 · brainscaler/</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="rag-ui" onclick="expandComponent(this)">
+                        <div class="component-header">RAG UI <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Parameter search over papers/chunks (semantic search). Optional frontend for Local RAG.</div>
+                        <div class="component-detail">
+                        <div class="component-port">Port: 3010 · rag/frontend</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 2: Backend services -->
+            <div class="layer" id="layer-backend">
+                <div class="layer-title">Backend services</div>
+                <div class="components">
+                    <div class="component" data-id="django-api" onclick="expandComponent(this)">
+                        <div class="component-header">Django REST API <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">RESTful API for workflows, nodes, code generation, run, box (node management), metadata (parameter suggestions), auth.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Apps</div><ul class="component-features"><li>app.workflow – FlowProject, FlowNode, FlowEdge; flow get/put; generate-code, run</li><li>app.box – PythonFile; upload, list, sync, categories, parameters update</li><li>app.metadata – ParameterMetadataService, parameters/suggest, custom-databases</li><li>app.auth – Supabase health, protected, profile</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Services</div><ul class="component-features"><li>CodeGenerationService – React Flow JSON → Python/notebook via WorkflowBuilder</li><li>RunWorkflowService – run generated script in subprocess</li><li>Node sync from UPLOAD_NODES_PATH, NEURO_PATH</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Endpoints</div><ul class="component-features"><li>api/auth/, api/box/, api/workflow/, api/metadata/</li></ul></div>
+                        <div class="component-port">gui/workflow_backend · Port: 3000</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="jupyterhub" onclick="expandComponent(this)">
+                        <div class="component-header">JupyterHub <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Containerized execution: spawns NEST/JupyterLab containers for running generated code and notebooks.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Features</div><ul class="component-features"><li>JupyterHub 4, DockerSpawner, DummyAuthenticator</li><li>Isolated execution, project directory mounting</li><li>Single-user image with NEST, TVB</li></ul></div>
+                        <div class="component-port">neuroworkflow/ · Port: 8000</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="mcp-server" onclick="expandComponent(this)">
+                        <div class="component-header">MCP Server <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Model Context Protocol proxy; workflow tools call Django API (list projects, get flow, etc.).</div>
+                        <div class="component-detail">
+                        <ul class="component-features"><li>proxy.py, workflow_mcp.py, mcp_config.json</li><li>DJANGO_API_URL → backend:3000/api/workflow</li></ul>
+                        <div class="component-port">gui/mcp_server · Port: 8001</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="local-rag-backend" onclick="expandComponent(this)">
+                        <div class="component-header">Local RAG Backend <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">FastAPI backend for semantic search over papers/chunks; used by LocalRAGAdapter for parameter suggestions.</div>
+                        <div class="component-detail">
+                        <ul class="component-features"><li>LOCAL_RAG_BASE_URL in backend .env</li></ul>
+                        <div class="component-port">rag/ · Port: 8006</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="supabase" onclick="expandComponent(this)">
+                        <div class="component-header">Supabase <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Authentication for backend and frontend (login/session, protected routes).</div>
+                        <div class="component-detail">
+                        <ul class="component-features"><li>SUPABASE_* in backend; VITE_SUPABASE_* in frontend</li><li>createAuthHeaders() for API calls</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 3: Core library -->
+            <div class="layer" id="layer-core">
+                <div class="layer-title">Core library (src/neuroworkflow)</div>
+                <div class="components">
+                    <div class="component" data-id="core" onclick="expandComponent(this)">
+                        <div class="component-header">core/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Base Node class, port system, schema definitions, workflow execution and builder.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Modules</div><ul class="component-features"><li>node.py – Node base, ProcessStep, execution lifecycle</li><li>port.py – InputPort, OutputPort, type checking</li><li>schema.py – NodeDefinitionSchema, ParameterDefinition, PortDefinition, ResourceRequirements, PortType</li><li>workflow.py – Workflow, WorkflowBuilder, execution order, dependency resolution</li></ul></div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="nodes" onclick="expandComponent(this)">
+                        <div class="component-header">nodes/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Concrete nodes by category; inherit from Node, define NODE_DEFINITION, process steps, optional generate_python_script().</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Categories</div><ul class="component-features"><li>network/ – populations, connections</li><li>simulation/ – execution nodes</li><li>stimulus/, analysis/, optimization/, io/</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Integration</div><ul class="component-features"><li>Uses core/; drives simulation backends (NEST, TVB, SONATA)</li></ul></div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="utils" onclick="expandComponent(this)">
+                        <div class="component-header">utils/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Script export (Python, .ipynb, SnakeMake), job managers (e.g. SLURM), parameter metadata service, database adapters.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Modules</div><ul class="component-features"><li>script_exporter, snakemake_generator</li><li>job_managers (JobManager base, SLURMJobManager)</li><li>parameter_metadata_service – ParameterMetadataService, OpenAI (optional)</li><li>database_adapters – Allen, NeuroMorpho, PubMed, NeuroML-DB, Generic, LocalRAG</li><li>mcp/server</li></ul></div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="database-adapters" onclick="expandComponent(this)">
+                        <div class="component-header">Database adapters <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">ParameterMetadataService queries external DBs and Local RAG; returns ParameterSuggestion (value, source, confidence).</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Adapters</div><ul class="component-features"><li>AllenBrainAdapter, NeuroMorphoAdapter, PubMedAdapter, NeuroMLDBAdapter</li><li>GenericDatabaseAdapter (custom HTTP/API), LocalRAGAdapter</li></ul></div>
+                        <ul class="component-features"><li>Used by Django app.metadata views</li></ul>
+                        </div>
+                    </div>
+                    <div class="component" data-id="cli" onclick="expandComponent(this)">
+                        <div class="component-header">cli/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Command-line entry point for running workflows and info.</div>
+                        <div class="component-detail">
+                        <ul class="component-features"><li>neuroworkflow run, info, etc.</li><li>Entry: neuroworkflow.cli.commands:main</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 4: Data stores & external -->
+            <div class="layer" id="layer-data">
+                <div class="layer-title">Data stores &amp; external systems</div>
+                <div class="components">
+                    <div class="component" data-id="postgresql" onclick="expandComponent(this)">
+                        <div class="component-header">PostgreSQL <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Django ORM persistence for all app data.</div>
+                        <div class="component-detail">
+                        <div class="sub-component"><div class="sub-component-header">Models</div><ul class="component-features"><li>FlowProject, FlowNode, FlowEdge (workflow)</li><li>PythonFile (box), CustomDatabase (metadata)</li></ul></div>
+                        <ul class="component-features"><li>Docker service: db; DATABASES.default</li></ul>
+                        <div class="component-port">Port: 5432 (internal)</div>
+                        </div>
+                    </div>
+                    <div class="component" data-id="allen" onclick="expandComponent(this)">
+                        <div class="component-header">Allen Brain Atlas <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">External DB: AllenBrainAdapter, HTTP, parameter metadata for suggestions.</div>
+                    </div>
+                    <div class="component" data-id="neuromorpho" onclick="expandComponent(this)">
+                        <div class="component-header">NeuroMorpho <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">External DB: NeuroMorphoAdapter, HTTP.</div>
+                    </div>
+                    <div class="component" data-id="pubmed" onclick="expandComponent(this)">
+                        <div class="component-header">PubMed <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">External DB: PubMedAdapter.</div>
+                    </div>
+                    <div class="component" data-id="neuroml-db" onclick="expandComponent(this)">
+                        <div class="component-header">NeuroML-DB <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">External DB: NeuroMLDBAdapter.</div>
+                    </div>
+                    <div class="component" data-id="custom-dbs" onclick="expandComponent(this)">
+                        <div class="component-header">Custom DBs <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">User-defined DBs via GenericDatabaseAdapter; CRUD and test via api/metadata/custom-databases.</div>
+                    </div>
+                    <div class="component" data-id="local-rag" onclick="expandComponent(this)">
+                        <div class="component-header">Local RAG <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">LocalRAGAdapter calls this over HTTP (port 8006) for semantic parameter suggestions.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 5: Simulation backends -->
+            <div class="layer" id="layer-sim">
+                <div class="layer-title">Simulation backends (used by nodes/)</div>
+                <div class="components">
+                    <div class="component" data-id="nest" onclick="expandComponent(this)">
+                        <div class="component-header">NEST Simulator <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Simulation backend: spiking neural networks, large-scale simulations. Loaded as Python module by nodes/.</div>
+                    </div>
+                    <div class="component" data-id="tvb" onclick="expandComponent(this)">
+                        <div class="component-header">TVB (Virtual Brain) <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Simulation backend: whole-brain, mean-field models, brain connectivity.</div>
+                    </div>
+                    <div class="component" data-id="sonata" onclick="expandComponent(this)">
+                        <div class="component-header">SONATA <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Network format standard; interoperability.</div>
+                    </div>
+                    <div class="component" data-id="custom-backend" onclick="expandComponent(this)">
+                        <div class="component-header">Custom <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                        <div class="component-description">Extensible: custom simulation backends as Python modules.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="reference-diagram-container" id="lucid-view">
+            <h3 style="text-align: center; color: #667eea; margin-bottom: 10px;">Reference Architecture Diagram</h3>
+            <p style="text-align: center; color: #666; margin-bottom: 15px; font-size: 0.9em;">
+                Original diagram from Lucid.app, enhanced with the full current architecture. Use mouse wheel or scroll to zoom and pan.<br>
+                <span style="font-size: 0.85em; color: #999;">Original 491 components, 9 color-coded categories, plus integrated nodes: BrainScaler (opt), RAG UI (opt), Local RAG Backend (opt), Supabase, Database adapters (ParameterMetadataService), and external systems (Allen Brain, NeuroMorpho, PubMed, NeuroML-DB, Custom DBs, Local RAG), with connections.</span>
+            </p>
+            <div class="diagram-controls">
+                <label for="reference-scale-slider">Scale:</label>
+                <input type="range" id="reference-scale-slider" class="scale-slider" min="10" max="100" value="40" step="5" oninput="updateReferenceDiagramScale(this.value)">
+                <span class="scale-value" id="reference-scale-value">40%</span>
+            </div>
+            <div class="reference-diagram-wrapper" id="reference-diagram-wrapper" style="overflow: auto; max-height: 80vh; border: 2px solid #667eea; border-radius: 10px; background: white; padding: 20px; text-align: center;">
+                <div id="reference-diagram-container" style="display: inline-block; transform: scale(0.4); transform-origin: top center; transition: transform 0.2s ease;">
+                    <img src="Blank%20diagram.svg" alt="Reference Architecture Diagram" style="max-width: none; height: auto; display: block;" />
+                </div>
+            </div>
+        </div>
+
+        <div class="enhanced-view" id="enhanced-view">
+            <div class="color-legend">
+                <h4>Color category legend</h4>
+                <div class="color-legend-grid">
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #ffe6e6; border-color: #dd344c;"></div><div><strong>Category 1:</strong> User interfaces (Web, CLI, Jupyter)</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #ffe6f0; border-color: #e7157b;"></div><div><strong>Category 2:</strong> Backend API &amp; services</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #f5e6ff; border-color: #c925d1;"></div><div><strong>Category 3:</strong> MCP, optional UIs</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #f0e6ff; border-color: #8c4fff;"></div><div><strong>Category 4:</strong> Core library (core, nodes)</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #f0ffe6; border-color: #7aa116;"></div><div><strong>Category 5:</strong> Utils, metadata, adapters</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #e6fff5; border-color: #01a88d;"></div><div><strong>Category 6:</strong> Data stores &amp; external DBs</div></div>
+                    <div class="color-legend-item"><div class="color-legend-swatch" style="background: #e6f5ff; border-color: #00a4a6;"></div><div><strong>Category 7:</strong> Simulation backends</div></div>
+                </div>
+            </div>
+            <svg id="enhanced-connections"></svg>
+            <div class="layer"><div class="layer-title">User interfaces (enhanced)</div><div class="components">
+                <div class="component component-category-1" data-id="web-ui-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Web UI (React) <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Visual workflow editor with React Flow; project CRUD, code generation, run.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Primary user interface for building and managing neural simulation workflows. React Flow canvas for node-based design; project CRUD, flow persistence, code generation, and run trigger via Django REST API.</div>
+                        <div class="sub-component"><div class="sub-component-header">Core features</div><ul class="component-features"><li>React Flow (@xyflow/react): drag-and-drop nodes and edges, zoom/pan</li><li>Node detail modal: parameter editing, instance names, parameter suggestions from metadata API</li><li>Project list: create, select, delete projects; flow get/put at api/workflow</li><li>Code generation and run: POST generate-code and run; box upload/sync for node definitions</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Key components (codebase)</div><ul class="component-features"><li>NodeDetailModal – parameter editing, calls api/metadata/parameters/suggest</li><li>ProjectSelector – project list and switch; api/workflow projects</li><li>EdgeMenu – edge configuration on canvas</li><li>Workflow canvas – main React Flow view; VITE_API_BASE_URL for backend</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Tech stack</div><ul class="component-features"><li>React 19, TypeScript, Vite; Chakra UI</li><li>Aspida typed API client; Supabase client for auth (VITE_SUPABASE_*)</li></ul></div>
+                        <div class="component-port">Port: 5173 · gui/workflow_frontend</div>
+                    </div>
+                </div>
+                <div class="component component-category-1" data-id="python-api-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Python API / CLI <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Library and CLI for defining and running workflows in Python; no Django.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Library and CLI for defining and running workflows in Python. No Django dependency; used by the backend for code generation and by examples/notebooks. Entry point: neuroworkflow.cli.commands:main.</div>
+                        <div class="sub-component"><div class="sub-component-header">Core classes (src/neuroworkflow)</div><ul class="component-features"><li>WorkflowBuilder – builder pattern; add_node(), connect(); builds execution order</li><li>Node (core/node.py) – base class; NODE_DEFINITION, ProcessStep, execution lifecycle</li><li>Connection – port-to-port; workflow resolves execution order and dependency</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Features</div><ul class="component-features"><li>CLI: neuroworkflow run &lt;file.py&gt;, info; runs generated or hand-written workflow scripts</li><li>Script export: Python, .ipynb, SnakeMake via utils/script_exporter and snakemake_generator</li><li>Node classes from nodes/ (network, simulation, stimulus, analysis, optimization, io)</li></ul></div>
+                        <div class="component-port">src/neuroworkflow</div>
+                    </div>
+                </div>
+                <div class="component component-category-1" data-id="jupyter-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Jupyter Notebooks <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Interactive workflow execution; generated .ipynb or local notebooks.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Interactive execution and exploration of workflows. Backend can generate .ipynb via CodeGenerationService; notebooks run in JupyterLab (e.g. JupyterHub-spawned containers) or locally.</div>
+                        <div class="sub-component"><div class="sub-component-header">Capabilities</div><ul class="component-features"><li>Generated notebooks from Web UI: POST generate-code returns or writes .ipynb under codes/projects/</li><li>examples/ and notebooks/ in repo: SONATA, optimization, TVB demos</li><li>JupyterHub (port 8000) spawns NEST/JupyterLab containers for isolated run</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-3" data-id="llm-cursor-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">LLM / Cursor <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">MCP: AI assistants interact with workflows via tools (list projects, get flow).</div>
+                    <div class="component-detail">
+                        <div class="component-description">Model Context Protocol (MCP) integration so Cursor or other LLM clients can list projects, get flow JSON, and interact with workflows via tools. MCP server proxies requests to the Django backend.</div>
+                        <div class="sub-component"><div class="sub-component-header">Implementation</div><ul class="component-features"><li>gui/mcp_server: proxy.py loads mcp_config.json; workflow_mcp.py implements workflow tools</li><li>Tools call DJANGO_API_URL (e.g. http://backend:3000/api/workflow) for list projects, get flow</li><li>MCP proxy port 8001; Cursor/LLM connects to this endpoint</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-3" data-id="brainscaler-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">BrainScaler <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Optional: knowledge graph + conversational AI; can link to workflow UI.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Separate product (brainscaler/): knowledge graph backend and conversational AI frontend. Optional; can link to the neuro-workflow Web UI (e.g. localhost:5173) for combined use. Not part of the main Docker stack.</div>
+                        <ul class="component-features"><li>Tech: FastHTML, Neo4j, Supabase; frontend on port 5001</li><li>See brainscaler/README.md for run (Docker or conda)</li></ul>
+                        <div class="component-port">Port: 5001 · brainscaler/</div>
+                    </div>
+                </div>
+                <div class="component component-category-3" data-id="rag-ui-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">RAG UI <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Optional frontend for semantic search over papers/chunks.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Optional frontend (rag/frontend) for semantic search over papers/chunks. Users can query the Local RAG backend directly. Parameter suggestions in the workflow UI go through the backend and LocalRAGAdapter instead.</div>
+                        <ul class="component-features"><li>Talks to Local RAG backend (port 8006); default frontend port 3010 in this repo</li></ul>
+                        <div class="component-port">Port: 3010 · rag/frontend</div>
+                    </div>
+                </div>
+            </div></div>
+            <div class="layer"><div class="layer-title">Backend services (enhanced)</div><div class="components">
+                <div class="component component-category-2" data-id="django-api-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Django REST API <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">REST API for workflows, code generation, run, box, metadata, auth.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Central backend (gui/workflow_backend): REST API for projects, flow (React Flow JSON), code generation, run, node upload/sync (box), parameter suggestions (metadata), and Supabase auth. Uses PostgreSQL and imports the core library for code generation.</div>
+                        <div class="sub-component"><div class="sub-component-header">Apps (django-project/app/)</div><ul class="component-features"><li>workflow – FlowProject, FlowNode, FlowEdge; flow get/put; generate-code, run</li><li>box – PythonFile; upload, list, sync, categories, parameters update</li><li>metadata – ParameterMetadataService; parameters/suggest, species-specific, custom-databases CRUD and test</li><li>auth – Supabase health, protected, profile</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Services</div><ul class="component-features"><li>CodeGenerationService – React Flow JSON → Python/notebook via WorkflowBuilder and node classes</li><li>RunWorkflowService – runs generated script in subprocess</li><li>Node sync from UPLOAD_NODES_PATH, NEURO_PATH</li></ul></div>
+                        <div class="component-port">gui/workflow_backend · Port: 3000</div>
+                    </div>
+                </div>
+                <div class="component component-category-2" data-id="jupyterhub-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">JupyterHub <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Spawns NEST/JupyterLab containers for running generated code.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Spawns isolated NEST/JupyterLab containers for running generated code and notebooks. Lives in gui/workflow_backend/django-project/neuroworkflow/ (jupyterhub_config.py, Dockerfile for single-user image). Frontend can link to hub at localhost:8000.</div>
+                        <div class="sub-component"><div class="sub-component-header">Setup</div><ul class="component-features"><li>JupyterHub 4, DockerSpawner, DummyAuthenticator</li><li>Single-user image includes NEST, TVB; project dirs mounted</li><li>Docker Compose service jupyterhub on port 8000; network jupyterhub-network</li></ul></div>
+                        <div class="component-port">neuroworkflow/ · Port: 8000</div>
+                    </div>
+                </div>
+                <div class="component component-category-3" data-id="mcp-server-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">MCP Server <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">MCP proxy; workflow tools call Django API (list projects, get flow).</div>
+                    <div class="component-detail">
+                        <div class="component-description">Model Context Protocol proxy (gui/mcp_server). Exposes workflow tools (list projects, get flow, etc.) to Cursor/LLM; each tool issues HTTP requests to the Django backend. Config: mcp_config.json (workflow server command, env); DJANGO_API_URL points to backend:3000/api/workflow.</div>
+                        <ul class="component-features"><li>proxy.py loads mcp_config.json; workflow_mcp.py implements tools</li><li>MCP_PROXY_PORT=8001; Docker service mcp</li></ul>
+                        <div class="component-port">gui/mcp_server · Port: 8001</div>
+                    </div>
+                </div>
+                <div class="component component-category-3" data-id="local-rag-backend-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Local RAG Backend <span class="opt-badge">opt</span> <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">FastAPI backend for semantic search over papers; used by LocalRAGAdapter.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Optional FastAPI backend (rag/) for semantic search over papers/chunks. The core library’s LocalRAGAdapter calls this at LOCAL_RAG_BASE_URL (e.g. http://localhost:8006); backend metadata service uses the adapter for parameter suggestions. Can run via rag/setup_and_run.py.</div>
+                        <ul class="component-features"><li>Backend .env: LOCAL_RAG_BASE_URL; in Docker may use host.docker.internal:8006</li></ul>
+                        <div class="component-port">rag/ · Port: 8006</div>
+                    </div>
+                </div>
+                <div class="component component-category-2" data-id="supabase-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Supabase <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Authentication for backend and frontend (login/session, protected routes).</div>
+                    <div class="component-detail">
+                        <div class="component-description">External auth provider for login and session. Backend (app.auth) checks Supabase for health, protected routes, profile; frontend uses Supabase client and createAuthHeaders() for authenticated API calls. No user data stored in Django DB for auth.</div>
+                        <ul class="component-features"><li>Backend: SUPABASE_URL, SUPABASE_ANON_KEY in .env</li><li>Frontend: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY; see gui/SUPABASE_LOGIN_AFTER_SIGNUP.md if needed</li></ul>
+                    </div>
+                </div>
+            </div></div>
+            <div class="layer"><div class="layer-title">Core library (enhanced)</div><div class="components">
+                <div class="component component-category-4" data-id="core-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">core/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Base Node, ports, schema, Workflow/WorkflowBuilder; no Django.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Core workflow engine in src/neuroworkflow/core/: base Node, typed ports, schema definitions, and Workflow/WorkflowBuilder for execution order and dependency resolution. No Django dependency; imported by backend and by examples.</div>
+                        <div class="sub-component"><div class="sub-component-header">Modules</div><ul class="component-features"><li>node.py – Node base class, ProcessStep, execute(), execution lifecycle</li><li>port.py – InputPort, OutputPort, type checking, connect()</li><li>schema.py – NodeDefinitionSchema, ParameterDefinition, PortDefinition, ResourceRequirements, PortType (JSON-serializable)</li><li>workflow.py – Workflow, WorkflowBuilder; add_node(), connect(); execution order and dependency resolution</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-4" data-id="nodes-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">nodes/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Concrete nodes by category; drive NEST, TVB, SONATA.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Concrete node implementations in src/neuroworkflow/nodes/: each subpackage defines nodes that inherit from Node, expose NODE_DEFINITION, implement process steps and optionally generate_python_script() for code/notebook export. Drive simulation backends (NEST, TVB, SONATA) as Python modules.</div>
+                        <div class="sub-component"><div class="sub-component-header">Categories</div><ul class="component-features"><li>network/ – populations, connections</li><li>simulation/ – execution nodes (NEST, TVB, etc.)</li><li>stimulus/, analysis/, optimization/, io/</li></ul></div>
+                        <div class="sub-component"><div class="sub-component-header">Integration</div><ul class="component-features"><li>Backend syncs node definitions from UPLOAD_NODES_PATH, NEURO_PATH; box app stores PythonFile</li><li>CodeGenerationService uses these node classes + WorkflowBuilder to produce Python/notebook</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-5" data-id="utils-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">utils/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Script export, job managers, ParameterMetadataService, database adapters.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Shared utilities in src/neuroworkflow/utils/: script and SnakeMake export, job managers (e.g. SLURM), ParameterMetadataService (with optional OpenAI), and database_adapters. Backend imports ParameterMetadataService and uses it in app.metadata views.</div>
+                        <div class="sub-component"><div class="sub-component-header">Modules</div><ul class="component-features"><li>script_exporter – Python script, .ipynb; snakemake_generator – Snakefile, config.yaml</li><li>job_managers – JobManager base, SLURMJobManager</li><li>parameter_metadata_service.py – ParameterMetadataService; optional OPENAI_API_KEY, aggregates adapter results</li><li>database_adapters/ – AllenBrain, NeuroMorpho, PubMed, NeuroML-DB, Generic, LocalRAG</li><li>mcp/server – used by gui/mcp_server</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-5" data-id="database-adapters-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Database adapters <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Adapters query external DBs and Local RAG; return ParameterSuggestion.</div>
+                    <div class="component-detail">
+                        <div class="component-description">src/neuroworkflow/utils/database_adapters/: each adapter implements DatabaseAdapter (query_parameter, get_source_name) and returns List[ParameterSuggestion]. ParameterMetadataService aggregates results from enabled adapters; Django app.metadata calls the service for parameters/suggest and custom-databases.</div>
+                        <div class="sub-component"><div class="sub-component-header">Adapters</div><ul class="component-features"><li>AllenBrainAdapter, NeuroMorphoAdapter – HTTP; optional OpenAI for mapping</li><li>PubMedAdapter (API key recommended), NeuroMLDBAdapter</li><li>GenericDatabaseAdapter – user-defined HTTP/API; config via api/metadata/custom-databases</li><li>LocalRAGAdapter – HTTP to LOCAL_RAG_BASE_URL (port 8006)</li></ul></div>
+                    </div>
+                </div>
+                <div class="component component-category-4" data-id="cli-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">cli/ <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">CLI entry point: neuroworkflow run, info; no backend required.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Command-line entry point in src/neuroworkflow/cli/. Entry point: neuroworkflow.cli.commands:main (e.g. neuroworkflow run &lt;file.py&gt;, info). Runs workflow scripts that use WorkflowBuilder and node classes; no backend required.</div>
+                        <ul class="component-features"><li>Commands: run, info, etc.; install via pip install -e .</li></ul>
+                    </div>
+                </div>
+            </div></div>
+            <div class="layer"><div class="layer-title">Data stores &amp; external (enhanced)</div><div class="components">
+                <div class="component component-category-6" data-id="postgresql-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">PostgreSQL <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Django ORM persistence for all app data.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Primary persistence for the Django backend. All app data stored via ORM: FlowProject, FlowNode, FlowEdge (workflow); PythonFile (box); CustomDatabase (metadata custom DBs). Docker service db; config DB_NAME, DB_USER, DB_PASSWORD, DB_PORT.</div>
+                        <ul class="component-features"><li>Migrations: django-project/manage.py migrate</li><li>No direct frontend or core library access; backend only</li></ul>
+                        <div class="component-port">Port: 5432 (internal)</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="allen-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Allen Brain Atlas <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">External DB: AllenBrainAdapter, HTTP; parameter metadata for suggestions.</div>
+                    <div class="component-detail">
+                        <div class="component-description">External API: Allen Brain Atlas. AllenBrainAdapter (database_adapters/allen_brain.py) queries it over HTTP; returns parameter suggestions (e.g. cell types, regions). No API key required; optional OpenAI client for AI-powered parameter mapping. Used by ParameterMetadataService when enabled.</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="neuromorpho-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">NeuroMorpho <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">External DB: NeuroMorphoAdapter, HTTP.</div>
+                    <div class="component-detail">
+                        <div class="component-description">External API: NeuroMorpho.org (neuronal morphologies). NeuroMorphoAdapter (database_adapters/neuromorpho.py) queries over HTTP; returns ParameterSuggestion for morphology-related parameters. No API key required; optional OpenAI for mapping. Enabled by default in ParameterMetadataService.</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="pubmed-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">PubMed <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">External DB: PubMedAdapter.</div>
+                    <div class="component-detail">
+                        <div class="component-description">External API: PubMed/NCBI. PubMedAdapter (database_adapters/pubmed.py) queries for literature-based parameter suggestions. API key optional but recommended for higher rate limits. Returns ParameterSuggestion with source and confidence; used by ParameterMetadataService.</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="neuroml-db-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">NeuroML-DB <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">External DB: NeuroMLDBAdapter.</div>
+                    <div class="component-detail">
+                        <div class="component-description">External API: NeuroML-DB. NeuroMLDBAdapter (database_adapters/neuroml_db.py) queries for NeuroML model and parameter metadata. Returns ParameterSuggestion list; integrated into ParameterMetadataService. Used for model/parameter discovery in workflow parameter UI.</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="custom-dbs-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Custom DBs <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">User-defined DBs via GenericDatabaseAdapter; CRUD at api/metadata/custom-databases.</div>
+                    <div class="component-detail">
+                        <div class="component-description">User-defined databases via GenericDatabaseAdapter (database_adapters/generic.py). Config stored in Django (CustomDatabase model); CRUD and test-connection at api/metadata/custom-databases/. Each custom DB can expose HTTP/API; adapter maps queries to ParameterSuggestion. Managed from Web UI or API.</div>
+                    </div>
+                </div>
+                <div class="component component-category-6" data-id="local-rag-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Local RAG <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">LocalRAGAdapter calls this over HTTP (port 8006) for semantic parameter suggestions.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Local RAG backend service (rag/), exposed on port 8006. LocalRAGAdapter sends HTTP requests (e.g. semantic query over papers/chunks); responses normalized to ParameterSuggestion. Backend sets LOCAL_RAG_BASE_URL; optional Bearer/auth. Used for parameter suggestions when RAG is running.</div>
+                    </div>
+                </div>
+            </div></div>
+            <div class="layer"><div class="layer-title">Simulation backends (enhanced)</div><div class="components">
+                <div class="component component-category-7" data-id="nest-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">NEST Simulator <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Simulation backend: spiking neural networks; loaded as Python module by nodes/.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Simulation backend for spiking neural networks; used by workflow nodes (nodes/) as a Python module. Generated scripts or notebooks import NEST; JupyterHub single-user image typically includes NEST. No direct HTTP; core library and backend only drive it via generated code.</div>
+                    </div>
+                </div>
+                <div class="component component-category-7" data-id="tvb-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">TVB (Virtual Brain) <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Simulation backend: whole-brain, mean-field models, brain connectivity.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Simulation backend for whole-brain, mean-field models and brain connectivity. Used by workflow nodes (nodes/) as a Python module; generated code imports TVB. Examples in examples/ and notebooks/; JupyterHub image may include TVB. Loosely coupled; no API—invoked via generated Python.</div>
+                    </div>
+                </div>
+                <div class="component component-category-7" data-id="sonata-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">SONATA <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Network format standard; interoperability.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Network format standard for interoperability (SONATA format). Used by nodes/ for reading/writing network specifications; supports large-scale and multi-population models. Examples in examples/; loaded as library by generated workflow code. Not a service—used as a standard/data format.</div>
+                    </div>
+                </div>
+                <div class="component component-category-7" data-id="custom-backend-enhanced" onclick="expandComponent(this)">
+                    <div class="component-header">Custom <button class="component-close" onclick="closeComponent(this)">×</button></div>
+                    <div class="component-summary">Extensible: custom simulation backends as Python modules.</div>
+                    <div class="component-detail">
+                        <div class="component-description">Placeholder for custom simulation or execution backends. The architecture allows additional Python modules or services to be invoked by workflow nodes (e.g. custom generate_python_script() or process steps). No fixed API; extensible via new node classes in nodes/.</div>
+                    </div>
+                </div>
+            </div></div>
+        </div>
+
+        <div class="data-flow" id="dataflow-view">
+            <h3>Workflow execution flow</h3>
+            <div class="flow-step"><span class="flow-step-number">1</span> <strong>User creates workflow</strong> (Web UI or Python API)</div>
+            <div class="flow-step"><span class="flow-step-number">2</span> <strong>Workflow stored</strong> in DB (Django, FlowProject/FlowNode/FlowEdge)</div>
+            <div class="flow-step"><span class="flow-step-number">3</span> <strong>User executes</strong> or generates code</div>
+            <div class="flow-step"><span class="flow-step-number">4</span> <strong>WorkflowBuilder</strong> computes execution order (core library)</div>
+            <div class="flow-step"><span class="flow-step-number">5</span> <strong>For each node:</strong> Validate → Execute → Generate script → Update ports</div>
+            <div class="flow-step"><span class="flow-step-number">6</span> <strong>Scripts exported</strong> (Python / Notebook / SnakeMake)</div>
+            <div class="flow-step"><span class="flow-step-number">7</span> <strong>Parameter suggestions:</strong> Frontend → Backend → ParameterMetadataService → DB adapters (Allen, RAG, etc.)</div>
+            <div class="flow-step"><span class="flow-step-number">8</span> <strong>Results</strong> available for analysis</div>
+        </div>
+
+        <div class="legend">
+            <h3>Legend</h3>
+            <div class="legend-item"><span class="legend-color" style="background: #2b6cb0;"></span> HTTP / REST</div>
+            <div class="legend-item"><span class="legend-color" style="background: #276749;"></span> Python import / subprocess</div>
+            <div class="legend-item"><span class="legend-color" style="background: #9c4221;"></span> Database (ORM)</div>
+            <div class="legend-item"><span class="legend-color" style="background: #667eea;"></span> Components</div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="closeAllComponents()"></div>
+
+    <script>
+        const CONNECTION_MAP = [
+            { from: 'web-ui', to: 'django-api', type: 'http' },
+            { from: 'python-api', to: 'core', type: 'lib' },
+            { from: 'jupyter', to: 'jupyterhub', type: 'http' },
+            { from: 'llm-cursor', to: 'mcp-server', type: 'http' },
+            { from: 'rag-ui', to: 'local-rag-backend', type: 'http' },
+            { from: 'mcp-server', to: 'django-api', type: 'http' },
+            { from: 'django-api', to: 'postgresql', type: 'db' },
+            { from: 'django-api', to: 'core', type: 'lib' },
+            { from: 'django-api', to: 'utils', type: 'lib' },
+            { from: 'web-ui', to: 'supabase', type: 'http' },
+            { from: 'django-api', to: 'supabase', type: 'http' },
+            { from: 'utils', to: 'local-rag-backend', type: 'http' },
+            { from: 'database-adapters', to: 'allen', type: 'http' },
+            { from: 'database-adapters', to: 'neuromorpho', type: 'http' },
+            { from: 'database-adapters', to: 'pubmed', type: 'http' },
+            { from: 'database-adapters', to: 'neuroml-db', type: 'http' },
+            { from: 'database-adapters', to: 'custom-dbs', type: 'http' },
+            { from: 'database-adapters', to: 'local-rag', type: 'http' },
+            { from: 'nodes', to: 'nest', type: 'lib' },
+            { from: 'nodes', to: 'tvb', type: 'lib' },
+            { from: 'nodes', to: 'sonata', type: 'lib' },
+            { from: 'nodes', to: 'custom-backend', type: 'lib' },
+            { from: 'utils', to: 'database-adapters', type: 'lib' },
+            { from: 'core', to: 'nodes', type: 'lib' },
+        ];
+
+        const RELATIONSHIPS = {};
+        CONNECTION_MAP.forEach(({ from: f, to: t }) => {
+            if (!RELATIONSHIPS[f]) RELATIONSHIPS[f] = [];
+            RELATIONSHIPS[f].push(t);
+        });
+
+        function expandComponent(el) {
+            const overlay = document.getElementById('overlay');
+            document.querySelectorAll('.component').forEach(c => {
+                if (c !== el && c.classList.contains('expanded')) c.classList.remove('expanded');
+            });
+            el.classList.toggle('expanded');
+            overlay.classList.toggle('active', el.classList.contains('expanded'));
+            const id = (el.dataset.id || '').replace(/-enhanced$/, '');
+            highlightConnections(id);
+        }
+
+        function closeComponent(btn) {
+            btn.closest('.component').classList.remove('expanded');
+            document.getElementById('overlay').classList.remove('active');
+            clearHighlights();
+        }
+
+        function closeAllComponents() {
+            document.querySelectorAll('.component.expanded').forEach(c => c.classList.remove('expanded'));
+            document.getElementById('overlay').classList.remove('active');
+            clearHighlights();
+        }
+
+        function highlightConnections(componentId) {
+            clearHighlights();
+            [document.getElementById('connections'), document.getElementById('enhanced-connections')].forEach(svg => {
+                if (!svg) return;
+                (RELATIONSHIPS[componentId] || []).forEach(targetId => {
+                    const path = svg.querySelector('path[data-from="' + componentId + '"][data-to="' + targetId + '"]');
+                    if (path) path.classList.add('highlighted');
+                });
+            });
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('#connections .connection, #enhanced-connections .connection').forEach(p => p.classList.remove('highlighted'));
+        }
+
+        function showView(view) {
+            document.querySelectorAll('.controls .btn').forEach((btn, i) => {
+                btn.classList.toggle('active', (view === 'overview' && i === 0) || (view === 'dataflow' && i === 1) || (view === 'lucid' && i === 2) || (view === 'enhanced' && i === 3));
+            });
+            const diagram = document.getElementById('diagram');
+            const dataflow = document.getElementById('dataflow-view');
+            const lucid = document.getElementById('lucid-view');
+            const enhanced = document.getElementById('enhanced-view');
+            diagram.style.display = (view === 'overview') ? 'block' : 'none';
+            dataflow.classList.toggle('visible', view === 'dataflow');
+            if (lucid) lucid.classList.toggle('active', view === 'lucid');
+            if (enhanced) enhanced.classList.toggle('active', view === 'enhanced');
+            if (view === 'overview') setTimeout(drawConnections, 50);
+            if (view === 'enhanced') setTimeout(drawEnhancedConnections, 100);
+        }
+
+        function updateReferenceDiagramScale(value) {
+            const el = document.getElementById('reference-scale-value');
+            const container = document.getElementById('reference-diagram-container');
+            if (el) el.textContent = value + '%';
+            if (container) {
+                container.style.transform = 'scale(' + (value / 100) + ')';
+                container.style.transformOrigin = 'top center';
+            }
+        }
+
+        function drawEnhancedConnections() {
+            const svg = document.getElementById('enhanced-connections');
+            const container = document.getElementById('enhanced-view');
+            if (!svg || !container) return;
+            svg.innerHTML = '';
+            const containerRect = container.getBoundingClientRect();
+            CONNECTION_MAP.forEach(({ from: fromId, to: toId, type }, index) => {
+                const fromEl = container.querySelector('[data-id="' + fromId + '-enhanced"]');
+                const toEl = container.querySelector('[data-id="' + toId + '-enhanced"]');
+                if (!fromEl || !toEl) return;
+                const fromRect = fromEl.getBoundingClientRect();
+                const toRect = toEl.getBoundingClientRect();
+                const fromX = fromRect.left + fromRect.width / 2 - containerRect.left;
+                const fromY = fromRect.bottom - containerRect.top;
+                const toX = toRect.left + toRect.width / 2 - containerRect.left;
+                const toY = toRect.top - containerRect.top;
+                const midY = (fromY + toY) / 2;
+                const ctrlX = (fromX + toX) / 2;
+                const d = 'M ' + fromX + ' ' + fromY + ' Q ' + fromX + ' ' + midY + ' ' + ctrlX + ' ' + midY + ' T ' + toX + ' ' + toY;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('class', 'connection conn-' + type);
+                path.setAttribute('data-from', fromId);
+                path.setAttribute('data-to', toId);
+                path.style.strokeDasharray = '6,4';
+                svg.appendChild(path);
+            });
+        }
+
+        function resetView() {
+            closeAllComponents();
+            showView('overview');
+            document.querySelectorAll('.btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === 0);
+            });
+        }
+
+        document.querySelectorAll('#enhanced-view .component').forEach(comp => {
+            comp.addEventListener('mouseenter', function() { if (!this.classList.contains('expanded')) highlightConnections(this.dataset.id.replace('-enhanced','')); });
+            comp.addEventListener('mouseleave', function() { if (!this.classList.contains('expanded')) clearHighlights(); });
+        });
+
+        function drawConnections() {
+            const svg = document.getElementById('connections');
+            const container = document.getElementById('diagram');
+            if (!svg || !container) return;
+            svg.innerHTML = '';
+
+            const containerRect = container.getBoundingClientRect();
+
+            CONNECTION_MAP.forEach(({ from: fromId, to: toId, type }, index) => {
+                const fromEl = document.querySelector(`[data-id="${fromId}"]`);
+                const toEl = document.querySelector(`[data-id="${toId}"]`);
+                if (!fromEl || !toEl) return;
+
+                const fromRect = fromEl.getBoundingClientRect();
+                const toRect = toEl.getBoundingClientRect();
+
+                const fromX = fromRect.left + fromRect.width / 2 - containerRect.left;
+                const fromY = fromRect.bottom - containerRect.top;
+                const toX = toRect.left + toRect.width / 2 - containerRect.left;
+                const toY = toRect.top - containerRect.top;
+
+                const midY = (fromY + toY) / 2;
+                const ctrlX = (fromX + toX) / 2;
+                const d = `M ${fromX} ${fromY} Q ${fromX} ${midY} ${ctrlX} ${midY} T ${toX} ${toY}`;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('class', 'connection conn-' + type);
+                path.setAttribute('data-from', fromId);
+                path.setAttribute('data-to', toId);
+                path.style.strokeDasharray = '6,4';
+                path.style.animationDelay = (index * 0.05) + 's';
+                svg.appendChild(path);
+            });
+        }
+
+        window.addEventListener('load', () => drawConnections());
+        window.addEventListener('resize', () => { if (document.getElementById('diagram').style.display !== 'none') drawConnections(); });
+
+        document.querySelectorAll('.component').forEach(comp => {
+            comp.addEventListener('mouseenter', function() {
+                if (!this.classList.contains('expanded')) highlightConnections((this.dataset.id || '').replace(/-enhanced$/, ''));
+            });
+            comp.addEventListener('mouseleave', function() {
+                if (!this.classList.contains('expanded')) clearHighlights();
+            });
+        });
+    </script>
+</body>
+</html>

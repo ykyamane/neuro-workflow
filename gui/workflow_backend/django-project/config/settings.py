@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from .config import (
+    DB_HOST,
     DB_NAME,
     DB_USER,
     DB_PASSWORD,
@@ -81,7 +82,7 @@ DATABASES = {
         "NAME": DB_NAME,
         "USER": DB_USER,
         "PASSWORD": DB_PASSWORD,
-        "HOST": "db",
+        "HOST": DB_HOST,
         "PORT": DB_PORT,
     }
 }
