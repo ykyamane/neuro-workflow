@@ -112,45 +112,74 @@ export const TabManager: React.FC = () => {
 
   return (
     <TabContext.Provider value={contextValue}>
-      <Box 
-        height="100%" 
-        display="flex" 
+      <Box
+        flex={1}
+        minH={0}
+        display="flex"
         flexDirection="column"
-        //marginLeft="320px"
       >
         {/* tab bar */}
-        <TabBar />
-        
-        {/* Content area */}
-        <Box flex="1" overflow="auto">
-          {activeTab?.type === 'workflow' ? (
-            // Normal routing for the Workflow tab
-            <Routes>
-              <Route path="/" element={<HomeView />} />
-              <Route path="/file" element={<FileView />} />
-              <Route path="/file/open" element={<FileListView />} />
-              <Route path="/file/new" element={<CreateFlowPj />} />
-              <Route path="/box/upload" element={<BoxUpload />} />
-              <Route path="/settings/databases" element={<CustomDatabaseManager />} />
-              <Route path="/*" element={<NotFoundView />} />
-            </Routes>
-          ) : activeTab?.type === 'jupyter' ? (
-            // In the JupyterLab tab, it displays an iframe.
-            <Box height="100%" w="100%">
-              <iframe
-                src={activeTab.url}
-                width="100%"
-                height="100%"
-                style={{
-                  border: 'none',
-                  backgroundColor: 'white'
-                }}
-                title={activeTab.title}
-                sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
-              />
-            </Box>
-          ) : null}
+        <Box flexShrink={0}>
+          <TabBar />
         </Box>
+
+        {/* Content area */}
+        <Box flex="1" minH="0" overflow="hidden" position="relative">
+          {tabs.map(tab => {
+
+            if (tab.type === 'workflow') {
+              return (
+                <Box
+                  key={tab.id}
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  right={0}
+                  bottom={0}
+                  display={tab.id === activeTabId ? "block" : "none"}
+                >
+                  <Routes>
+                    <Route path="/" element={<HomeView />} />
+                    <Route path="/file" element={<FileListView />} />
+                    <Route path="/file/new" element={<CreateFlowPj />} />
+                    <Route path="/box/upload" element={<BoxUpload />} />
+                    <Route path="/settings/databases" element={<CustomDatabaseManager />} />
+                    <Route path="/*" element={<NotFoundView />} />
+                  </Routes>
+                </Box>
+              );
+            }
+
+            if (tab.type === 'jupyter' && tab.url) {
+              return (
+                <Box
+                  key={tab.id}
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  right={0}
+                  bottom={0}
+                  display={tab.id === activeTabId ? "block" : "none"}
+                >
+                  <iframe
+                    src={tab.url}
+                    width="100%"
+                    height="100%"
+                    style={{
+                      border: 'none',
+                      backgroundColor: 'white',
+                    }}
+                    title={tab.title}
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
+                  />
+                </Box>
+              );
+            }
+
+            return null;
+          })}
+        </Box>
+
       </Box>
     </TabContext.Provider>
   );

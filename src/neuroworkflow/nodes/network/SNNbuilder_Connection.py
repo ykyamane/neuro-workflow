@@ -639,51 +639,163 @@ class SNNbuilder_Connection(Node):
     def _build_synapse_dict(self, params: Dict[str, Any], custom_synapse: Optional[str]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """
         Build NEST synapse dictionary (sdict).
-        
+
         Returns either a single synapse dict or a list of synapse dicts
         for multisynapse models with multiple receptor types.
+
+        Handles both simple neurons (no receptor_type needed) and
+        multisynapse neurons (receptor_type required, 1-based indexing).
         """
-        
-        # 5. Add all elements from synapse_dict parameter (not just weight and delay)
+
+        # Get synapse_dict from parameters
         synapse_dict = params['synapse_dict'].copy()
-        
+
+        # Get target metadata to check if multisynapse
+        target_metadata = self._input_ports['target_population_metadata'].value if 'target_population_metadata' in self._input_ports else None
+
+        # Determine if target is multisynapse
+        is_multisynapse = False
+        if target_metadata:
+            is_multisynapse = self._is_multisynapse_model(target_metadata)
+
         # Check if weight is user-defined or needs biological estimation
         user_defined_weight = 'weight' in synapse_dict
-        
+
+        # Check if user already specified receptor_type
+        user_defined_receptor = 'receptor_type' in synapse_dict
+
         if user_defined_weight:
             print(f"[{self.name}] Using user-defined weight from synapse_dict")
-            return self._build_single_synapse_dict(params, custom_synapse, synapse_dict)
+            return self._build_single_synapse_dict(params, custom_synapse, synapse_dict,
+                                                   is_multisynapse, user_defined_receptor, target_metadata)
         else:
             print(f"[{self.name}] Weight not defined by user, estimating from biological parameters")
             return self._build_biological_synapse_dict(params, custom_synapse, synapse_dict)
     
-    def _build_single_synapse_dict(self, params: Dict[str, Any], custom_synapse: Optional[str], synapse_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Build single synapse dict with user-defined weight."""
-        
-        sdict = {
-            'synapse_model': custom_synapse or params['synapse_model']
-        }
-        
+    def _build_single_synapse_dict(self, params: Dict[str, Any], custom_synapse: Optional[str],
+                                     synapse_dict: Dict[str, Any], is_multisynapse: bool = False,
+                                     user_defined_receptor: bool = False,
+                                     target_metadata: Optional[Dict[str, Any]] = None) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Build synapse dict with user-defined weight.
+
+        For simple neurons: returns single dict without receptor_type
+        For multisynapse neurons: returns single dict with receptor_type (if user specified)
+                                  or list of dicts (one per receptor) if user didn't specify
+        """
+
         # Get base weight and delay from synapse_dict
         base_weight = synapse_dict.get('weight', 1.0)
         base_delay = synapse_dict.get('delay', 1.0)
-        
+
         # Calculate effective weight with biological parameters
         effective_weight = self._calculate_effective_weight(params, base_weight)
-        
-        # 6. Check weight sign based on source population cell_class
+
+        # Check weight sign based on source population cell_class
         effective_weight = self._apply_weight_sign(effective_weight)
-        
-        # Set weight and delay
-        sdict['weight'] = effective_weight
-        sdict['delay'] = base_delay
-        
-        # Add all other parameters from synapse_dict (receptor_type, custom parameters, etc.)
-        for key, value in synapse_dict.items():
-            if key not in ['weight', 'delay']:  # Don't overwrite weight and delay
-                sdict[key] = value
-        
-        return sdict
+
+        # CASE 1: Simple neuron (not multisynapse) - no receptor_type needed
+        if not is_multisynapse:
+            print(f"[{self.name}] Target is simple neuron - no receptor_type needed")
+            sdict = {
+                'synapse_model': custom_synapse or params['synapse_model'],
+                'weight': effective_weight,
+                'delay': base_delay
+            }
+            # Add all other parameters from synapse_dict (excluding receptor_type for simple neurons)
+            for key, value in synapse_dict.items():
+                if key not in ['weight', 'delay', 'receptor_type']:
+                    sdict[key] = value
+            return sdict
+
+        # CASE 2: Multisynapse neuron
+        print(f"[{self.name}] Target is multisynapse neuron - receptor_type required")
+
+        # CASE 2a: User specified receptor_type - use it directly
+        if user_defined_receptor:
+            receptor_type = synapse_dict['receptor_type']
+            print(f"[{self.name}] Using user-defined receptor_type: {receptor_type}")
+            sdict = {
+                'synapse_model': custom_synapse or params['synapse_model'],
+                'weight': effective_weight,
+                'delay': base_delay,
+                'receptor_type': receptor_type
+            }
+            # Add all other parameters from synapse_dict
+            for key, value in synapse_dict.items():
+                if key not in ['weight', 'delay', 'receptor_type']:
+                    sdict[key] = value
+            return sdict
+
+        # CASE 2b: User didn't specify receptor_type - create connections for all receptors
+        # Get receptor mapping from target metadata
+        receptor_mapping = self._get_receptor_mapping(target_metadata) if target_metadata else {}
+
+        if not receptor_mapping:
+            # Fallback: use receptor_type 1 if no mapping available
+            print(f"[{self.name}] No receptor mapping found, defaulting to receptor_type: 1")
+            sdict = {
+                'synapse_model': custom_synapse or params['synapse_model'],
+                'weight': effective_weight,
+                'delay': base_delay,
+                'receptor_type': 1
+            }
+            for key, value in synapse_dict.items():
+                if key not in ['weight', 'delay', 'receptor_type']:
+                    sdict[key] = value
+            return sdict
+
+        # Create synapse dict for each receptor
+        # Determine which receptors to use based on source cell_class
+        source_metadata = self._input_ports['source_population_metadata'].value if 'source_population_metadata' in self._input_ports else None
+        cell_class = self._get_cell_class(source_metadata) if source_metadata else 'unknown'
+
+        # Filter receptors based on cell_class
+        if cell_class == 'excitatory':
+            # Excitatory connections target excitatory receptors (AMPA, NMDA, etc.)
+            excitatory_receptors = ['AMPA', 'NMDA', 'nAChRs', 'mAChRs']
+            target_receptors = {k: v for k, v in receptor_mapping.items() if k in excitatory_receptors}
+        elif cell_class == 'inhibitory':
+            # Inhibitory connections target inhibitory receptors (GABAA, GABAB, etc.)
+            inhibitory_receptors = ['GABA', 'GABAA', 'GABAB']
+            target_receptors = {k: v for k, v in receptor_mapping.items() if k in inhibitory_receptors}
+        else:
+            # Unknown cell_class - use all receptors
+            target_receptors = receptor_mapping
+
+        if not target_receptors:
+            # No matching receptors found - use first available receptor
+            first_receptor = list(receptor_mapping.keys())[0]
+            first_idx = receptor_mapping[first_receptor]
+            print(f"[{self.name}] No matching receptors for {cell_class}, using first receptor: {first_receptor} (receptor_type: {first_idx})")
+            sdict = {
+                'synapse_model': custom_synapse or params['synapse_model'],
+                'weight': effective_weight,
+                'delay': base_delay,
+                'receptor_type': first_idx
+            }
+            for key, value in synapse_dict.items():
+                if key not in ['weight', 'delay', 'receptor_type']:
+                    sdict[key] = value
+            return sdict
+
+        # Create list of synapse dicts for each matching receptor
+        synapse_dicts = []
+        for receptor_name, receptor_idx in target_receptors.items():
+            sdict = {
+                'synapse_model': custom_synapse or params['synapse_model'],
+                'weight': effective_weight,
+                'delay': base_delay,
+                'receptor_type': receptor_idx
+            }
+            # Add all other parameters from synapse_dict
+            for key, value in synapse_dict.items():
+                if key not in ['weight', 'delay', 'receptor_type']:
+                    sdict[key] = value
+            synapse_dicts.append(sdict)
+            print(f"[{self.name}] Created synapse dict for {receptor_name}: receptor_type={receptor_idx}, weight={effective_weight:.3f}")
+
+        return synapse_dicts if len(synapse_dicts) > 1 else synapse_dicts[0]
     
     def _build_biological_synapse_dict(self, params: Dict[str, Any], custom_synapse: Optional[str], synapse_dict: Dict[str, Any]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Build synapse dict(s) with biologically estimated weights from PSP amplitudes."""
@@ -743,12 +855,46 @@ class SNNbuilder_Connection(Node):
             return source_metadata['biological_properties']['identification']['cell_class']
         except KeyError:
             return 'unknown'
-    
+
     def _is_multisynapse_model(self, target_metadata: Dict[str, Any]) -> bool:
         """Check if target neuron model is multisynapse type."""
         model_name = target_metadata.get('model_name', '')
         return 'multisynapse' in model_name.lower()
-    
+
+    def _get_target_neurotransmitter_types(self, target_metadata: Dict[str, Any]) -> List[str]:
+        """
+        Extract neurotransmitter types from target neuron metadata.
+
+        These define the receptor mapping for multisynapse neurons:
+        - Index in list + 1 = receptor_type (1-based)
+
+        Example: ['AMPA', 'NMDA'] -> AMPA=receptor_type 1, NMDA=receptor_type 2
+        """
+        try:
+            return target_metadata['biological_properties']['signaling']['neurotransmitter_types']
+        except KeyError:
+            return []
+
+    def _get_receptor_mapping(self, target_metadata: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Get receptor_type mapping from target neuron's neurotransmitter types.
+
+        Returns a dict mapping neurotransmitter names to receptor indices (1-based).
+        The order in neurotransmitter_types determines the receptor index.
+
+        Example:
+            neurotransmitter_types = ['GABA'] -> {'GABA': 1}
+            neurotransmitter_types = ['AMPA', 'NMDA'] -> {'AMPA': 1, 'NMDA': 2}
+        """
+        nt_types = self._get_target_neurotransmitter_types(target_metadata)
+        # receptor_type is 1-based in NEST multisynapse models
+        return {nt: idx + 1 for idx, nt in enumerate(nt_types)}
+
+    def _get_n_receptors(self, target_metadata: Dict[str, Any]) -> int:
+        """Get the number of receptors from target neuron metadata."""
+        nt_types = self._get_target_neurotransmitter_types(target_metadata)
+        return len(nt_types) if nt_types else 0
+
     def _get_psp_amplitudes(self, target_metadata: Dict[str, Any]) -> Dict[str, float]:
         """Extract PSP amplitudes from target neuron metadata."""
         try:
@@ -756,127 +902,181 @@ class SNNbuilder_Connection(Node):
         except KeyError:
             return {}
     
-    def _build_excitatory_synapses(self, params: Dict[str, Any], custom_synapse: Optional[str], 
-                                 synapse_dict: Dict[str, Any], psp_amplitudes: Dict[str, float], 
+    def _build_excitatory_synapses(self, params: Dict[str, Any], custom_synapse: Optional[str],
+                                 synapse_dict: Dict[str, Any], psp_amplitudes: Dict[str, float],
                                  redundancy: float, is_multisynapse: bool) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Build excitatory synapse dict(s) with PSP-based weights."""
-        
-        # Receptor type mapping
-        rec_type = {'AMPA': 1, 'NMDA': 2, 'GABAA': 3, 'GABAB': 4}
-        
-        # Get excitatory receptor PSPs (AMPA, NMDA)
-        excitatory_psps = {k: v for k, v in psp_amplitudes.items() if k in ['AMPA', 'NMDA']}
-        
+
+        # Get target metadata for dynamic receptor mapping
+        target_metadata = self._input_ports['target_population_metadata'].value if 'target_population_metadata' in self._input_ports else None
+
+        # Get dynamic receptor mapping from target neuron (1-based indexing)
+        rec_type = self._get_receptor_mapping(target_metadata) if target_metadata else {}
+
+        # Get excitatory receptor PSPs (AMPA, NMDA, and other excitatory types)
+        excitatory_receptors = ['AMPA', 'NMDA', 'nAChRs', 'mAChRs']
+        excitatory_psps = {k: v for k, v in psp_amplitudes.items() if k in excitatory_receptors}
+
         if not excitatory_psps:
-            print(f"[{self.name}] No excitatory PSP amplitudes (AMPA, NMDA) found")
+            print(f"[{self.name}] No excitatory PSP amplitudes found")
             return self._build_default_synapse_dict(params, custom_synapse, synapse_dict)
-        
+
         print(f"[{self.name}] Excitatory connection - PSP amplitudes: {excitatory_psps}")
         print(f"[{self.name}] Target model multisynapse: {is_multisynapse}")
+        print(f"[{self.name}] Target receptor mapping: {rec_type}")
         print(f"[{self.name}] Redundancy factor: {redundancy}")
-        
+
         if is_multisynapse:
-            # Create separate connection for each receptor type
+            # Create separate connection for each receptor type that exists in target
             synapse_dicts = []
             for receptor, psp_amplitude in excitatory_psps.items():
-                weight = psp_amplitude * redundancy
-                
+                # Only create connection if receptor exists in target neuron
+                if receptor in rec_type:
+                    weight = psp_amplitude * redundancy
+
+                    sdict = {
+                        'synapse_model': custom_synapse or params['synapse_model'],
+                        'weight': weight,
+                        'delay': synapse_dict.get('delay', 1.0),
+                        'receptor_type': rec_type[receptor]
+                    }
+
+                    # Add all other parameters from synapse_dict
+                    for key, value in synapse_dict.items():
+                        if key not in ['weight', 'delay', 'receptor_type']:
+                            sdict[key] = value
+
+                    synapse_dicts.append(sdict)
+                    print(f"[{self.name}] Created {receptor} synapse: weight={weight:.3f}, receptor_type={rec_type[receptor]}")
+                else:
+                    print(f"[{self.name}] Receptor {receptor} not found in target neuron, skipping")
+
+            if not synapse_dicts:
+                # No matching receptors - fallback to first available receptor
+                print(f"[{self.name}] No matching excitatory receptors in target, using first available receptor")
+                first_receptor = list(excitatory_psps.keys())[0]
+                weight = excitatory_psps[first_receptor] * redundancy
+                # Use receptor_type 1 as fallback
+                fallback_receptor = list(rec_type.values())[0] if rec_type else 1
                 sdict = {
                     'synapse_model': custom_synapse or params['synapse_model'],
                     'weight': weight,
                     'delay': synapse_dict.get('delay', 1.0),
-                    'receptor_type': rec_type[receptor]
+                    'receptor_type': fallback_receptor
                 }
-                
-                # Add all other parameters from synapse_dict
                 for key, value in synapse_dict.items():
                     if key not in ['weight', 'delay', 'receptor_type']:
                         sdict[key] = value
-                
-                synapse_dicts.append(sdict)
-                print(f"[{self.name}] Created {receptor} synapse: weight={weight:.3f}, receptor_type={rec_type[receptor]}")
-            
-            return synapse_dicts
+                return sdict
+
+            return synapse_dicts if len(synapse_dicts) > 1 else synapse_dicts[0]
         else:
-            # Single connection with first PSP found
+            # Simple neuron - single connection, no receptor_type needed
             first_receptor = list(excitatory_psps.keys())[0]
             psp_amplitude = excitatory_psps[first_receptor]
             weight = psp_amplitude * redundancy
-            
+
             sdict = {
                 'synapse_model': custom_synapse or params['synapse_model'],
                 'weight': weight,
                 'delay': synapse_dict.get('delay', 1.0)
             }
-            
-            # Add all other parameters from synapse_dict
+
+            # Add all other parameters from synapse_dict (no receptor_type for simple neurons)
             for key, value in synapse_dict.items():
-                if key not in ['weight', 'delay']:
+                if key not in ['weight', 'delay', 'receptor_type']:
                     sdict[key] = value
-            
+
             print(f"[{self.name}] Created single excitatory synapse using {first_receptor}: weight={weight:.3f}")
             return sdict
     
-    def _build_inhibitory_synapses(self, params: Dict[str, Any], custom_synapse: Optional[str], 
-                                 synapse_dict: Dict[str, Any], psp_amplitudes: Dict[str, float], 
+    def _build_inhibitory_synapses(self, params: Dict[str, Any], custom_synapse: Optional[str],
+                                 synapse_dict: Dict[str, Any], psp_amplitudes: Dict[str, float],
                                  redundancy: float, is_multisynapse: bool) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Build inhibitory synapse dict(s) with PSP-based weights."""
-        
-        # Receptor type mapping
-        rec_type = {'AMPA': 1, 'NMDA': 2, 'GABAA': 3, 'GABAB': 4}
-        
-        # Get inhibitory receptor PSPs (GABAA, GABAB)
-        inhibitory_psps = {k: v for k, v in psp_amplitudes.items() if k in ['GABAA', 'GABAB']}
-        
+
+        # Get target metadata for dynamic receptor mapping
+        target_metadata = self._input_ports['target_population_metadata'].value if 'target_population_metadata' in self._input_ports else None
+
+        # Get dynamic receptor mapping from target neuron (1-based indexing)
+        rec_type = self._get_receptor_mapping(target_metadata) if target_metadata else {}
+
+        # Get inhibitory receptor PSPs (GABA, GABAA, GABAB)
+        inhibitory_receptors = ['GABA', 'GABAA', 'GABAB']
+        inhibitory_psps = {k: v for k, v in psp_amplitudes.items() if k in inhibitory_receptors}
+
         if not inhibitory_psps:
-            print(f"[{self.name}] No inhibitory PSP amplitudes (GABAA, GABAB) found")
+            print(f"[{self.name}] No inhibitory PSP amplitudes found")
             return self._build_default_synapse_dict(params, custom_synapse, synapse_dict)
-        
+
         print(f"[{self.name}] Inhibitory connection - PSP amplitudes: {inhibitory_psps}")
         print(f"[{self.name}] Target model multisynapse: {is_multisynapse}")
+        print(f"[{self.name}] Target receptor mapping: {rec_type}")
         print(f"[{self.name}] Redundancy factor: {redundancy}")
-        
+
         if is_multisynapse:
-            # Create separate connection for each receptor type
+            # Create separate connection for each receptor type that exists in target
             synapse_dicts = []
             for receptor, psp_amplitude in inhibitory_psps.items():
-                # For inhibitory connections, PSP amplitudes should be negative
-                weight = -abs(psp_amplitude * redundancy)
-                
+                # Only create connection if receptor exists in target neuron
+                if receptor in rec_type:
+                    # For inhibitory connections, PSP amplitudes should be negative
+                    weight = -abs(psp_amplitude * redundancy)
+
+                    sdict = {
+                        'synapse_model': custom_synapse or params['synapse_model'],
+                        'weight': weight,
+                        'delay': synapse_dict.get('delay', 1.0),
+                        'receptor_type': rec_type[receptor]
+                    }
+
+                    # Add all other parameters from synapse_dict
+                    for key, value in synapse_dict.items():
+                        if key not in ['weight', 'delay', 'receptor_type']:
+                            sdict[key] = value
+
+                    synapse_dicts.append(sdict)
+                    print(f"[{self.name}] Created {receptor} synapse: weight={weight:.3f}, receptor_type={rec_type[receptor]}")
+                else:
+                    print(f"[{self.name}] Receptor {receptor} not found in target neuron, skipping")
+
+            if not synapse_dicts:
+                # No matching receptors - fallback to first available receptor
+                print(f"[{self.name}] No matching inhibitory receptors in target, using first available receptor")
+                first_receptor = list(inhibitory_psps.keys())[0]
+                weight = -abs(inhibitory_psps[first_receptor] * redundancy)
+                # Use first available receptor as fallback
+                fallback_receptor = list(rec_type.values())[0] if rec_type else 1
                 sdict = {
                     'synapse_model': custom_synapse or params['synapse_model'],
                     'weight': weight,
                     'delay': synapse_dict.get('delay', 1.0),
-                    'receptor_type': rec_type[receptor]
+                    'receptor_type': fallback_receptor
                 }
-                
-                # Add all other parameters from synapse_dict
                 for key, value in synapse_dict.items():
                     if key not in ['weight', 'delay', 'receptor_type']:
                         sdict[key] = value
-                
-                synapse_dicts.append(sdict)
-                print(f"[{self.name}] Created {receptor} synapse: weight={weight:.3f}, receptor_type={rec_type[receptor]}")
-            
-            return synapse_dicts
+                return sdict
+
+            return synapse_dicts if len(synapse_dicts) > 1 else synapse_dicts[0]
         else:
-            # Single connection with first PSP found
+            # Simple neuron - single connection, no receptor_type needed
             first_receptor = list(inhibitory_psps.keys())[0]
             psp_amplitude = inhibitory_psps[first_receptor]
             # For inhibitory connections, PSP amplitudes should be negative
             weight = -abs(psp_amplitude * redundancy)
-            
+
             sdict = {
                 'synapse_model': custom_synapse or params['synapse_model'],
                 'weight': weight,
                 'delay': synapse_dict.get('delay', 1.0)
             }
-            
-            # Add all other parameters from synapse_dict
+
+            # Add all other parameters from synapse_dict (no receptor_type for simple neurons)
             for key, value in synapse_dict.items():
-                if key not in ['weight', 'delay']:
+                if key not in ['weight', 'delay', 'receptor_type']:
                     sdict[key] = value
-            
+
             print(f"[{self.name}] Created single inhibitory synapse using {first_receptor}: weight={weight:.3f}")
             return sdict
     
@@ -1196,46 +1396,108 @@ class SNNbuilder_Connection(Node):
         # Synapse dictionary - mirror the execution logic
         synapse_dict = validated_params['synapse_dict'].copy()
         user_defined_weight = 'weight' in synapse_dict
-        
+        user_defined_receptor = 'receptor_type' in synapse_dict
+
+        # Check if target is multisynapse
+        target_metadata = self._input_ports['target_population_metadata'].value if 'target_population_metadata' in self._input_ports else None
+        is_multisynapse = self._is_multisynapse_model(target_metadata) if target_metadata else False
+        receptor_mapping = self._get_receptor_mapping(target_metadata) if target_metadata else {}
+
         if user_defined_weight:
             script_lines.extend([
                 "# === SYNAPSE DICTIONARY (User-defined weight) ===",
                 f"# User provided weight in synapse_dict",
+                f"# Target is multisynapse: {is_multisynapse}",
                 ""
             ])
-            
+
             base_weight = synapse_dict.get('weight', 1.0)
             base_delay = synapse_dict.get('delay', 1.0)
-            
-            sdict_base = {
-                'synapse_model': custom_name,
-                'weight': self._calculate_effective_weight(validated_params, base_weight),
-                'delay': base_delay
-            }
-            
-            # Add other parameters from synapse_dict
+
+            # Apply weight sign based on source cell_class
+            effective_weight = self._apply_weight_sign(self._calculate_effective_weight(validated_params, base_weight))
+
+            # Build sdict based on multisynapse status
+            if is_multisynapse:
+                if user_defined_receptor:
+                    # User specified receptor_type
+                    receptor_type = synapse_dict['receptor_type']
+                    script_lines.extend([
+                        f"# Multisynapse target - using user-defined receptor_type: {receptor_type}",
+                    ])
+                    sdict_base = {
+                        'synapse_model': custom_name,
+                        'weight': effective_weight,
+                        'delay': base_delay,
+                        'receptor_type': receptor_type
+                    }
+                else:
+                    # Determine receptor_type based on cell_class and target receptors
+                    cell_class = self._get_cell_class(source_metadata) if source_metadata else 'unknown'
+                    excitatory_receptors = ['AMPA', 'NMDA', 'nAChRs', 'mAChRs']
+                    inhibitory_receptors = ['GABA', 'GABAA', 'GABAB']
+
+                    if cell_class == 'excitatory':
+                        target_receptors = {k: v for k, v in receptor_mapping.items() if k in excitatory_receptors}
+                    elif cell_class == 'inhibitory':
+                        target_receptors = {k: v for k, v in receptor_mapping.items() if k in inhibitory_receptors}
+                    else:
+                        target_receptors = receptor_mapping
+
+                    if target_receptors:
+                        first_receptor_name = list(target_receptors.keys())[0]
+                        receptor_type = target_receptors[first_receptor_name]
+                    else:
+                        # Fallback to first available receptor
+                        first_receptor_name = list(receptor_mapping.keys())[0] if receptor_mapping else 'unknown'
+                        receptor_type = list(receptor_mapping.values())[0] if receptor_mapping else 1
+
+                    script_lines.extend([
+                        f"# Multisynapse target - receptor mapping: {receptor_mapping}",
+                        f"# Source cell_class: {cell_class}",
+                        f"# Using receptor: {first_receptor_name} (receptor_type: {receptor_type})",
+                    ])
+                    sdict_base = {
+                        'synapse_model': custom_name,
+                        'weight': effective_weight,
+                        'delay': base_delay,
+                        'receptor_type': receptor_type
+                    }
+            else:
+                # Simple neuron - no receptor_type needed
+                script_lines.extend([
+                    "# Simple neuron target - no receptor_type needed",
+                ])
+                sdict_base = {
+                    'synapse_model': custom_name,
+                    'weight': effective_weight,
+                    'delay': base_delay
+                }
+
+            # Add other parameters from synapse_dict (excluding receptor_type for simple neurons)
             for key, value in synapse_dict.items():
-                if key not in ['weight', 'delay']:
+                if key not in ['weight', 'delay', 'receptor_type']:
                     sdict_base[key] = value
-            
+
             script_lines.extend([
                 f"sdict = {sdict_base}",
                 ""
             ])
         else:
-            # Get current metadata to show what would happen in execution
-            target_metadata = self._input_ports['target_population_metadata'].value if 'target_population_metadata' in self._input_ports else None
+            # Biological weight estimation path
             redundancy = validated_params.get('redundancy', 1.0)
-            
+
             script_lines.extend([
                 "# === SYNAPSE DICTIONARY (Biological weight estimation) ===",
                 f"# Weight not defined by user, estimating from biological parameters",
                 f"# Source connection type: {connection_type}",
+                f"# Target is multisynapse: {is_multisynapse}",
+                f"# Target receptor mapping: {receptor_mapping}",
                 f"# Redundancy factor: {redundancy}",
                 "",
-                "# Biological weight estimation logic (mirrors execution):",
+                "# Biological weight estimation function (dynamic receptor mapping):",
                 "def estimate_biological_weights(source_metadata, target_metadata, redundancy):",
-                "    \"\"\"Estimate weights from PSP amplitudes - mirrors ConnectionBuilderNode execution\"\"\"",
+                "    \"\"\"Estimate weights from PSP amplitudes with dynamic receptor mapping\"\"\"",
                 "    ",
                 "    # Extract cell_class from source population",
                 "    try:",
@@ -1253,67 +1515,95 @@ class SNNbuilder_Connection(Node):
                 "    model_name = target_metadata.get('model_name', '')",
                 "    is_multisynapse = 'multisynapse' in model_name.lower()",
                 "    ",
-                "    # Receptor type mapping",
-                "    rec_type = {'AMPA': 1, 'NMDA': 2, 'GABAA': 3, 'GABAB': 4}",
+                "    # Get DYNAMIC receptor mapping from target neuron's neurotransmitter_types",
+                "    # The order in neurotransmitter_types determines receptor index (1-based)",
+                "    try:",
+                "        nt_types = target_metadata['biological_properties']['signaling']['neurotransmitter_types']",
+                "        rec_type = {nt: idx + 1 for idx, nt in enumerate(nt_types)}",
+                "    except (KeyError, TypeError):",
+                "        rec_type = {}",
+                "    ",
+                "    excitatory_receptors = ['AMPA', 'NMDA', 'nAChRs', 'mAChRs']",
+                "    inhibitory_receptors = ['GABA', 'GABAA', 'GABAB']",
                 "    ",
                 "    if cell_class == 'excitatory':",
-                "        # Use AMPA/NMDA receptors",
-                "        exc_psps = {k: v for k, v in psp_amplitudes.items() if k in ['AMPA', 'NMDA']}",
-                "        if is_multisynapse and exc_psps:",
-                "            # Multiple connections for multisynapse",
-                "            synapse_dicts = []",
-                "            for receptor, psp_amp in exc_psps.items():",
-                "                weight = psp_amp * redundancy",
-                f"                sdict = {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[receptor]}}",
-                "                synapse_dicts.append(sdict)",
-                "            return synapse_dicts",
+                "        exc_psps = {k: v for k, v in psp_amplitudes.items() if k in excitatory_receptors}",
+                "        if is_multisynapse:",
+                "            # Find matching receptors in target",
+                "            matching = {k: v for k, v in exc_psps.items() if k in rec_type}",
+                "            if matching:",
+                "                synapse_dicts = []",
+                "                for receptor, psp_amp in matching.items():",
+                "                    weight = psp_amp * redundancy",
+                f"                    sdict = {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[receptor]}}",
+                "                    synapse_dicts.append(sdict)",
+                "                return synapse_dicts if len(synapse_dicts) > 1 else synapse_dicts[0]",
+                "            elif rec_type:",
+                "                # Fallback to first receptor",
+                "                first_receptor = list(rec_type.keys())[0]",
+                "                weight = list(exc_psps.values())[0] * redundancy if exc_psps else 1.0",
+                f"                return {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[first_receptor]}}",
                 "        elif exc_psps:",
-                "            # Single connection",
+                "            # Simple neuron - no receptor_type",
                 "            first_receptor = list(exc_psps.keys())[0]",
                 "            weight = exc_psps[first_receptor] * redundancy",
                 f"            return {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}}}",
                 "    ",
                 "    elif cell_class == 'inhibitory':",
-                "        # Use GABAA/GABAB receptors",
-                "        inh_psps = {k: v for k, v in psp_amplitudes.items() if k in ['GABAA', 'GABAB']}",
-                "        if is_multisynapse and inh_psps:",
-                "            # Multiple connections for multisynapse",
-                "            synapse_dicts = []",
-                "            for receptor, psp_amp in inh_psps.items():",
-                "                weight = -abs(psp_amp * redundancy)  # Negative for inhibitory",
-                f"                sdict = {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[receptor]}}",
-                "                synapse_dicts.append(sdict)",
-                "            return synapse_dicts",
+                "        inh_psps = {k: v for k, v in psp_amplitudes.items() if k in inhibitory_receptors}",
+                "        if is_multisynapse:",
+                "            # Find matching receptors in target",
+                "            matching = {k: v for k, v in inh_psps.items() if k in rec_type}",
+                "            if matching:",
+                "                synapse_dicts = []",
+                "                for receptor, psp_amp in matching.items():",
+                "                    weight = -abs(psp_amp * redundancy)",
+                f"                    sdict = {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[receptor]}}",
+                "                    synapse_dicts.append(sdict)",
+                "                return synapse_dicts if len(synapse_dicts) > 1 else synapse_dicts[0]",
+                "            elif rec_type:",
+                "                # Fallback to first receptor",
+                "                first_receptor = list(rec_type.keys())[0]",
+                "                weight = -abs(list(inh_psps.values())[0] * redundancy) if inh_psps else -1.0",
+                f"                return {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': rec_type[first_receptor]}}",
                 "        elif inh_psps:",
-                "            # Single connection",
+                "            # Simple neuron - no receptor_type",
                 "            first_receptor = list(inh_psps.keys())[0]",
-                "            weight = -abs(inh_psps[first_receptor] * redundancy)  # Negative for inhibitory",
+                "            weight = -abs(inh_psps[first_receptor] * redundancy)",
                 f"            return {{'synapse_model': '{custom_name}', 'weight': weight, 'delay': {synapse_dict.get('delay', 1.0)}}}",
                 "    ",
                 "    # Fallback to default",
+                "    if is_multisynapse and rec_type:",
+                f"        return {{'synapse_model': '{custom_name}', 'weight': 1.0, 'delay': {synapse_dict.get('delay', 1.0)}, 'receptor_type': list(rec_type.values())[0]}}",
                 f"    return {{'synapse_model': '{custom_name}', 'weight': 1.0, 'delay': {synapse_dict.get('delay', 1.0)}}}",
                 "",
-                "# Example usage (replace with your actual metadata):",
-                "# source_metadata = your_source_population_metadata",
-                "# target_metadata = your_target_population_metadata",
-                f"# sdict_result = estimate_biological_weights(source_metadata, target_metadata, {redundancy})",
-                "",
-                "# For script generation, using simplified version:",
-                f"sdict = {{",
-                f"    'synapse_model': '{custom_name}',",
-                f"    'weight': 1.0,  # Would be estimated from PSP amplitudes * {redundancy}",
-                f"    'delay': {synapse_dict.get('delay', 1.0)}",
             ])
-            
-            # Add other parameters from synapse_dict
-            for key, value in synapse_dict.items():
-                if key not in ['weight', 'delay']:
-                    script_lines.append(f"    '{key}': {repr(value)},")
-            
-            script_lines.extend([
-                "}",
-                ""
-            ])
+
+            # Generate simplified sdict for direct use in script
+            if is_multisynapse:
+                # For multisynapse, include receptor_type
+                fallback_receptor = list(receptor_mapping.values())[0] if receptor_mapping else 1
+                script_lines.extend([
+                    f"# Simplified sdict for multisynapse target (receptor_type: {fallback_receptor})",
+                    f"sdict = {{",
+                    f"    'synapse_model': '{custom_name}',",
+                    f"    'weight': 1.0,  # Would be estimated from PSP amplitudes * {redundancy}",
+                    f"    'delay': {synapse_dict.get('delay', 1.0)},",
+                    f"    'receptor_type': {fallback_receptor}  # First receptor from target",
+                    "}",
+                    ""
+                ])
+            else:
+                # For simple neurons, no receptor_type
+                script_lines.extend([
+                    "# Simplified sdict for simple neuron target (no receptor_type needed)",
+                    f"sdict = {{",
+                    f"    'synapse_model': '{custom_name}',",
+                    f"    'weight': 1.0,  # Would be estimated from PSP amplitudes * {redundancy}",
+                    f"    'delay': {synapse_dict.get('delay', 1.0)}",
+                    "}",
+                    ""
+                ])
         
         # Get population variable names from metadata acronyms
         source_metadata = self._input_ports['source_population_metadata'].value if 'source_population_metadata' in self._input_ports else None

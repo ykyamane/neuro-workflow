@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Box,
   HStack,
-  Button,
   Text,
   IconButton,
   Tooltip,
@@ -14,11 +13,19 @@ import { useTabContext } from './TabManager';
 const TabBar: React.FC = () => {
   const { tabs, activeTabId, switchTab, closeTab } = useTabContext();
 
+  // dark: original grays | light: OpenAI-inspired subtle grays
+  const barBg          = useColorModeValue('#f0f0f0', 'gray.800');
+  const barBorder      = useColorModeValue('#e5e5e5', 'gray.700');
+  const activeTabBg    = useColorModeValue('white', 'gray.700');
+  const inactiveHoverBg = useColorModeValue('#e8e8e8', 'gray.750');
+  const activeTabText  = useColorModeValue('#1a1a1a', 'white');
+  const inactiveTabText = useColorModeValue('gray.500', 'gray.300');
+
   return (
     <Box
-      bg="gray.800"
+      bg={barBg}
       borderBottom="1px"
-      borderColor="gray.700"
+      borderColor={barBorder}
       py={0}
       px={2}
       minHeight="42px"
@@ -26,7 +33,7 @@ const TabBar: React.FC = () => {
       alignItems="center"
     >
       <HStack spacing={1} align="center" h="100%">
-        {tabs.map((tab, index) => (
+        {tabs.map((tab) => (
           <Box
             key={tab.id}
             position="relative"
@@ -36,7 +43,7 @@ const TabBar: React.FC = () => {
             <Box
               cursor="pointer"
               onClick={() => switchTab(tab.id)}
-              bg={tab.isActive ? 'gray.700' : 'transparent'}
+              bg={tab.isActive ? activeTabBg : 'transparent'}
               borderTopRadius="6px"
               borderBottom="none"
               px={4}
@@ -47,12 +54,12 @@ const TabBar: React.FC = () => {
               gap={2}
               transition="all 0.2s ease-in-out"
               _hover={{
-                bg: tab.isActive ? 'gray.700' : 'gray.750',
+                bg: tab.isActive ? activeTabBg : inactiveHoverBg,
               }}
               borderTop="2px solid"
               borderLeft="1px solid"
               borderRight="1px solid"
-              borderColor={tab.isActive ? 'blue.400' : 'gray.600'}
+              borderColor={tab.isActive ? 'blue.400' : barBorder}
               borderTopColor={tab.isActive ? 'blue.400' : 'transparent'}
               maxW="250px"
               position="relative"
@@ -62,12 +69,12 @@ const TabBar: React.FC = () => {
               <Text fontSize="sm">
                 {tab.type === 'workflow' ? '🔬' : '📊'}
               </Text>
-              
+
               {/* tab title */}
               <Text
                 fontSize="sm"
                 fontWeight={tab.isActive ? '600' : '400'}
-                color={tab.isActive ? 'white' : 'gray.300'}
+                color={tab.isActive ? activeTabText : inactiveTabText}
                 isTruncated
                 maxW="160px"
               >
@@ -86,10 +93,10 @@ const TabBar: React.FC = () => {
                     w="20px"
                     h="20px"
                     minW="20px"
-                    color={tab.isActive ? 'gray.300' : 'gray.400'}
-                    _hover={{ 
+                    color={tab.isActive ? inactiveTabText : 'gray.400'}
+                    _hover={{
                       bg: 'red.500',
-                      color: 'white'
+                      color: 'white',
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -101,7 +108,7 @@ const TabBar: React.FC = () => {
             </Box>
           </Box>
         ))}
-        
+
         {/* empty space */}
         <Box flex="1" height="100%" />
       </HStack>

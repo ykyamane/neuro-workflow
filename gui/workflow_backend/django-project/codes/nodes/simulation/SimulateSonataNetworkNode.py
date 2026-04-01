@@ -31,7 +31,7 @@ class SimulateSonataNetworkNode(Node):
                 description='Any population of interest'
             ),
             'record_n_neurons':ParameterDefinition(
-                default_value='100',
+                default_value=10,
                 description='Number of neurons of record_from_population from where spikes are recorded',
                 constraints={'min':1}
             )
@@ -104,7 +104,7 @@ class SimulateSonataNetworkNode(Node):
         
         spike_recorder = nest.Create("spike_recorder")
         pop_name = self._parameters["record_from_population"]
-        record_node_ids = node_collections[pop_name][:self._parameters["record_n_neurons"]] #[1, 80, 160, 240, 270]
+        record_node_ids = node_collections[pop_name][:self._parameters['record_n_neurons']] #[1, 80, 160, 240, 270]
         nest.Connect(record_node_ids, spike_recorder)
 
         #nest.Connect(node_collections[pop_name][record_node_ids], spike_recorder)

@@ -8,7 +8,8 @@ This document provides a comprehensive guide to the node schema used in the Neur
 2. [Node Definition Schema](#node-definition-schema)
 3. [Port System](#port-system)
 4. [Parameters](#parameters)
-5. [Parameter Optimization](#parameter-optimization)
+5. [Suggested Values (Optional)](#suggested-values-optional)
+6. [Optimization Metadata (Optional)](#optimization-metadata-optional)
 6. [Methods](#methods)
 7. [Process Steps](#process-steps)
 8. [Creating Custom Nodes](#creating-custom-nodes)
@@ -25,6 +26,48 @@ Key components of the node schema:
 - **Parameters**: Configurable values that control the node's behavior
 - **Methods**: Functions that implement the node's processing logic
 - **Process Steps**: Ordered sequence of method executions within a node
+
+## Schema Quick Reference
+
+Minimal fields you need for a valid node:
+
+```python
+NODE_DEFINITION = NodeDefinitionSchema(
+    type="my_node_type",
+    description="Short description",
+    parameters={
+        "param": ParameterDefinition(default_value=1.0, description="Example parameter")
+    },
+    inputs={
+        "in": PortDefinition(type=PortType.FLOAT, description="Example input")
+    },
+    outputs={
+        "out": PortDefinition(type=PortType.FLOAT, description="Example output")
+    },
+    methods={
+        "compute": MethodDefinition(
+            description="Example method",
+            inputs=["in"],
+            outputs=["out"]
+        )
+    }
+)
+```
+
+Workflow-level context (optional):
+
+```python
+from neuroworkflow.core.workflow import WorkflowBuilder
+
+builder = WorkflowBuilder(
+    "example_workflow",
+    context={
+        "species": "human",
+        "metadata_sources": ["literature"],
+        "resource_requirements": {"cpus": 4, "memory_gb": 16}
+    }
+)
+```
 
 ## Node Definition Schema
 
@@ -66,6 +109,12 @@ class PortType(Enum):
     LIST = auto()     # List of values
     DICT = auto()     # Dictionary of values
     OBJECT = auto()   # Custom object
+    FILE_PATH = auto()   # Generic file path
+    CSV_FILE = auto()    # CSV data file
+    JSON_FILE = auto()   # JSON configuration/data
+    PICKLE_FILE = auto() # Python pickle file
+    NUMPY_FILE = auto()  # NumPy array file
+    HDF5_FILE = auto()   # HDF5 dataset file
 ```
 
 ### Port Definition
@@ -107,11 +156,14 @@ class ParameterDefinition:
     default_value: Any = None                # Default value for the parameter
     description: str = ""                    # Human-readable description
     constraints: Dict[str, Any] = field(default_factory=dict)  # Validation constraints
-    optimizable: bool = False                # Whether this parameter can be optimized
-    optimization_range: Optional[List] = None  # Range for optimization [min, max]
+    optimizable: bool = False                # Whether this parameter can be tuned during optimization
+    optimization_range: Optional[List] = None  # Range for parameter tuning [min, max]
+    is_objective: bool = False               # Whether this parameter is an optimization objective/target
+    objective_range: Optional[List] = None   # Acceptable range for the objective value [min, max]
+    suggested_values: List[Dict[str, Any]] = field(default_factory=list)  # Optional suggestions
 ```
 
-### Parameter Constraints and Optimization
+### Parameter Constraints
 
 Parameters can have constraints that validate their values:
 
@@ -119,106 +171,58 @@ Parameters can have constraints that validate their values:
 - **allowed_values**: List of allowed values
 - **min_length/max_length**: Constraints for list or string length
 
-Additionally, parameters can be marked as optimizable, which indicates that their values should be explored within a specified range during optimization processes:
-
-- **optimizable**: Boolean flag indicating whether this parameter should be optimized
-- **optimization_range**: A list specifying the range [min, max] for optimization
-
-This optimization metadata is particularly useful for parameter sweeps, hyperparameter tuning, and automated optimization of neural simulation parameters.
-
-Example of an optimizable parameter:
-
-```python
-'learning_rate': ParameterDefinition(
-    default_value=0.01,
-    description='Learning rate for the neural network',
-    constraints={'min': 0.0001, 'max': 0.1},
-    optimizable=True,
-    optimization_range=[0.0001, 0.1]
-)
-```
-
 Parameters are accessed within node methods using the `self._parameters` dictionary.
 
-## Parameter Optimization
+## Suggested Values (Optional)
 
-Neural simulations often require tuning of parameters to achieve optimal results. The NeuroWorkflow schema supports parameter optimization through metadata in the parameter definitions.
+You can attach optional AI or metadata suggestions to any parameter. These are **hints** and do not affect execution unless a user selects them.
 
-### Optimization Metadata
+```python
+'x0': ParameterDefinition(
+    default_value=-2.0,
+    description='Epileptor parameter x0',
+    constraints={'min': -4.0, 'max': 0.0},
+    suggested_values=[
+        {'value': -2.2, 'source': 'literature', 'species': 'human', 'brain_region': 'temporal_lobe'},
+        {'value': -1.8, 'source': 'allen_brain', 'species': 'mouse'}
+    ]
+)
+```
 
-When defining parameters, you can specify:
+## Optimization Metadata (Optional)
 
-1. **optimizable**: A boolean flag indicating whether this parameter should be considered for optimization
-2. **optimization_range**: The range [min, max] within which the parameter value should be explored
+`optimizable`, `optimization_range`, `is_objective`, and `objective_range` are **optional metadata** for downstream optimization tools. They do not change node behavior by themselves.
+
+### Decision Variables (Parameters to Tune)
+
+Use `optimizable` and `optimization_range` for parameters that should be tuned during optimization:
 
 ```python
 'learning_rate': ParameterDefinition(
     default_value=0.01,
-    description='Learning rate for the neural network',
+    description='Learning rate',
     constraints={'min': 0.0001, 'max': 0.1},
     optimizable=True,
     optimization_range=[0.0001, 0.1]
 )
 ```
 
-### Optimization Strategies
+### Objectives (Targets to Achieve)
 
-The optimization metadata enables various optimization strategies:
-
-1. **Grid Search**: Systematically exploring parameter combinations within the specified ranges
-2. **Random Search**: Randomly sampling parameter values from the specified ranges
-3. **Bayesian Optimization**: Using probabilistic models to guide the search for optimal parameters
-4. **Evolutionary Algorithms**: Using genetic algorithms or other evolutionary approaches to optimize parameters
-
-### Implementing Optimization
-
-To implement parameter optimization in a workflow:
-
-1. Identify parameters that should be optimized and mark them with `optimizable=True`
-2. Define appropriate optimization ranges based on domain knowledge
-3. Create an optimization loop that:
-   - Sets parameter values within the node
-   - Executes the workflow
-   - Evaluates the results using an objective function
-   - Updates parameter values based on the optimization strategy
-
-#### Objective Functions
-
-A key component of parameter optimization is the objective function, which evaluates how well a particular parameter set performs. In the NeuroWorkflow system, objective functions:
-
-1. Take simulation results and target values as input
-2. Return an error or fitness value
-3. Can be customized for specific optimization goals
-
-#### Connecting Nodes in a Workflow
-
-Nodes should be properly connected in a workflow using the `connect` method of the `WorkflowBuilder`. This ensures that data flows automatically between nodes:
+Use `is_objective` and `objective_range` for parameters that represent optimization targets or goals:
 
 ```python
-# Create nodes
-setup_node = NeuronSetupNode("neuron_setup")
-stimulus_node = StimulusGeneratorNode("stimulus_generator")
-simulation_node = NeuronSimulationNode("neuron_simulation")
-optimization_node = NeuronOptimizationNode("neuron_optimization")
-
-# Create a workflow with connected nodes
-workflow = (
-    WorkflowBuilder("neuron_optimization_workflow")
-    .add_node(setup_node)
-    .add_node(stimulus_node)
-    .add_node(simulation_node)
-    .add_node(optimization_node)
-    # Connect setup node to simulation node
-    .connect("neuron_setup", "neuron_model", "neuron_simulation", "neuron_model")
-    # Connect stimulus node to simulation node
-    .connect("stimulus_generator", "input_current", "neuron_simulation", "input_current")
-    # Connect simulation node to optimization node
-    .connect("neuron_simulation", "simulation_results", "neuron_optimization", "simulation_results")
-    # Connect optimization node back to setup node to complete the loop
-    .connect("neuron_optimization", "parameters", "neuron_setup", "parameters")
-    .build()
+'mean_firing_rate': ParameterDefinition(
+    default_value=10.0,
+    description='Target mean firing rate (Hz)',
+    is_objective=True,
+    objective_range=[5.0, 50.0]  # Acceptable range for the objective
 )
 ```
+
+This separation allows optimization nodes to distinguish between:
+- **Decision variables** (`optimizable=True`): Parameters to tune (e.g., `I_e`, weights)
+- **Objectives** (`is_objective=True`): Metrics to achieve (e.g., firing rate, error)
 
 The `connect` method takes four arguments:
 
@@ -310,6 +314,49 @@ class MyCustomNode(Node):
 ```
 
 ## Example Node Implementation
+
+### Minimal Example (One Input → One Output)
+
+```python
+from neuroworkflow.core.node import Node
+from neuroworkflow.core.schema import NodeDefinitionSchema, PortDefinition, ParameterDefinition, MethodDefinition
+from neuroworkflow.core.port import PortType
+
+class MultiplyByFactorNode(Node):
+    NODE_DEFINITION = NodeDefinitionSchema(
+        type="multiply_by_factor",
+        description="Multiply a number by a configurable factor",
+        parameters={
+            "factor": ParameterDefinition(
+                default_value=2.0,
+                description="Multiplication factor"
+            )
+        },
+        inputs={
+            "x": PortDefinition(type=PortType.FLOAT, description="Input value")
+        },
+        outputs={
+            "y": PortDefinition(type=PortType.FLOAT, description="Output value")
+        },
+        methods={
+            "compute": MethodDefinition(
+                description="Compute y = x * factor",
+                inputs=["x"],
+                outputs=["y"]
+            )
+        }
+    )
+
+    def __init__(self, name: str):
+        super().__init__(name)
+        self._define_process_steps()
+
+    def _define_process_steps(self):
+        self.add_process_step("compute", self.compute, method_key="compute")
+
+    def compute(self, x: float):
+        return {"y": x * self._parameters["factor"]}
+```
 
 Here's a simplified example of a spike analysis node:
 

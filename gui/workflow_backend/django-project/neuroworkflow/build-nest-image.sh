@@ -3,7 +3,7 @@
 # Build NEST simulator enabled JupyterLab user server image
 echo "Building NEST simulator enabled JupyterLab image..."
 
-docker build --platform linux/amd64 -t nest-jupyterlab -f Dockerfile.nest .
+docker build -t nest-jupyterlab -f Dockerfile.nest .
 
 if [ $? -eq 0 ]; then
     echo "✅ Successfully built nest-jupyterlab:latest"

@@ -2,6 +2,13 @@ from rest_framework import serializers
 from .models import FlowProject, FlowNode, FlowEdge
 from django.contrib.auth.models import User
 
+from app.box.models import get_categories
+
+
+def _valid_category_values() -> list[str]:
+    """Return lowercase category directory names (e.g. ['analysis', 'io', ...])."""
+    return [cat[0] for cat in get_categories()]
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -20,6 +27,7 @@ class FlowProjectSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "workflow_context",
             "owner",
             "created_at",
             "updated_at",
@@ -77,12 +85,38 @@ class FlowNodeSerializer(serializers.ModelSerializer):
     def validate(self, data):
         # React Flow-style validation
         if "data" in data:
+            node_data = data["data"]
             required_keys = ["label"]
             for key in required_keys:
-                if key not in data["data"]:
+                if key not in node_data:
                     raise serializers.ValidationError(
                         f"Node data must contain '{key}' field"
                     )
+
+            # nodeType is required for the frontend to render correctly
+            if "nodeType" not in node_data or not node_data["nodeType"]:
+                raise serializers.ValidationError(
+                    "Node data must contain a non-empty 'nodeType' field "
+                    "(e.g. 'analysis', 'simulation'). "
+                    f"Valid categories: {_valid_category_values()}"
+                )
+
+            # nodeType must match an existing category
+            valid = _valid_category_values()
+            if node_data["nodeType"].lower() not in valid:
+                raise serializers.ValidationError(
+                    f"Invalid nodeType '{node_data['nodeType']}'. "
+                    f"Must be one of: {valid}"
+                )
+
+            # Validate schema structure if present
+            if "schema" in node_data:
+                schema = node_data["schema"]
+                for section in ["inputs", "outputs", "parameters", "methods"]:
+                    if section in schema and not isinstance(schema[section], dict):
+                        raise serializers.ValidationError(
+                            f"Node data schema.{section} must be a dictionary"
+                        )
         return data
 
 
@@ -119,6 +153,7 @@ class FlowDataSerializer(serializers.Serializer):
     edges = serializers.ListField(child=serializers.DictField())
 
     def validate_nodes(self, value):
+        valid = _valid_category_values()
         for node in value:
             if "id" not in node:
                 raise serializers.ValidationError("Each node must have an 'id' field")
@@ -132,6 +167,23 @@ class FlowDataSerializer(serializers.Serializer):
                 )
             if "data" not in node:
                 raise serializers.ValidationError("Each node must have a 'data' field")
+            node_data = node.get("data", {})
+            if "label" not in node_data:
+                raise serializers.ValidationError(
+                    "Each node's data must contain a 'label' field"
+                )
+            # nodeType is required for the frontend to render correctly
+            node_type = node_data.get("nodeType")
+            if not node_type:
+                raise serializers.ValidationError(
+                    f"Node '{node['id']}': data must contain a non-empty 'nodeType' field "
+                    f"(e.g. 'analysis', 'simulation'). Valid categories: {valid}"
+                )
+            if node_type.lower() not in valid:
+                raise serializers.ValidationError(
+                    f"Node '{node['id']}': invalid nodeType '{node_type}'. "
+                    f"Must be one of: {valid}"
+                )
         return value
 
     def validate_edges(self, value):

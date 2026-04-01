@@ -7,6 +7,7 @@ class FlowProject(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
+    workflow_context = models.JSONField(default=dict, blank=True)
     owner = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="flow_projects"
     )

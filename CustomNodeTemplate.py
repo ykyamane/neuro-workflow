@@ -71,8 +71,12 @@ class CustomNodeTemplate(Node):
                 default_value=0.5,
                 description='Threshold value for processing',
                 constraints={'min': 0.0, 'max': 1.0},
-                optimizable=True,  # This parameter can be optimized
-                optimization_range=[0.1, 0.9]  # Range for optimization
+                optimizable=True,  # Optional metadata for optimization tools
+                optimization_range=[0.1, 0.9],  # Range for optimization
+                suggested_values=[
+                    {'value': 0.4, 'source': 'literature', 'species': 'human'},
+                    {'value': 0.6, 'source': 'allen_brain', 'species': 'mouse'}
+                ]
             ),
             
             # Example list parameter
@@ -598,5 +602,4 @@ class CustomNodeTemplate(Node):
             'input_ports': list(self._input_ports.keys()),
             'output_ports': list(self._output_ports.keys()),
         }
-
 

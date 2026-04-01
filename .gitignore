@@ -8,11 +8,18 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
-*.sqlite3
+.settings
+.python-version
+.vscode/
+
+# Node
+node_modules/
 
 # Database files
 *.db
+*.sqlite3
 
 # RAG directory (contains API keys)
 rag/

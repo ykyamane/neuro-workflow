@@ -587,27 +587,34 @@ class SNNbuilder_Stimulation(Node):
         else:
             raise ValueError(f"No neurons found within radius {radius} of center coordinates {center_coordinates}")
     
-    def create_connections(self, nest_stimulation_devices: Any, target_neurons: Any, 
+    def create_connections(self, nest_stimulation_devices: Any, target_neurons: Any,
                          validated_parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create connections between stimulation devices and target neurons.
-        
+
+        Handles both simple neurons (no receptor_type needed) and
+        multisynapse neurons (receptor_type required, 1-based indexing).
+
         Args:
             nest_stimulation_devices: Created stimulation devices
             target_neurons: Target neurons
             validated_parameters: Validated parameters
-            
+
         Returns:
             Dictionary containing created connections
         """
         execution_mode = validated_parameters.get('execution_mode', 'both')
-        
+
         if execution_mode in ['execute', 'both'] and nest_stimulation_devices is not None and target_neurons is not None:
             print(f"[{self.name}] Creating connections...")
-            
+
             stim_type = validated_parameters['stimulation_type']
             num_devices = validated_parameters['number_of_devices']
-            
+
+            # Get population data to check if target is multisynapse
+            population_data = self._input_ports['population_data'].value
+            is_multisynapse = self._is_multisynapse_target(population_data)
+
             # DC generators don't use synapse specifications (no spikes produced)
             if stim_type == 'dc_generator':
                 # DC generators connect directly without synapse properties
@@ -617,14 +624,35 @@ class SNNbuilder_Stimulation(Node):
                 # Poisson generators use synapse specifications
                 synapse_spec = validated_parameters['synapse_specification']
                 custom_synapse_name = self._custom_synapse_name or synapse_spec['synapse_model']
-                
+
                 # Prepare synapse dictionary
                 sdict = {
                     'synapse_model': custom_synapse_name,
                     'weight': synapse_spec['weight'],
                     'delay': synapse_spec['delay']
                 }
-                
+
+                # Handle multisynapse vs simple neurons
+                if is_multisynapse:
+                    # Check if user specified receptor_type
+                    if 'receptor_type' in synapse_spec:
+                        receptor_type = synapse_spec['receptor_type']
+                        print(f"[{self.name}] Target is multisynapse - using user-defined receptor_type: {receptor_type}")
+                    else:
+                        # Use first available receptor (receptor_type: 1)
+                        receptor_type = self._get_default_receptor_type(population_data)
+                        receptor_mapping = self._get_target_receptor_mapping(population_data)
+                        print(f"[{self.name}] Target is multisynapse - receptor mapping: {receptor_mapping}")
+                        print(f"[{self.name}] Using default receptor_type: {receptor_type}")
+
+                    sdict['receptor_type'] = receptor_type
+                else:
+                    # Simple neuron - no receptor_type needed
+                    print(f"[{self.name}] Target is simple neuron - no receptor_type needed")
+                    # Remove receptor_type if user accidentally specified it for simple neurons
+                    if 'receptor_type' in synapse_spec:
+                        print(f"[{self.name}] Warning: receptor_type specified but target is not multisynapse, ignoring")
+
                 # Efficient connection: no need to iterate over devices
                 if num_devices == 1:
                     # Single device to many neurons (all-to-all)
@@ -640,15 +668,15 @@ class SNNbuilder_Stimulation(Node):
                         # All-to-all connection
                         nest.Connect(nest_stimulation_devices, target_neurons, syn_spec=sdict)
                         print(f"[{self.name}] Connected {num_devices} Poisson devices to {len(target_neurons)} neurons (all-to-all)")
-            
+
             # Get connection information for tracking
             connections = nest.GetConnections(nest_stimulation_devices, target_neurons)
             self._connections = connections
             total_connections = len(connections)
-            
+
             print(f"[{self.name}] Successfully created {total_connections} connections")
             return {}
-        
+
         else:
             print(f"[{self.name}] Skipping connection creation")
             return {}
@@ -792,11 +820,15 @@ class SNNbuilder_Stimulation(Node):
         # Connections
         num_devices = validated_parameters['number_of_devices']
         stim_type = validated_parameters['stimulation_type']
-        
+
+        # Get population data to check if target is multisynapse
+        population_data = self._input_ports['population_data'].value
+        is_multisynapse = self._is_multisynapse_target(population_data) if population_data else False
+
         script_lines.extend([
             "# Create connections (efficient approach)"
         ])
-        
+
         # DC generators don't use synapse specifications (no spikes produced)
         if stim_type == 'dc_generator':
             script_lines.extend([
@@ -810,12 +842,26 @@ class SNNbuilder_Stimulation(Node):
                 "sdict = {",
                 f"    'synapse_model': custom_synapse_name,",
                 f"    'weight': {synapse_spec['weight']},",
-                f"    'delay': {synapse_spec['delay']}",
+                f"    'delay': {synapse_spec['delay']},"
+            ])
+
+            # Handle multisynapse vs simple neurons
+            if is_multisynapse:
+                if 'receptor_type' in synapse_spec:
+                    receptor_type = synapse_spec['receptor_type']
+                    script_lines.append(f"    'receptor_type': {receptor_type}  # User-defined for multisynapse target")
+                else:
+                    receptor_type = self._get_default_receptor_type(population_data)
+                    script_lines.append(f"    'receptor_type': {receptor_type}  # Default for multisynapse target (first receptor)")
+            else:
+                script_lines.append("    # No receptor_type needed for simple neurons")
+
+            script_lines.extend([
                 "}",
                 "",
                 "# Efficient connection: no need to iterate over devices"
             ])
-            
+
             if num_devices == 1:
                 script_lines.extend([
                     "# Single Poisson device to many neurons (all-to-all)",
@@ -828,7 +874,7 @@ class SNNbuilder_Stimulation(Node):
                     "    # One-to-one connection",
                     "    nest.Connect(devices, target_neurons, 'one_to_one', syn_spec=sdict)",
                     "else:",
-                    "    # All-to-all connection", 
+                    "    # All-to-all connection",
                     "    nest.Connect(devices, target_neurons, syn_spec=sdict)"
                 ])
         
@@ -955,11 +1001,61 @@ class SNNbuilder_Stimulation(Node):
     # ========================================================================
     # HELPER METHODS
     # ========================================================================
-    
+
     def _get_timestamp(self) -> str:
         """Get current timestamp string."""
         from datetime import datetime
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _is_multisynapse_target(self, population_data: Dict[str, Any]) -> bool:
+        """
+        Check if target population uses a multisynapse neuron model.
+
+        Args:
+            population_data: Population metadata
+
+        Returns:
+            True if target is multisynapse, False otherwise
+        """
+        if population_data is None:
+            return False
+        model_name = population_data.get('model_name', '')
+        return 'multisynapse' in model_name.lower()
+
+    def _get_target_receptor_mapping(self, population_data: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Get receptor_type mapping from target population's neurotransmitter types.
+
+        Returns a dict mapping neurotransmitter names to receptor indices (1-based).
+        The order in neurotransmitter_types determines the receptor index.
+
+        Example:
+            neurotransmitter_types = ['GABA'] -> {'GABA': 1}
+            neurotransmitter_types = ['AMPA', 'NMDA'] -> {'AMPA': 1, 'NMDA': 2}
+        """
+        if population_data is None:
+            return {}
+
+        try:
+            nt_types = population_data['biological_properties']['signaling']['neurotransmitter_types']
+            # receptor_type is 1-based in NEST multisynapse models
+            return {nt: idx + 1 for idx, nt in enumerate(nt_types)}
+        except (KeyError, TypeError):
+            return {}
+
+    def _get_default_receptor_type(self, population_data: Dict[str, Any]) -> int:
+        """
+        Get default receptor_type for multisynapse targets.
+
+        Returns the first available receptor (receptor_type: 1) or
+        the user-specified receptor_type if provided.
+        """
+        receptor_mapping = self._get_target_receptor_mapping(population_data)
+        if receptor_mapping:
+            # Return first receptor index
+            return list(receptor_mapping.values())[0]
+        # Fallback to 1 (first receptor)
+        return 1
     
     def get_stimulation_summary(self) -> Dict[str, Any]:
         """

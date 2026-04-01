@@ -1,6 +1,11 @@
 import { extendTheme } from '@chakra-ui/react';
+import { mode } from '@chakra-ui/theme-tools';
 
 const theme = extendTheme({
+  config: {
+    initialColorMode: 'dark',
+    useSystemColorMode: false,
+  },
   colors: {
     brand: {
       50: '#e6f1ff',
@@ -16,14 +21,15 @@ const theme = extendTheme({
     },
   },
   styles: {
-    global: {
+    global: (props: any) => ({
       body: {
-        bg: 'gray.900',
-        color: 'white',
+        // dark: original gray.900 | light: OpenAI-inspired near-white
+        bg: mode('#f7f7f8', 'gray.900')(props),
+        color: mode('#1a1a1a', 'white')(props),
         margin: 0,
         padding: 0,
       },
-    },
+    }),
   },
   components: {
     Button: {
@@ -44,36 +50,35 @@ const theme = extendTheme({
     },
     Modal: {
       parts: ['dialog', 'header', 'body', 'footer', 'closeButton', 'overlay'],
-      baseStyle: {
+      baseStyle: (props: any) => ({
         dialog: {
-          bg: 'gray.800',
-          color: 'white',  
+          bg: mode('white', 'gray.800')(props),
+          color: mode('#1a1a1a', 'white')(props),
           borderRadius: 'md',
           boxShadow: 'xl',
         },
         overlay: {
-          bg: 'blackAlpha.700', 
+          bg: 'blackAlpha.700',
         },
         header: {
           fontWeight: 'bold',
           borderBottomWidth: '1px',
-          borderColor: 'gray.700',
+          borderColor: mode('#e5e5e5', 'gray.700')(props),
         },
-        body: {
-        },
+        body: {},
         footer: {
           borderTopWidth: '1px',
-          borderColor: 'gray.700',
+          borderColor: mode('#e5e5e5', 'gray.700')(props),
         },
         closeButton: {
-          color: 'gray.400',
+          color: mode('gray.500', 'gray.400')(props),
           _hover: {
-            color: 'white',
-            bg: 'whiteAlpha.100',
-          }
-        }
-      }
-    }
+            color: mode('#1a1a1a', 'white')(props),
+            bg: mode('blackAlpha.100', 'whiteAlpha.100')(props),
+          },
+        },
+      }),
+    },
   },
 });
 

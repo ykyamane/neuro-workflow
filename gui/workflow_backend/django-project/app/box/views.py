@@ -1021,26 +1021,13 @@ class PythonFileParameterUpdateView(APIView):
         return updated_code
 
     def _format_value_for_python(self, value):
-        """Format values ​​for Python code"""
+        """Format values for Python code as valid Python literals."""
         logger.info(f"Formatting value: {value} (type: {type(value)})")
-
-        if isinstance(value, str):
-            return f'"{value}"'
-        elif isinstance(value, bool):
-            return str(value)
-        elif isinstance(value, list):
-            # Properly format each element of an array
-            formatted_elements = []
-            for item in value:
-                if isinstance(item, str):
-                    formatted_elements.append(f'"{item}"')
-                else:
-                    formatted_elements.append(str(item))
-            return f"[{', '.join(formatted_elements)}]"
-        elif isinstance(value, dict):
-            return str(value).replace("'", '"')
-        else:
-            return str(value)
+        # repr() always produces a valid, correctly-escaped Python literal for all
+        # built-in types (str, int, float, bool, None, list, dict, tuple).
+        # This avoids the previous str().replace("'", '"') approach for dicts, which
+        # failed for string values containing apostrophes, booleans, nested dicts, etc.
+        return repr(value)
 
     def _update_parameter_metadata_in_code(
         self, source_code, parameter_key, field_name, field_value
@@ -1693,20 +1680,37 @@ class BulkSyncNodesView(APIView):
             ).first()
 
             if existing_file:
-                # Provides more detailed reasons for duplication
                 if existing_file.file_hash == file_hash:
-                    reason = "Identical content already exists"
+                    # Identical content — nothing to do
+                    return {
+                        "status": "skipped",
+                        "filename": filename,
+                        "category": category,
+                        "reason": "Identical content already exists",
+                        "existing_id": str(existing_file.id),
+                        "existing_name": existing_file.name,
+                    }
                 else:
-                    reason = "File with same name in same category already exists"
-
-                return {
-                    "status": "skipped",
-                    "filename": filename,
-                    "category": category,
-                    "reason": reason,
-                    "existing_id": str(existing_file.id),
-                    "existing_name": existing_file.name,
-                }
+                    # File content changed — update and re-analyze
+                    try:
+                        file_service = PythonFileService()
+                        file_service.update_file_content(existing_file, file_content)
+                        return {
+                            "status": "added",
+                            "filename": filename,
+                            "category": category,
+                            "file_id": str(existing_file.id),
+                            "analyzed": existing_file.is_analyzed,
+                            "reason": "Updated existing file with new content",
+                        }
+                    except Exception as e:
+                        logger.warning(f"Update failed for {filename}: {e}")
+                        return {
+                            "status": "error",
+                            "filename": filename,
+                            "category": category,
+                            "error": str(e),
+                        }
 
             # Create a new file (DB registration only, no file copying)
             python_file = PythonFile.objects.create(

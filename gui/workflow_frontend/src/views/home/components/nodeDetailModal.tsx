@@ -5,6 +5,7 @@ import {
   Box,
   Text,
   Code,
+  Badge,
   SimpleGrid,
   Flex,
   Button,
@@ -13,23 +14,24 @@ import {
   Textarea,
   IconButton,
   useToast,
+  Checkbox,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { EditIcon, CheckIcon, CloseIcon, ViewIcon } from '@chakra-ui/icons';
 import { FiZap } from 'react-icons/fi';
 import { CalculationNodeData, SchemaFields } from '../type';
 import { Node } from '@xyflow/react';
 import { createAuthHeaders } from '../../../api/authHeaders';
-import HomeView from '../homeView';
-import convertToStrIncFloat from '/homeView';
 import ParameterSuggestionModal from './ParameterSuggestionModal';
- 
+
+
 interface NodeDetailsContentProps {
   nodeData: Node<CalculationNodeData> | null;
   onNodeUpdate?: (nodeId: string, updatedData: Partial<CalculationNodeData>) => void;
   onRefreshNodeData?: (filename: string) => Promise<any>;
   onViewCode?: () => void;
   workflowId?: string;
-  convertToStrIncFloat: (obj: any) => any; 
+  convertToStrIncFloat: (obj: any) => any;
 }
 
 // Open Jupyter in a new tab
@@ -40,18 +42,26 @@ const OpenJupyter = (filename : string, category : string) => {
 const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNodeUpdate, onRefreshNodeData, onViewCode, workflowId, convertToStrIncFloat }) => {
   const [editingInstance, setEditingInstance] = useState<string>('');
   const [editingParam, setEditingParam] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<'default_value' | 'constraints' | null>(null);
+  const [editingField, setEditingField] = useState<'default_value' | 'constraints' | 'optimization_range' | 'objective_range' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [localNodeData, setLocalNodeData] = useState<Node<CalculationNodeData> | null>(nodeData);
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [suggestingParam, setSuggestingParam] = useState<string | null>(null);
   const toast = useToast();
 
+  const bg = useColorModeValue('white', 'gray.800');
+  const panelBg = useColorModeValue('#f7f7f8', 'gray.900');
+  const borderColor = useColorModeValue('#e5e5e5', 'gray.700');
+  const textColor = useColorModeValue('#1a1a1a', 'white');
+  const subtextColor = useColorModeValue('gray.500', 'gray.400');
+  const inputBg = useColorModeValue('white', 'gray.600');
+  const codeBg = useColorModeValue('gray.100', 'gray.600');
+
   // Update local state and reset edit state when nodeData changes
   useEffect(() => {
     console.log('NodeDetailsContent: nodeData changed', nodeData);
     setLocalNodeData(nodeData);
-    
+
     // Reset edit state (so that old edit state does not remain after parameter update)
     setEditingInstance('');
     setEditingParam(null);
@@ -69,7 +79,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
 
       let response;
       let requestBody;
-      
+
       localNodeData.data.instanceName = instanceName;
 
       // Node in a workflow - Use the workflow parameter update endpoint
@@ -158,7 +168,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   };
 
   // Update parameters API call
-  const updateParameter = async (parameterKey: string, parameterValue: any, parameterField: 'default_value' | 'constraints') => {
+  const updateParameter = async (parameterKey: string, parameterValue: any, parameterField: 'default_value' | 'constraints' | 'optimizable' | 'optimization_range' | 'is_objective' | 'objective_range') => {
     try {
       // Determine if this is a node in a workflow
       const isWorkflowNode = localNodeData && !localNodeData.id.startsWith('sidebar_');
@@ -348,7 +358,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             // Even if retrieval from the server fails, local updates have already been completed
           }
         }
-        
+
         // Synchronization removed - Sidebar and workflow nodes are now separate
       }
 
@@ -394,17 +404,32 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   };
 
   // Start editing
-  const startEditing = (paramKey: string, field: 'default_value' | 'constraints', currentValue: any) => {
+  const startEditing = (paramKey: string, field: 'default_value' | 'constraints' | 'optimization_range' | 'objective_range', currentValue: any) => {
     setEditingParam(paramKey);
     setEditingField(field);
-    
+
     // Properly format arrays and complex objects
     if (Array.isArray(currentValue)) {
       setEditValue(JSON.stringify(currentValue, null, 2));
     } else if (typeof currentValue === 'object' && currentValue !== null) {
       setEditValue(JSON.stringify(currentValue, null, 2));
     } else if (typeof currentValue === 'string') {
-      setEditValue(currentValue);
+      // If the string looks like a serialised dict/list (e.g. previously stored as
+      // a JSON string), try to parse it and show it as formatted JSON so the user
+      // sees it in the expected double-quote format rather than raw.
+      const trimmed = currentValue.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(currentValue);
+          setEditValue(JSON.stringify(parsed, null, 2));
+        } catch {
+          // Not valid JSON (e.g. Python single-quote repr); show as-is.
+          // The save step will show an error if the user tries to save it unchanged.
+          setEditValue(currentValue);
+        }
+      } else {
+        setEditValue(currentValue);
+      }
     } else {
       setEditValue(JSON.stringify(currentValue));
     }
@@ -415,16 +440,31 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     if (!editingParam || !editingField) return;
 
     let parsedValue: any;
+    const trimmed = editValue.trim();
     try {
       // First try parsing as JSON
       parsedValue = JSON.parse(editValue);
-      
+
       // Validation for arrays
       if (Array.isArray(parsedValue)) {
         console.log('Parsed array value:', parsedValue);
       }
     } catch (error) {
-      // If JSON parsing fails, treat it as a string
+      // If the value looks like a dict or list but failed JSON parsing, the user
+      // likely typed Python-style single quotes instead of JSON double quotes.
+      // Reject it to prevent the value being stored as a plain string (which would
+      // break code generation).
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        toast({
+          title: 'Invalid format',
+          description: 'Dictionary and list values must use JSON format with double quotes. Example: {"key": "value"} instead of {\'key\': \'value\'}',
+          status: 'error',
+          duration: 6000,
+          isClosable: true,
+        });
+        return;
+      }
+      // For scalar values (plain strings, numbers, etc.) treat as string
       console.log('JSON parse failed, treating as string:', editValue);
       parsedValue = editValue;
     }
@@ -482,7 +522,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   if (!localNodeData) {
     return (
       <Flex align="center" justify="center" h="200px">
-        <Text color="gray.500" fontStyle="italic" fontSize="lg">
+        <Text color={subtextColor} fontStyle="italic" fontSize="lg">
           No node selected
         </Text>
       </Flex>
@@ -493,7 +533,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   // console.log("NodeData timestamp in modal:", localNodeData.data.__timestamp || 'no timestamp');
 
   const schema: SchemaFields = localNodeData.data.schema || { inputs: {}, outputs: {}, parameters: {}, methods: {} };
-  
+
   const renderDataTypeColor = (type: string) => {
     const colorMap: Record<string, string> = {
       'OBJECT': 'purple',
@@ -532,7 +572,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       if (data.length === 0) {
         return '[]';
       }
-      
+
       // Sequences longer than 5 are omitted
       if (data.length > 5) {
         const firstFew = data.slice(0, 3).map(item => {
@@ -543,7 +583,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         });
         return `[${firstFew.join(', ')}, ...${data.length - 3} more]`;
       }
-      
+
       return `[${data.map(item => {
         if (typeof item === 'object' && item !== null) {
           // For objects, show only keys or only important properties
@@ -554,25 +594,41 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         return typeof item === 'string' ? `"${item}"` : String(item);
       }).join(', ')}]`;
     }
-    
+
     if (typeof data === 'object' && data !== null) {
-      return JSON.stringify(data);
+      const entries = Object.entries(data);
+      if (entries.length === 0) return '{}';
+      const preview = entries.slice(0, 3).map(([k, v]) =>
+        `${k}: ${typeof v === 'string' ? `"${v}"` : v}`
+      ).join(', ');
+      return entries.length > 3 ? `{${preview}, ...}` : `{${preview}}`;
     }
-    
+
     return String(data);
   };
 
-  const renderInstanceNameSection = () => {    
+  // Infer a Python-style type name from a raw (pre-conversion) JS value.
+  const getInferredType = (value: any): string => {
+    if (value === null || value === undefined) return 'None';
+    if (typeof value === 'boolean') return 'bool';
+    if (Array.isArray(value)) return 'list';
+    if (typeof value === 'object') return 'dict';
+    if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';
+    if (typeof value === 'string') return 'str';
+    return 'any';
+  };
+
+  const renderInstanceNameSection = () => {
     return (
       <HStack align="start" spacing={2}>
         {editingInstance != '' ? (
-          <VStack flex="1" spacing={1} align="stretch">                      
+          <VStack flex="1" spacing={1} align="stretch">
             <Input
               value={editingInstance}
               onChange={(e) => setEditingInstance(e.target.value)}
               size="xs"
-              bg="gray.600"
-              color="white"
+              bg={inputBg}
+              color={textColor}
               fontSize="xl"
               placeholder="Instance name"
             />
@@ -618,7 +674,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     if (!schema.parameters || Object.keys(schema.parameters).length === 0) {
       return (
         <Flex align="center" justify="center" h="100px">
-          <Text color="gray.500" fontStyle="italic">
+          <Text color={subtextColor} fontStyle="italic">
             No parameters defined
           </Text>
         </Flex>
@@ -629,12 +685,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       <VStack spacing={3} align="stretch">
         <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6} w="100%" templateColumns={{ lg: "1fr 1fr" }}>
         {Object.entries(schema.parameters).map(([key, param]) => (
-          <Box 
-            key={key} 
-            p={4} 
-            bg="gray.700" 
-            borderRadius="md" 
-            borderWidth="1px" 
+          <Box
+            key={key}
+            p={4}
+            bg={bg}
+            borderRadius="md"
+            borderWidth="1px"
             borderColor="orange.400"
             boxShadow="sm"
           >
@@ -652,21 +708,21 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   />
                 </Tooltip>
               </HStack>
-              
+
               {param.description && (
                 <HStack align="start">
-                  <Text fontSize="xs" color="gray.400" minW="80px">description:</Text>
-                  <Text fontSize="sm" color="gray.300">
+                  <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
+                  <Text fontSize="sm" color={textColor}>
                     {param.description}
                   </Text>
                 </HStack>
               )}
-              
+
               <VStack align="stretch" spacing={2}>
                 {/* Default Value - editable */}
                 {(param.default_value !== undefined || getNodeParameterValue(key, 'default_value') !== undefined) && (
                   <HStack align="start" spacing={2}>
-                    <Text fontSize="xs" color="gray.400" minW="80px">default_value:</Text>
+                    <Text fontSize="xs" color={subtextColor} minW="80px">default_value:</Text>
                     {editingParam === key && editingField === 'default_value' ? (
                       <VStack flex="1" spacing={1} /*align="stretch"*/>
                         {editValue.includes('\n') || editValue.startsWith('[') || editValue.startsWith('{') ? (
@@ -674,8 +730,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             size="xs"
-                            bg="gray.600"
-                            color="white"
+                            bg={inputBg}
+                            color={textColor}
                             fontSize="xs"
                             minH="80px"
                             resize="vertical"
@@ -686,9 +742,10 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             size="xs"
-                            bg="gray.600"
-                            color="white"
+                            bg={inputBg}
+                            color={textColor}
                             fontSize="xs"
+                            placeholder="string or number — no quotes needed"
                           />
                         )}
                         <HStack spacing={1}>
@@ -710,19 +767,33 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                       </VStack>
                     ) : (
                       <HStack flex="1" spacing={1}>
-                        <Code colorScheme="gray" fontSize="xs" bg="gray.600" color="white" flex="1" maxW="360">
-                          {(() => {
-                            var currentValue = getNodeParameterValue(key, 'default_value');
-                            return currentValue ? formatDataForDisplay(convertToStrIncFloat(currentValue)) : 'None';
-                            /*
-                            return Array.isArray(currentValue) || typeof currentValue === 'object'
-                              ? formatDataForDisplay(currentValue)
-                              : typeof currentValue === 'string'
-                                ? `"${currentValue}"`
-                                : String(currentValue);
-                            */
-                          })()}
-                        </Code>
+                        {(() => {
+                          const rawValue = getNodeParameterValue(key, 'default_value');
+                          const inferredType = getInferredType(rawValue);
+                          // Show strings with quotes so users know the type at a glance.
+                          // For all other types use the existing float-aware formatter.
+                          const displayStr =
+                            rawValue !== undefined && rawValue !== null
+                              ? typeof rawValue === 'string'
+                                ? `"${rawValue}"`
+                                : formatDataForDisplay(convertToStrIncFloat(rawValue))
+                              : 'None';
+                          return (
+                            <>
+                              <Badge
+                                colorScheme={renderDataTypeColor(inferredType)}
+                                fontSize="9px"
+                                variant="subtle"
+                                flexShrink={0}
+                              >
+                                {inferredType}
+                              </Badge>
+                              <Code colorScheme="gray" fontSize="xs" bg={codeBg} color={textColor} flex="1" maxW="320">
+                                {displayStr}
+                              </Code>
+                            </>
+                          );
+                        })()}
                         <Tooltip label="Edit default value" hasArrow>
                           <IconButton
                             aria-label="Edit default value"
@@ -737,10 +808,10 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                     )}
                   </HStack>
                 )}
-                
+
                 {/* Constraints - editable */}
                 <HStack align="start" spacing={2}>
-                  <Text fontSize="xs" color="gray.400" minW="80px">constraints:</Text>
+                  <Text fontSize="xs" color={subtextColor} minW="80px">constraints:</Text>
                   {editingParam === key && editingField === 'constraints' ? (
                     <VStack flex="1" spacing={1} align="stretch">
                       {editValue.includes('\n') || editValue.startsWith('[') || editValue.startsWith('{') ? (
@@ -748,8 +819,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           size="xs"
-                          bg="gray.600"
-                          color="white"
+                          bg={inputBg}
+                          color={textColor}
                           fontSize="xs"
                           minH="80px"
                           resize="vertical"
@@ -760,8 +831,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           size="xs"
-                          bg="gray.600"
-                          color="white"
+                          bg={inputBg}
+                          color={textColor}
                           fontSize="xs"
                           placeholder="Constraints (JSON format)"
                         />
@@ -804,6 +875,135 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                     </HStack>
                   )}
                 </HStack>
+
+                {/* Optimization metadata (editable) */}
+                {(param.optimizable !== undefined || param.is_objective !== undefined) && (
+                  <Box mt={2} p={2} bg={codeBg} borderRadius="md" borderLeft="3px solid" borderLeftColor="yellow.400">
+                    <Text fontSize="xs" color="yellow.300" fontWeight="bold" mb={2}>Optimization</Text>
+
+                    {/* optimizable + optimization_range */}
+                    <HStack align="center" spacing={3} mb={2}>
+                      <Checkbox
+                        isChecked={param.optimizable || false}
+                        onChange={(e) => updateParameter(key, e.target.checked, 'optimizable' as any)}
+                        colorScheme="green"
+                        size="sm"
+                      >
+                        <Text fontSize="xs" color={textColor}>optimizable</Text>
+                      </Checkbox>
+                      {param.optimizable && (
+                        <>
+                          <Text fontSize="xs" color={subtextColor}>range:</Text>
+                          {editingParam === key && editingField === 'optimization_range' ? (
+                            <HStack spacing={1}>
+                              <Input
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                size="xs"
+                                bg={inputBg}
+                                color={textColor}
+                                fontSize="xs"
+                                width="120px"
+                                placeholder="[min, max]"
+                              />
+                              <IconButton
+                                aria-label="Save"
+                                icon={<CheckIcon />}
+                                size="xs"
+                                colorScheme="green"
+                                onClick={saveEdit}
+                              />
+                              <IconButton
+                                aria-label="Cancel"
+                                icon={<CloseIcon />}
+                                size="xs"
+                                colorScheme="red"
+                                onClick={cancelEdit}
+                              />
+                            </HStack>
+                          ) : (
+                            <HStack spacing={1}>
+                              <Code colorScheme="yellow" fontSize="xs" bg="yellow.600" color="white">
+                                {param.optimization_range ? formatDataForDisplay(param.optimization_range) : '[min, max]'}
+                              </Code>
+                              <Tooltip label="Edit range" hasArrow>
+                                <IconButton
+                                  aria-label="Edit optimization range"
+                                  icon={<EditIcon />}
+                                  size="xs"
+                                  colorScheme="yellow"
+                                  variant="ghost"
+                                  onClick={() => startEditing(key, 'optimization_range', param.optimization_range || [])}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          )}
+                        </>
+                      )}
+                    </HStack>
+
+                    {/* is_objective + objective_range */}
+                    <HStack align="center" spacing={3}>
+                      <Checkbox
+                        isChecked={param.is_objective || false}
+                        onChange={(e) => updateParameter(key, e.target.checked, 'is_objective' as any)}
+                        colorScheme="purple"
+                        size="sm"
+                      >
+                        <Text fontSize="xs" color={textColor}>is_objective</Text>
+                      </Checkbox>
+                      {param.is_objective && (
+                        <>
+                          <Text fontSize="xs" color={subtextColor}>range:</Text>
+                          {editingParam === key && editingField === 'objective_range' ? (
+                            <HStack spacing={1}>
+                              <Input
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                size="xs"
+                                bg={inputBg}
+                                color={textColor}
+                                fontSize="xs"
+                                width="120px"
+                                placeholder="[min, max]"
+                              />
+                              <IconButton
+                                aria-label="Save"
+                                icon={<CheckIcon />}
+                                size="xs"
+                                colorScheme="green"
+                                onClick={saveEdit}
+                              />
+                              <IconButton
+                                aria-label="Cancel"
+                                icon={<CloseIcon />}
+                                size="xs"
+                                colorScheme="red"
+                                onClick={cancelEdit}
+                              />
+                            </HStack>
+                          ) : (
+                            <HStack spacing={1}>
+                              <Code colorScheme="purple" fontSize="xs" bg="purple.600" color="white">
+                                {param.objective_range ? formatDataForDisplay(param.objective_range) : '[min, max]'}
+                              </Code>
+                              <Tooltip label="Edit range" hasArrow>
+                                <IconButton
+                                  aria-label="Edit objective range"
+                                  icon={<EditIcon />}
+                                  size="xs"
+                                  colorScheme="purple"
+                                  variant="ghost"
+                                  onClick={() => startEditing(key, 'objective_range', param.objective_range || [])}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          )}
+                        </>
+                      )}
+                    </HStack>
+                  </Box>
+                )}
               </VStack>
             </VStack>
           </Box>
@@ -817,7 +1017,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     if (!ports || Object.keys(ports).length === 0) {
       return (
         <Flex align="center" justify="center" h="100px">
-          <Text color="gray.500" fontStyle="italic">
+          <Text color={subtextColor} fontStyle="italic">
             No {title.toLowerCase()} defined
           </Text>
         </Flex>
@@ -831,10 +1031,10 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             <Text fontWeight="bold" fontSize="md" color={`${colorScheme}.200`}>
               {portName}{portData.optional ? '' : '*'}
             </Text>
-            <Text color="gray.400">:</Text>
-            <Text 
-              fontWeight="semibold" 
-              fontSize="md" 
+            <Text color={subtextColor}>:</Text>
+            <Text
+              fontWeight="semibold"
+              fontSize="md"
               color={`${renderDataTypeColor(portData.type || 'any')}.300`}
             >
               type={portData.type || 'any'}<br/>
@@ -850,7 +1050,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     if (!schema.methods || Object.keys(schema.methods).length === 0) {
       return (
         <Flex align="center" justify="center" h="100px">
-          <Text color="gray.500" fontStyle="italic">
+          <Text color={subtextColor} fontStyle="italic">
             No methods defined
           </Text>
         </Flex>
@@ -860,40 +1060,40 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
     return (
       <VStack spacing={3} align="stretch">
         {Object.entries(schema.methods).map(([methodName, method]) => (
-          <Box 
-            key={methodName} 
-            p={4} 
-            bg="gray.700" 
-            borderRadius="md" 
-            borderWidth="1px" 
+          <Box
+            key={methodName}
+            p={4}
+            bg={bg}
+            borderRadius="md"
+            borderWidth="1px"
             borderColor="purple.400"
             boxShadow="sm"
           >
             <VStack align="stretch" spacing={3}>
               <Text fontWeight="bold" fontSize="md" color="purple.200">"{methodName}"</Text>
-              
+
               {method.description && (
                 <HStack align="start">
-                  <Text fontSize="xs" color="gray.400" minW="80px">description:</Text>
-                  <Text fontSize="sm" color="gray.300">
+                  <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
+                  <Text fontSize="sm" color={textColor}>
                     {method.description}
                   </Text>
                 </HStack>
               )}
-              
+
               <VStack align="stretch" spacing={2}>
                 {method.inputs && method.inputs.length > 0 && (
                   <HStack align="start">
-                    <Text fontSize="xs" color="gray.400" minW="80px">inputs:</Text>
+                    <Text fontSize="xs" color={subtextColor} minW="80px">inputs:</Text>
                     <Code colorScheme="blue" fontSize="xs" bg="blue.600" color="white">
                       {formatDataForDisplay(method.inputs)}
                     </Code>
                   </HStack>
                 )}
-                
+
                 {method.outputs && method.outputs.length > 0 && (
                   <HStack align="start">
-                    <Text fontSize="xs" color="gray.400" minW="80px">outputs:</Text>
+                    <Text fontSize="xs" color={subtextColor} minW="80px">outputs:</Text>
                     <Code colorScheme="green" fontSize="xs" bg="green.600" color="white">
                       {formatDataForDisplay(method.outputs)}
                     </Code>
@@ -913,15 +1113,15 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       <Box p={6} h="100%" overflowY="auto" maxW="none" w="100%">
         <VStack spacing={6} align="stretch" maxW="none">
           {/* Node Info Header */}
-          <Box bg="gray.800" borderRadius="lg" boxShadow="md" marginTop={-10} p={4}>
+          <Box bg={bg} borderRadius="lg" boxShadow="md" marginTop={-10} p={4}>
             <Flex justify="space-between" align="start">
               <VStack align="start" spacing={1}>
                 {renderInstanceNameSection()}
-                <Text fontSize="sm" color="gray.400">
+                <Text fontSize="sm" color={subtextColor}>
                   Node ID: {localNodeData.id}
                 </Text>
                 {localNodeData.data.__timestamp && (
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color={subtextColor}>
                     Last updated: {new Date(localNodeData.data.__timestamp).toLocaleTimeString()}
                   </Text>
                 )}
@@ -938,7 +1138,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   ・Inputs
                 </Text>
                 <Box
-                  bg="gray.800"
+                  bg={bg}
                   p={6}
                   borderRadius="lg"
                   border="2px"
@@ -957,7 +1157,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                   ・Outputs
                 </Text>
                 <Box
-                  bg="gray.800"
+                  bg={bg}
                   p={6}
                   borderRadius="lg"
                   border="2px"
@@ -976,7 +1176,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                 ・Methods
               </Text>
               <Box
-                bg="gray.800"
+                bg={bg}
                 p={6}
                 borderRadius="lg"
                 border="2px"
@@ -995,7 +1195,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               ・Parameters
             </Text>
             <Box
-              bg="gray.800"
+              bg={bg}
               p={6}
               borderRadius="lg"
               border="2px"

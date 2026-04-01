@@ -18,6 +18,12 @@ class PortTypeMapping(Enum):
     LIST = "list"
     DICT = "dict"
     OBJECT = "object"
+    FILE_PATH = "file_path"
+    CSV_FILE = "csv_file"
+    JSON_FILE = "json_file"
+    PICKLE_FILE = "pickle_file"
+    NUMPY_FILE = "numpy_file"
+    HDF5_FILE = "hdf5_file"
 
 
 class NodeDatabase:
@@ -361,6 +367,8 @@ class PythonNodeAnalyzer:
 
     def _extract_port_definition(self, node: ast.AST, tree: ast.AST) -> Dict[str, Any]:
         """Extract information from the PortDefinition"""
+        if isinstance(node, ast.Dict):
+            return self._extract_port_definition_dict(node, tree)
         if not isinstance(node, ast.Call):
             return {}
 
@@ -371,7 +379,7 @@ class PythonNodeAnalyzer:
             elif keyword.arg == "description":
                 port_info["description"] = self._extract_string_value(keyword.value)
             elif keyword.arg == "optional":
-                port_info["optional"] = self._extract_string_value(keyword.value)
+                port_info["optional"] = self._extract_bool_value(keyword.value)
 
         return port_info
 
@@ -410,6 +418,12 @@ class PythonNodeAnalyzer:
             "DICT": "dict",
             "OBJECT": "object",
             "ANY": "any",
+            "FILE_PATH": "file_path",
+            "CSV_FILE": "csv_file",
+            "JSON_FILE": "json_file",
+            "PICKLE_FILE": "pickle_file",
+            "NUMPY_FILE": "numpy_file",
+            "HDF5_FILE": "hdf5_file",
         }
 
         mapped_type = type_mapping.get(port_type_name.upper(), "any")
@@ -432,6 +446,8 @@ class PythonNodeAnalyzer:
 
     def _extract_parameter_definition(self, node: ast.AST) -> Dict[str, Any]:
         """Extracting information from ParameterDefinition"""
+        if isinstance(node, ast.Dict):
+            return self._extract_parameter_definition_dict(node)
         if not isinstance(node, ast.Call):
             return {}
 
@@ -443,7 +459,18 @@ class PythonNodeAnalyzer:
                 param_info["description"] = self._extract_string_value(keyword.value)
             elif keyword.arg == "constraints":
                 param_info["constraints"] = self._extract_value(keyword.value) 
-                #param_info["constraints"] = self._extract_constraints(keyword.value)
+            elif keyword.arg == "optimizable":
+                param_info["optimizable"] = self._extract_bool_value(keyword.value)
+            elif keyword.arg == "optimization_range":
+                param_info["optimization_range"] = self._extract_value(keyword.value)
+            elif keyword.arg == "is_objective":
+                param_info["is_objective"] = self._extract_bool_value(keyword.value)
+            elif keyword.arg == "objective_range":
+                param_info["objective_range"] = self._extract_value(keyword.value)
+            elif keyword.arg == "suggested_values":
+                param_info["suggested_values"] = self._extract_value(keyword.value)
+            elif keyword.arg == "type":
+                param_info["type"] = self._extract_value(keyword.value)
 
         return param_info
 
@@ -497,6 +524,8 @@ class PythonNodeAnalyzer:
             return node.value
         elif isinstance(node, (ast.Str, ast.Num)):  # for before Python 3.7
             return node.s if isinstance(node, ast.Str) else node.n
+        elif hasattr(ast, "NameConstant") and isinstance(node, ast.NameConstant):  # py<3.8
+            return node.value
         elif isinstance(node, ast.List):
             # Recursively extracting elements of an array
             result = [self._extract_value(elem) for elem in node.elts]
@@ -513,6 +542,10 @@ class PythonNodeAnalyzer:
             return result
         elif isinstance(node, ast.Name):
             return node.id
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            value = self._extract_value(node.operand)
+            if isinstance(value, (int, float)):
+                return -value if isinstance(node.op, ast.USub) else value
         else:
             return str(node)
 
@@ -529,3 +562,53 @@ class PythonNodeAnalyzer:
                 constraints[constraint_name] = constraint_value
 
         return constraints
+
+    def _extract_bool_value(self, node: ast.AST) -> bool:
+        """Extract boolean value with safe fallback."""
+        if isinstance(node, ast.Constant):
+            return bool(node.value)
+        if hasattr(ast, "NameConstant") and isinstance(node, ast.NameConstant):
+            return bool(node.value)
+        if isinstance(node, ast.Name):
+            return node.id.lower() == "true"
+        return False
+
+    def _extract_port_definition_dict(self, node: ast.Dict, tree: ast.AST) -> Dict[str, Any]:
+        """Extract port definition from a dict-style definition."""
+        port_info = {}
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, (ast.Constant, ast.Str)):
+                key_name = self._extract_string_value(key)
+                if key_name == "type":
+                    port_info["type"] = self._extract_port_type(value, tree)
+                elif key_name == "description":
+                    port_info["description"] = self._extract_string_value(value)
+                elif key_name == "optional":
+                    port_info["optional"] = self._extract_bool_value(value)
+        return port_info
+
+    def _extract_parameter_definition_dict(self, node: ast.Dict) -> Dict[str, Any]:
+        """Extract parameter definition from a dict-style definition."""
+        param_info = {}
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, (ast.Constant, ast.Str)):
+                key_name = self._extract_string_value(key)
+                if key_name == "default_value":
+                    param_info["default_value"] = self._extract_value(value)
+                elif key_name == "description":
+                    param_info["description"] = self._extract_string_value(value)
+                elif key_name == "constraints":
+                    param_info["constraints"] = self._extract_value(value)
+                elif key_name == "optimizable":
+                    param_info["optimizable"] = self._extract_bool_value(value)
+                elif key_name == "optimization_range":
+                    param_info["optimization_range"] = self._extract_value(value)
+                elif key_name == "is_objective":
+                    param_info["is_objective"] = self._extract_bool_value(value)
+                elif key_name == "objective_range":
+                    param_info["objective_range"] = self._extract_value(value)
+                elif key_name == "suggested_values":
+                    param_info["suggested_values"] = self._extract_value(value)
+                elif key_name == "type":
+                    param_info["type"] = self._extract_value(value)
+        return param_info

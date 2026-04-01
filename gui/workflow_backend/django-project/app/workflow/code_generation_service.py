@@ -1,6 +1,9 @@
 import re
 import os
+import ast
 import json
+import keyword
+import textwrap
 from pathlib import Path
 from django.conf import settings
 from .models import FlowProject, FlowNode, FlowEdge
@@ -220,8 +223,13 @@ class CodeGenerationService:
                     main_lines.append(lines[i])
                     i += 1
 
-                # Create the main execution cell
-                cell = self._create_code_cell("\n".join(main_lines))
+                # Create the main execution cell.
+                # Replace sys.exit(main()) with main() so the notebook cell
+                # does not raise SystemExit(0) when executed in a Jupyter kernel.
+                main_source = "\n".join(main_lines).replace(
+                    "sys.exit(main())", "main()"
+                )
+                cell = self._create_code_cell(main_source)
                 if cell:
                     cells.append(cell)
                 break  # Create the main execution cell
@@ -279,6 +287,13 @@ class CodeGenerationService:
 
     def _create_base_template(self, project):
         """Create a basic template (with section comments)"""
+        context_obj = getattr(project, "workflow_context", {}) or {}
+        context_block = json.dumps(context_obj, indent=4)
+        context_block_indented = textwrap.indent(context_block, " " * 8)
+        if context_block_indented.startswith(" " * 8):
+            context_block_indented = context_block_indented[8:]
+        workflow_context_literal = context_block_indented
+        project_name = project.name or "workflow"
         return f'''#!/usr/bin/env python3
 """
 {project.description if project.description else f"Generated workflow for project: {project.name}"}
@@ -296,16 +311,18 @@ def main():
 
     # workflow_builder_import
 
+    # workflow_builder creation
+    workflow_builder = WorkflowBuilder(
+        "{project_name}",
+        context={workflow_context_literal}
+    )
+
     # Create nodes
      
-    # Create workflow field
-    workflow_builder = WorkflowBuilder("neural_simulation")
-    
+    # workflow_builder_ready
+
     # Print workflow information
     print(workflow)
-
-    # Build workflow
-    workflow = workflow_builder.build()
 
     # Execute workflow
     print("\\nExecuting workflow...")
@@ -333,7 +350,8 @@ if __name__ == "__main__":
 
             # Import all nodes from nodes (dynamically generated)
             # nodes/{ClassName}.py import {ClassName} from
-            return f"from nodes.{category}.{class_name} import {class_name}"
+            catregory_folder = category.replace("/", "")
+            return f"from nodes.{catregory_folder}.{class_name} import {class_name}"
 
         except Exception as e:
             logger.error(f"Error generating import statement for {class_name}: {e}")
@@ -407,6 +425,8 @@ if __name__ == "__main__":
             sanitized = f"{prefix}_{sanitized}"
         elif not sanitized:
             sanitized = prefix
+        if keyword.iskeyword(sanitized):
+            sanitized = f"{prefix}_{sanitized}"
         return sanitized
 
     def _generate_variable_name_by_category(self, class_name, node_id, category, node_no):
@@ -426,18 +446,6 @@ if __name__ == "__main__":
 
         return f"instance_{class_name}_{node_no_zero}"
         
-        """
-        if category == "network":
-            return f"network_{short_id}"
-        elif category == "simulation":
-            return f"sim_{short_id}"
-        elif category == "analysis":
-            return f"analysis_{short_id}"
-        else:
-            # Other categories
-            return f"{category}_{short_id}"
-        """
-        
     """ Passing Node to the constructor (unused?)"""
     def _generate_constructor_arg_by_category(self, class_name, category):
         """Generate constructor arguments based on category"""
@@ -454,65 +462,6 @@ if __name__ == "__main__":
     def _generate_configure_block_by_category(self, class_name, category, node_data):
         """Generate configure blocks based on category (including parameter changes)"""
         return self._generate_generic_configure_block(class_name, node_data)
-        """
-        if category == "network":
-            return self._generate_network_configure_block(class_name, node_data)
-        elif category == "simulation":
-            return self._generate_simulation_configure_block(class_name, node_data)
-        elif category == "analysis":
-            return self._generate_analysis_configure_block(class_name, node_data)
-        else:
-            return self._generate_generic_configure_block(class_name, node_data)
-        """
-
-    """
-    def _generate_network_configure_block(self, class_name, node_data):
-        #Generate configure blocks for the #network category (only changed parameters)
-        # No default settings needed, only retrieve changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-
-    def _generate_simulation_configure_block(self, class_name, node_data):
-        #Generate configure blocks for the simulation category (only changed parameters)
-        # No default settings needed, only retrieve changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, (int)):
-                return f"            {key}={float(value):.1f}"
-            elif isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-
-    def _generate_analysis_configure_block(self, class_name, node_data):
-        #Generate configure block for #analysis category (only changed parameters)
-        # Get only changed parameters
-        modified_params = self._get_modified_parameters_for_configure(node_data, {})
-
-        # Format the configure block
-        config_lines = []
-        for key, value in modified_params.items():
-            if isinstance(value, str):
-                config_lines.append(f'            {key}="{value}"')
-            else:
-                config_lines.append(f"            {key}={value}")
-
-        return ",\n".join(config_lines)
-    """
 
     def _generate_generic_configure_block(self, class_name, node_data):
         """Generate configure blocks for other categories (only changed parameters)"""
@@ -522,12 +471,27 @@ if __name__ == "__main__":
         # Format the configure block
         config_lines = []
         for key, value in modified_params.items():
-            if isinstance(value, (int)):
-              config_lines.append(f'            {key}={float(value):.1f}')
-            elif isinstance(value, str):
-              config_lines.append(f'            {key}="{value}"')
+            # Sanitize parameter key to avoid Python keyword collisions
+            safe_key = f"{key}_" if keyword.iskeyword(key) else key
+            if isinstance(value, str):
+                # If the string looks like a Python dict/list literal (e.g. it was
+                # saved with single quotes before frontend validation was in place),
+                # recover it with ast.literal_eval so the generated code gets a real
+                # dict/list rather than a quoted string.
+                trimmed = value.strip()
+                if trimmed.startswith(('{', '[')):
+                    try:
+                        parsed = ast.literal_eval(value)
+                        config_lines.append(f"            {safe_key}={parsed!r}")
+                        continue
+                    except (ValueError, SyntaxError):
+                        pass
+                config_lines.append(f'            {safe_key}={repr(value)}')
             else:
-              config_lines.append(f"            {key}={value}")
+                # int, float, bool, list, dict all render correctly via f-string.
+                # Note: bool must be checked before int since bool subclasses int,
+                # but f"{True}" already produces "True" so the else branch handles both.
+                config_lines.append(f"            {safe_key}={value}")
 
         return ",\n".join(config_lines)
 
@@ -684,20 +648,29 @@ if __name__ == "__main__":
 
     def _extract_handle_name(self, handle_string):
         """
-        Extract the necessary part from the handle string
-        Example: calc_1757868335061_i6nyja6de-sonata_net-output-object -> sonata_net
+        Extract the port name from handle string.
+        New format: {nodeId}::{fieldName}::{handleType}::{portType}
+        Legacy format: {nodeId}-{fieldName}-{handleType}-{portType}
         """
         if not handle_string:
             return ""
-
         try:
-            # Split on '-' to get the second part
-            parts = handle_string.split('-')
-            if len(parts) >= 2:
-                return parts[1]  # sonata_net part
-            else:
-                # If it cannot be divided, return it as is
+            # New format (::)
+            if '::' in handle_string:
+                parts = handle_string.split('::')
+                if len(parts) >= 2:
+                    return parts[1]  # fieldName
                 return handle_string
+
+            # Legacy format (-)
+            # {nodeId}-{fieldName}-{handleType}-{portType}
+            # fieldName may contain '-', so join everything between nodeId and handleType
+            parts = handle_string.split('-')
+            if len(parts) >= 4 and parts[-2] in ('input', 'output'):
+                return '-'.join(parts[1:-2])
+            elif len(parts) >= 2:
+                return parts[1]
+            return handle_string
         except Exception as e:
             logger.warning(f"Could not extract handle name from '{handle_string}': {e}")
             return handle_string
@@ -855,6 +828,11 @@ if __name__ == "__main__":
                     enhanced_node_data = db_node.data.copy()
                     # Location information etc. is obtained from JSON
                     enhanced_node_data.update(node_data.get("data", {}))
+                    # Restore parameter_modifications from DB — the frontend React Flow state
+                    # only updates schema on parameter change, so its parameter_modifications
+                    # is stale. The DB is always the canonical source for this field.
+                    enhanced_node_data['parameter_modifications'] = db_node.data.get('parameter_modifications', {})
+                    enhanced_node_data['has_parameter_modifications'] = db_node.data.get('has_parameter_modifications', False)
 
                     logger.info(f"DEBUG: Enhanced node data with parameter modifications: {enhanced_node_data}")
                 except FlowNode.DoesNotExist:
@@ -923,63 +901,6 @@ if __name__ == "__main__":
             # Insert code blocks into sections by category
             logger.info(f"DEBUG: Categories found: {list(nodes_by_category.keys())}")
 
-            """
-            # Generate nodes for each category (different sections for each category)
-            for category, node_list in nodes_by_category.items():
-                section_name = self._get_section_name_from_category(category)
-                logger.info(
-                    f"DEBUG: Inserting {len(node_list)} nodes into '{section_name}' section"
-                )
-
-                # detect section
-                section_pattern = re.compile(
-                    #rf"^(\s*)# {re.escape(section_name)} field\s*$", re.MULTILINE
-                    rf"# Create nodes", re.MULTILINE
-                )
-                match = section_pattern.search(updated_code)
-
-                if match:
-                    insertion_point = match.end()
-                    logger.info(
-                        f"DEBUG: Found '{section_name}' section at position {insertion_point}"
-                    )
-
-                    # Delete the existing code in the section and replace it with the new code
-                    # Search to the next section or Create workflow field
-                    next_section_pattern = re.compile(
-                        #r'^(\s*)# (Analysis|IO|Network|Optimization|Simulation|Stimulus|Test|Create workflow) field\s*$',
-                        r'^(\s*)# Create workflow field\s*$',
-                        re.MULTILINE
-                    )
-
-                    # Find next section after insertion_point
-                    remaining_code = updated_code[insertion_point:]
-                    next_match = next_section_pattern.search(remaining_code)
-
-                    if next_match:
-                        # If the next section is found, replace it up to that point
-                        section_end = insertion_point + next_match.start()
-                    else:
-                        # If the next section is not found, continue to the end of the file.
-                        section_end = len(updated_code)
-
-                    # Combine code blocks in sections
-                    section_code_blocks = [
-                        node_info["code_block"] for node_info in node_list
-                    ]
-                    section_code = "\n".join(section_code_blocks)
-
-                    # Replace section content (delete existing code and insert new code)
-                    before_section = updated_code[:insertion_point]
-                    after_section = updated_code[section_end:]
-                    updated_code = f"{before_section}\n{section_code}\n{after_section}"
-                    logger.info(
-                        f"DEBUG: Replaced section content with {len(section_code_blocks)} code blocks in '{section_name}' section"
-                    )
-                else:
-                    logger.error(f"DEBUG: Could not find '{section_name}' section")
-            """
-
             # Create a node for each category (create all categories in one section)
             section_codes = ""
             for category, node_list in nodes_by_category.items():
@@ -1006,10 +927,10 @@ if __name__ == "__main__":
                 )
 
                 # Delete the existing code in the section and replace it with the new code
-                # Search to the next section or Create workflow field
+                # Search to the next section or workflow builder marker
                 next_section_pattern = re.compile(
                     #r'^(\s*)# (Analysis|IO|Network|Optimization|Simulation|Stimulus|Test|Create workflow) field\s*$',
-                    r'^(\s*)# Create workflow field\s*$',
+                    r'^(\s*)# workflow_builder_ready\s*$',
                     re.MULTILINE
                 )
 
@@ -1045,9 +966,9 @@ if __name__ == "__main__":
             for command in workflow_commands:
                 logger.info(f"DEBUG: Command: {command}")
 
-            # Insert the command in the Create workflow field section
+            # Insert the command in the workflow builder marker
             workflow_section_pattern = re.compile(
-                r'^(\s*)workflow_builder = WorkflowBuilder\("neural_simulation"\)\s*$',
+                r'^(\s*)# workflow_builder_ready\s*$',
                 re.MULTILINE,
             )
             match = workflow_section_pattern.search(updated_code)
@@ -1057,7 +978,7 @@ if __name__ == "__main__":
             if match:
                 insertion_point = match.end()
                 logger.info(
-                    f"DEBUG: Found WorkflowBuilder declaration at position {insertion_point}"
+                    f"DEBUG: Found workflow builder marker at position {insertion_point}"
                 )
 
                 if workflow_commands:
@@ -1072,7 +993,7 @@ if __name__ == "__main__":
                 else:
                     logger.info(f"DEBUG: No workflow commands to insert")
             else:
-                logger.error(f"DEBUG: Could not find WorkflowBuilder declaration")
+                logger.error(f"DEBUG: Could not find workflow builder marker")
 
             # save to file
             code_file = self.get_code_file_path(project_name)

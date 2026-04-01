@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Project } from '../type'
 import {
   HStack,
@@ -12,18 +12,30 @@ import {
   IconButton,
   Tooltip,
   useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Textarea,
+  Button,
+  useDisclosure,
 } from '@chakra-ui/react';
-import { CheckIcon, WarningIcon, DeleteIcon } from '@chakra-ui/icons';
+import { CheckIcon, WarningIcon, DeleteIcon, EditIcon } from '@chakra-ui/icons';
 import { FiMenu, FiPlay } from 'react-icons/fi';
 import { useTabContext } from '../../../components/tabs/TabManager';
 import { createAuthHeaders } from '../../../api/authHeaders';
-import LogViewModal from "./logViewModal"; 
+import LogViewModal, { LogEntry } from "./logViewModal";
+import { runWorkflowStream } from '../../../api/workflowRunApi';
+import { WorkflowContextEditor } from '../../../components/WorkflowContextEditor';
 
 export const ProjectSelector = ({ 
   projects, 
   selectedProject, 
   onProjectChange, 
   onProjectDelete,
+  onProjectUpdate,
   autoSaveEnabled = true,
   isConnected = true 
 }: {
@@ -31,21 +43,95 @@ export const ProjectSelector = ({
   selectedProject: string | null;
   onProjectChange: (projectId: string) => void;
   onProjectDelete?: (project: Project) => void;
+  onProjectUpdate?: (projectId: string, workflowContext: Record<string, any>) => void;
   autoSaveEnabled?: boolean;
   isConnected?: boolean;
 }) => {
   const toast = useToast();
+  const { isOpen: isContextOpen, onOpen: onContextOpen, onClose: onContextClose } = useDisclosure();
+  const [contextInitial, setContextInitial] = useState<Record<string, any>>({});
+  const [contextDraft, setContextDraft] = useState<Record<string, any> | null>(null);
+  const [isContextValid, setIsContextValid] = useState<boolean>(true);
+  const [contextResetKey, setContextResetKey] = useState<number>(0);
+  const [descriptionDraft, setDescriptionDraft] = useState<string>('');
   // Island menu opening/closing management
   const [isIslandProjectOpen, setIslandProjectOpen] = useState(true);
   // Use the tab system context
   const { addJupyterTab } = useTabContext();
-  // Log View Modal
+  // Log View Modal - streaming state
   const [isLogOpen, setIsLogOpen] = useState<boolean>(false);
-  const [logText, setLogText] = useState<string | null>(null);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [runStatus, setRunStatus] = useState<"idle" | "running" | "ok" | "error">("idle");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Helper functions for API communication
   const createAuthHeadersLocal = async () => {
     return await createAuthHeaders();
+  };
+
+  const handleSaveContext = async () => {
+    if (!selectedProject) {
+      toast({
+        title: "No Project Selected",
+        description: "Please select a project first",
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!isContextValid) {
+      toast({
+        title: "Invalid JSON",
+        description: "Workflow context must be valid JSON.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    const parsedContext = contextDraft ?? {};
+    const descriptionPayload = descriptionDraft.trim();
+
+    try {
+      const headers = await createAuthHeadersLocal();
+      const response = await fetch(`/api/workflow/${selectedProject}/`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workflow_context: parsedContext, description: descriptionPayload }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData?.error || "Failed to update workflow context");
+      }
+
+      onProjectUpdate?.(selectedProject, parsedContext);
+      toast({
+        title: "Context Updated",
+        description: "Workflow context saved successfully.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      setContextInitial(parsedContext);
+      setContextDraft(parsedContext);
+      onContextClose();
+    } catch (error) {
+      toast({
+        title: "Update Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
   // Get status badge
@@ -154,7 +240,19 @@ export const ProjectSelector = ({
     }
   }, [selectedProject, projects, addJupyterTab, toast]);
 
-  // Run workflow project
+  // Stop a running workflow
+  const handleStopWorkflow = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsRunning(false);
+    setRunStatus("idle");
+    setLogEntries(prev => [...prev, { type: "info", content: "\n--- Execution cancelled by user ---\n" }]);
+  }, []);
+
+  // Track whether a "done" event was received (avoids stale closure on runStatus)
+  const receivedDoneRef = useRef(false);
+
+  // Run workflow project (SSE streaming)
   const handleRunWorkflow = useCallback(async () => {
     if (!selectedProject) {
       toast({
@@ -167,60 +265,112 @@ export const ProjectSelector = ({
       return;
     }
 
-    try {
-      const headers = await createAuthHeadersLocal();
-
-      // Get project name
-      const projectName = projects.find(p => p.id === selectedProject)?.name || selectedProject;
-      // Initial capitalization
-      const trimedProjectName = projectName.replace(/\s/g, '');
-      const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
-
-      const response = await fetch(`/api/workflow/${selectedProject}/run/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
-        body: "",
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`HTTP ${response.status}: ${errorData.error || 'Failed to run workflow'}`);
-      }
-      
-      const result = await response.json();
-      console.log('Run workflow result:', result);
-
-      let resultResult = JSON.stringify(result.result);
-      let resultText = `status: "${result.status}"\n`;
-      resultText += `message: "${result.message}"\n`;
-      resultText += `project name: "${capitalizedProjectName}"\n`;
-      resultText += `result: "${resultResult}"`;
-
-      setLogText(resultText);
-      setIsLogOpen(true);
-
+    // Prevent concurrent executions
+    if (isRunning) {
       toast({
-        title: "Run Workflow Successfully! ✅",
-        description: result.message || "Code has been generated and is ready to use",
-        status: "success",
-        duration: 5000,
+        title: "Already Running",
+        description: "A workflow is already running. Stop it first.",
+        status: "warning",
+        duration: 2000,
         isClosable: true,
       });
+      return;
+    }
+
+    // Reset state and open modal
+    setLogEntries([]);
+    setIsRunning(true);
+    setRunStatus("running");
+    setIsLogOpen(true);
+    receivedDoneRef.current = false;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      await runWorkflowStream(
+        selectedProject,
+        (event) => {
+          switch (event.type) {
+            case "run_started":
+              setLogEntries(prev => [
+                ...prev,
+                { type: "info", content: `Starting workflow: ${event.data.project_name}\n` },
+              ]);
+              break;
+            case "stdout":
+              setLogEntries(prev => [
+                ...prev,
+                { type: "stdout", content: event.data.content as string },
+              ]);
+              break;
+            case "stderr":
+              setLogEntries(prev => [
+                ...prev,
+                { type: "stderr", content: event.data.content as string },
+              ]);
+              break;
+            case "execute_result":
+              setLogEntries(prev => [
+                ...prev,
+                { type: "execute_result", content: event.data.content as string },
+              ]);
+              break;
+            case "error": {
+              const tb = (event.data.traceback as string[]) || [];
+              const errorText = tb.length > 0
+                ? tb.join("\n")
+                : `${event.data.ename}: ${event.data.evalue}`;
+              setLogEntries(prev => [
+                ...prev,
+                { type: "error", content: errorText + "\n" },
+              ]);
+              break;
+            }
+            case "done": {
+              receivedDoneRef.current = true;
+              const status = event.data.status as string;
+              setRunStatus(status === "ok" ? "ok" : "error");
+              setIsRunning(false);
+              setLogEntries(prev => [
+                ...prev,
+                { type: "info", content: `\n--- Execution finished (${status}) ---\n` },
+              ]);
+              break;
+            }
+          }
+        },
+        controller.signal
+      );
+
+      // Stream ended – only update if no "done" event was received
+      if (!receivedDoneRef.current) {
+        setIsRunning(false);
+        setRunStatus("ok");
+      }
     } catch (error) {
-      console.error('Error run Workflow:', error);
+      if ((error as Error).name === "AbortError") {
+        // User cancelled – already handled in handleStopWorkflow
+        return;
+      }
+      console.error("Error running workflow:", error);
+      setIsRunning(false);
+      setRunStatus("error");
+      setLogEntries(prev => [
+        ...prev,
+        { type: "error", content: `\nConnection error: ${(error as Error).message}\n` },
+      ]);
       toast({
         title: "Error",
-        description: "Failed to run workflow",
+        description: (error as Error).message || "Failed to run workflow",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
+    } finally {
+      abortControllerRef.current = null;
     }
-  }, [selectedProject, projects, toast]);
+  }, [selectedProject, toast, isRunning]);
 
   return (
     <Box
@@ -306,6 +456,47 @@ export const ProjectSelector = ({
                 </option>
               ))}
             </Select>
+
+            {selectedProject && (
+              <Tooltip
+                label={(() => {
+                  const project = projects.find(p => p.id === selectedProject);
+                  const ctx = project?.workflow_context ?? {};
+                  const species = ctx.species ? `species: ${ctx.species}` : "species: -";
+                  const sources = Array.isArray(ctx.metadata_sources) && ctx.metadata_sources.length > 0
+                    ? `sources: ${ctx.metadata_sources.join(", ")}`
+                    : "sources: -";
+                  const resources = ctx.resource_requirements || {};
+                  const cpus = resources.cpus !== undefined ? `cpus: ${resources.cpus}` : "cpus: -";
+                  const mem = resources.memory_gb !== undefined ? `mem_gb: ${resources.memory_gb}` : "mem_gb: -";
+                  return `${species} | ${sources} | ${cpus} | ${mem}`;
+                })()}
+                placement="top"
+              >
+                <IconButton
+                  aria-label="Edit workflow context"
+                  icon={<EditIcon />}
+                  size="sm"
+                  colorScheme="blue"
+                  variant="outline"
+                  onClick={() => {
+                    const project = projects.find(p => p.id === selectedProject);
+                    const context = project?.workflow_context ?? {};
+                    setDescriptionDraft(project?.description ?? '');
+                    setContextInitial(context);
+                    setContextDraft(context);
+                    setIsContextValid(true);
+                    setContextResetKey(prev => prev + 1);
+                    onContextOpen();
+                  }}
+                  _hover={{
+                    bg: "blue.50",
+                    borderColor: "blue.400"
+                  }}
+                  marginTop={2}
+                />
+              </Tooltip>
+            )}
             
             {selectedProject && onProjectDelete && (
               <Tooltip label="Delete project" placement="top">
@@ -359,13 +550,49 @@ export const ProjectSelector = ({
         </VStack>
       </Box>
 
-      <LogViewModal 
+      <LogViewModal
         isOpen={isLogOpen}
         onClose={() => {
           setIsLogOpen(false);
         }}
-        logText={logText}
+        logEntries={logEntries}
+        isRunning={isRunning}
+        runStatus={runStatus}
+        onStop={handleStopWorkflow}
       />
+
+      <Modal isOpen={isContextOpen} onClose={onContextClose} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Workflow Context</ModalHeader>
+          <ModalBody>
+            <Box mb={4}>
+              <FormLabel fontSize="sm">Project Description</FormLabel>
+              <Textarea
+                value={descriptionDraft}
+                onChange={(e) => setDescriptionDraft(e.target.value)}
+                placeholder="Describe your workflow project..."
+              />
+            </Box>
+            <WorkflowContextEditor
+              key={contextResetKey}
+              initialContext={contextInitial}
+              onChange={(context, rawText, isValid) => {
+                setContextDraft(context);
+                setIsContextValid(isValid);
+              }}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onContextClose}>
+              Cancel
+            </Button>
+            <Button colorScheme="blue" onClick={handleSaveContext}>
+              Save
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 };

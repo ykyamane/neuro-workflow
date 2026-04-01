@@ -64,24 +64,49 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed("Authentication failed.")
 
     def verify_token(self, token):
+        """Validate a Supabase JWT token.
+
+        Tries HS256 verification with the JWT secret first (standard Supabase
+        setup), then falls back to RS256 via the JWKS endpoint.
         """
-        SupValidate JWT token in Supabase
-        """
-        # SupabaIt should be taken from your Supabase project settings
         supabase_url = settings.SUPABASE_URL
-        supabase_key = settings.SUPABASE_ANON_KEY
+        jwt_secret = getattr(settings, "SUPABASE_JWT_SECRET", None)
 
-        # Obtained from the JWT header kid (key id) 
-        unverified_header = jwt.get_unverified_header(token)
+        decode_kwargs = dict(
+            audience="authenticated",
+            issuer=f"{supabase_url}/auth/v1",
+        )
 
-        # Get the Supabase public key
+        # --- HS256 with JWT secret (preferred) ---
+        if jwt_secret:
+            try:
+                return jwt.decode(
+                    token, jwt_secret, algorithms=["HS256"], **decode_kwargs,
+                )
+            except jwt.InvalidTokenError:
+                logger.debug("HS256 verification failed, trying JWKS fallback")
+
+        # --- RS256 via JWKS (fallback) ---
         jwks_url = f"{supabase_url}/auth/v1/jwks"
-        jwks_response = requests.get(jwks_url)
-        jwks = jwks_response.json()
+        try:
+            jwks_response = requests.get(jwks_url, timeout=5)
+            jwks_response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise jwt.InvalidTokenError(f"Failed to fetch JWKS: {e}")
+        try:
+            jwks = jwks_response.json()
+        except ValueError as e:
+            raise jwt.InvalidTokenError(f"Invalid JWKS response: {e}")
 
-        # Finding the right public key
+        keys = jwks.get("keys")
+        if not keys:
+            raise jwt.InvalidTokenError(
+                f"JWKS response has no 'keys' field: {jwks}"
+            )
+
+        unverified_header = jwt.get_unverified_header(token)
         public_key = None
-        for key in jwks["keys"]:
+        for key in keys:
             if key["kid"] == unverified_header.get("kid"):
                 public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
                 break
@@ -89,16 +114,9 @@ class SupabaseAuthentication(authentication.BaseAuthentication):
         if not public_key:
             raise jwt.InvalidTokenError("Unable to find appropriate key")
 
-        # Validate token
-        payload = jwt.decode(
-            token,
-            public_key,
-            algorithms=["RS256"],
-            audience="authenticated",
-            issuer=f"{supabase_url}/auth/v1",
+        return jwt.decode(
+            token, public_key, algorithms=["RS256"], **decode_kwargs,
         )
-
-        return payload
 
     def get_or_create_user(self, user_id, email, payload):
         """

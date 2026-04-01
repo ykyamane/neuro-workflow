@@ -40,19 +40,26 @@ class Connection:
 class Workflow:
     """Represents a complete workflow with nodes and connections."""
     
-    def __init__(self, name: str, nodes: Dict[str, Node], connections: List[Connection]):
+    def __init__(self, name: str, nodes: Dict[str, Node], connections: List[Connection],
+                 context: Optional[Dict[str, Any]] = None):
         """Initialize a workflow.
         
         Args:
             name: Name of the workflow
             nodes: Dictionary of nodes (name -> node)
             connections: List of connections
+            context: Optional workflow-level context injected into all nodes
         """
         self.name = name
         self.nodes = nodes
         self.connections = connections
+        self.context: Dict[str, Any] = context or {}
         self._execution_order: List[str] = []
         self._execution_sequence: List[Dict[str, Any]] = []  # Track execution order and metadata
+        
+        if self.context:
+            for node in self.nodes.values():
+                node._context.update(self.context)
         
     def _compute_execution_order(self) -> None:
         """Compute the execution order of nodes based on dependencies.
@@ -285,16 +292,33 @@ class Workflow:
 class WorkflowBuilder:
     """Builder pattern for creating workflows."""
     
-    def __init__(self, name: str):
+    def __init__(self, name: str, context: Optional[Dict[str, Any]] = None):
         """Initialize a workflow builder.
         
         Args:
             name: Name of the workflow
+            context: Optional workflow-level context injected into all nodes
         """
         self.name = name
         self.nodes: Dict[str, Node] = {}
         self.connections: List[Connection] = []
+        self.context: Dict[str, Any] = context or {}
         self._execution_sequence: List[Dict[str, Any]] = []  # Track execution order and metadata
+
+    def set_context(self, context: Dict[str, Any]) -> 'WorkflowBuilder':
+        """Set workflow-level context and inject into all existing nodes.
+        
+        Args:
+            context: Context dictionary to set
+            
+        Returns:
+            Self for method chaining
+        """
+        self.context = context or {}
+        if self.context:
+            for node in self.nodes.values():
+                node._context.update(self.context)
+        return self
         
     def add_node(self, node: Node) -> 'WorkflowBuilder':
         """Add a node to the workflow.
@@ -311,6 +335,8 @@ class WorkflowBuilder:
         if node.name in self.nodes:
             raise ValueError(f"Node with name '{node.name}' already exists in workflow")
             
+        if self.context:
+            node._context.update(self.context)
         self.nodes[node.name] = node
         return self
         
@@ -504,7 +530,7 @@ class WorkflowBuilder:
         Returns:
             The built workflow
         """
-        return Workflow(self.name, self.nodes, self.connections)
+        return Workflow(self.name, self.nodes, self.connections, context=self.context)
     
     def execute_workflow(self) -> bool:
         """Execute the workflow and track execution sequence.

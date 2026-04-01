@@ -27,6 +27,11 @@ export interface ParameterField {
   };
   optional?: boolean;
   widget_type?: string;
+  // Optimization metadata
+  optimizable?: boolean;
+  optimization_range?: [number, number] | number[];
+  is_objective?: boolean;
+  objective_range?: [number, number] | number[];
 }
 
 export interface Method {
@@ -51,16 +56,18 @@ export interface SchemaFields {
 }
 
 export interface CalculationNodeData {
+  [key: string]: unknown;
   file_name: string;
   label: string;
-  instanceName: string,
+  instanceName: string;
   schema: SchemaFields;
   nodeType?: string;
   operation?: string;
-  // Node-specific parameter values ​​(overrides the default_value in the schema)
+  // Node-specific parameter values (overrides the default_value in the schema)
   nodeParameters?: {
     [key: string]: any;
   };
+  isParamExpand?: boolean;
   color: string;
 }
 
@@ -68,6 +75,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
+  workflow_context?: Record<string, any>;
   created_at: string;
   updated_at: string;
 }

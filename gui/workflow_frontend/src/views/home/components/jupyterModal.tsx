@@ -22,6 +22,7 @@ import {
   VStack,
   useToast,
   Code,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { ExternalLinkIcon, RepeatIcon, SettingsIcon, CopyIcon } from '@chakra-ui/icons';
 
@@ -61,6 +62,14 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
     url: null
   });
 
+  const bg = useColorModeValue('white', 'gray.800');
+  const headerBg = useColorModeValue('white', 'gray.700');
+  const borderColor = useColorModeValue('#e5e5e5', 'gray.200');
+  const panelBg = useColorModeValue('#f7f7f8', 'gray.50');
+  const subtextColor = useColorModeValue('gray.500', 'gray.600');
+  const closeButtonBg = useColorModeValue('white', 'gray.700');
+  const closeButtonHoverBg = useColorModeValue('gray.100', 'gray.600');
+
   // Launch JupyterHub and get the URL
   const initializeJupyter = async () => {
     if (!projectId) {
@@ -81,13 +90,13 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
       if (isDevelopment) {
         // Development mode: Directly access the URL containing the project ID
         jupyterUrl = `http://localhost:8000/hub/login?username=user1&password=password`;
-        
+
         console.log(`Development mode: Initializing Jupyter for project ${projectId}`);
         console.log(`URL: ${jupyterUrl}`);
-        
+
         // Simple wait (actual health check omitted)
         await new Promise(resolve => setTimeout(resolve, 1500));
-        
+
       } else {
         // Production mode: JWT authentication through the Django API
         const requestBody: any = {
@@ -120,22 +129,22 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
         }
 
         const data = await response.json();
-        
+
         // Use a URL containing the project ID even in production
-        jupyterUrl = data.jupyterhub_url || 
+        jupyterUrl = data.jupyterhub_url ||
                     `${jupyterBaseUrl}/project/${projectId}`;
 
         // If there is a token, add it to the URL (for iframes)
         if (jwtToken && !data.jupyterhub_url) {
           jupyterUrl += `?token=${jwtToken}`;
         }
-        
+
         console.log(`Production URL: ${jupyterUrl}`);
-        
+
         // Wait for JupyterHub to be ready
         await waitForJupyterReady(jupyterBaseUrl, projectId);
       }
-      
+
       setStatus({
         isLoading: false,
         isReady: true,
@@ -145,8 +154,8 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 
       toast({
         title: "Jupyter Lab Ready",
-        description: isDevelopment 
-          ? `Project "${projectId}" JupyterLab has started (development mode)` 
+        description: isDevelopment
+          ? `Project "${projectId}" JupyterLab has started (development mode)`
           : `Project "${projectId}" JupyterLab has started`,
         status: "success",
         duration: 3000,
@@ -155,9 +164,9 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 
     } catch (error) {
       console.error('JupyterHub initialization error:', error);
-      
+
       const errorMessage = error instanceof Error ? error.message : "Startup failed";
-      
+
       setStatus({
         isLoading: false,
         isReady: false,
@@ -177,22 +186,22 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 
   // Wait for JupyterHub to be ready
   const waitForJupyterReady = async (
-    baseUrl: string, 
+    baseUrl: string,
     projectId: string,
     maxAttempts = 30
   ): Promise<void> => {
     console.log(`Waiting for JupyterHub to be ready for project ${projectId}...`);
-    
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
         // Use a health check endpoint to avoid CORS errors
         const healthCheckUrl = `${baseUrl}/hub/api`;
-        
-        await fetch(healthCheckUrl, { 
+
+        await fetch(healthCheckUrl, {
           method: 'HEAD',
           mode: 'no-cors' // Avoid CORS errors
         });
-        
+
         // In no-cors mode, an opaque response is always returned.
         // Actual startup check is performed on a time basis
         if (i >= 3) { // Wait at least 3 seconds
@@ -202,11 +211,11 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
       } catch (error) {
         // Ignore the error and continue
       }
-      
+
       // Wait 1 second
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
+
     throw new Error('JupyterHub startup timed out');
   };
 
@@ -269,25 +278,25 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
   };
 
   return (
-    <Modal 
-      isOpen={isOpen} 
-      onClose={onClose} 
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
       size="full"
       closeOnOverlayClick={false}
     >
       <ModalOverlay bg="blackAlpha.600" />
-      <ModalContent 
-        maxW="95vw" 
-        maxH="95vh" 
+      <ModalContent
+        maxW="95vw"
+        maxH="95vh"
         m={4}
-        bg="white"
+        bg={bg}
         borderRadius="lg"
         overflow="hidden"
       >
-        <ModalHeader 
-          bg="gray.700" 
-          borderBottom="1px" 
-          borderColor="gray.200"
+        <ModalHeader
+          bg={headerBg}
+          borderBottom="1px"
+          borderColor={borderColor}
           py={3}
         >
           <HStack justify="space-between" align="center">
@@ -300,17 +309,17 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                   Project: {projectId}
                 </Badge>
               )}
-              
+
               {/* Development/Production Mode Display */}
-              <Badge 
-                colorScheme={isDevelopment ? "green" : "blue"} 
-                variant="outline" 
+              <Badge
+                colorScheme={isDevelopment ? "green" : "blue"}
+                variant="outline"
                 size="sm"
               >
                 {isDevelopment ? "Development" : "Production"}
               </Badge>
             </HStack>
-            
+
             <HStack spacing={2}>
               {status.isReady && (
                 <>
@@ -323,7 +332,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                       onClick={handleCopyUrl}
                     />
                   </Tooltip>
-                  
+
                   <Tooltip label="Open in new tab">
                     <IconButton
                       aria-label="Open in new tab"
@@ -333,7 +342,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                       onClick={handleOpenInNewTab}
                     />
                   </Tooltip>
-                  
+
                   <Tooltip label="reload">
                     <IconButton
                       aria-label="reload"
@@ -345,7 +354,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                   </Tooltip>
                 </>
               )}
-              
+
               <Tooltip label="setting">
                 <IconButton
                   aria-label="setting"
@@ -358,20 +367,20 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
             </HStack>
           </HStack>
         </ModalHeader>
-        
-        <ModalCloseButton 
+
+        <ModalCloseButton
           size="lg"
           top={2}
           right={2}
-          bg="white"
-          _hover={{ bg: "gray.100" }}
+          bg={closeButtonBg}
+          _hover={{ bg: closeButtonHoverBg }}
         />
-        
-        <ModalBody p={0} bg="gray.50">
+
+        <ModalBody p={0} bg={panelBg}>
           {status.isLoading && (
-            <VStack 
-              justify="center" 
-              align="center" 
+            <VStack
+              justify="center"
+              align="center"
               h="70vh"
               spacing={4}
             >
@@ -380,19 +389,19 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                 <Text fontSize="lg" fontWeight="semibold">
                   Starting JupyterLab...
                 </Text>
-                <Text fontSize="sm" color="gray.600">
+                <Text fontSize="sm" color={subtextColor}>
                   Project ID: <Code>{projectId}</Code>
                 </Text>
-                <Text fontSize="sm" color="gray.600">
-                  {isDevelopment 
-                    ? "Development mode (no authentication, automatic login)" 
+                <Text fontSize="sm" color={subtextColor}>
+                  {isDevelopment
+                    ? "Development mode (no authentication, automatic login)"
                     : "Production mode (JWT authentication and user environment preparation in progress)"
                   }
                 </Text>
               </VStack>
             </VStack>
           )}
-          
+
           {status.error && (
             <Box p={8}>
               <Alert status="error" borderRadius="md">
@@ -403,16 +412,16 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
                     {status.error}
                   </AlertDescription>
                   {projectId && (
-                    <Text fontSize="sm" color="gray.600" mt={2}>
+                    <Text fontSize="sm" color={subtextColor} mt={2}>
                       Project ID: <Code>{projectId}</Code>
                     </Text>
                   )}
                 </Box>
               </Alert>
-              
+
               <HStack mt={4} justify="center">
-                <Button 
-                  colorScheme="red" 
+                <Button
+                  colorScheme="red"
                   variant="outline"
                   onClick={handleRetry}
                   leftIcon={<RepeatIcon />}
@@ -425,7 +434,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
               </HStack>
             </Box>
           )}
-          
+
           {status.isReady && status.url && (
             <Box h="calc(95vh - 120px)" w="100%">
               <iframe
@@ -446,28 +455,28 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
             </Box>
           )}
         </ModalBody>
-        
-        <ModalFooter 
-          bg="gray.50" 
-          borderTop="1px" 
-          borderColor="gray.200"
+
+        <ModalFooter
+          bg={panelBg}
+          borderTop="1px"
+          borderColor={borderColor}
           py={2}
         >
           <HStack spacing={3} justify="space-between" w="100%">
             <HStack spacing={2}>
               {status.isReady && (
                 <>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color={subtextColor}>
                     💡 Tip: Ctrl+S Save the notebook with
                   </Text>
-                  <Text fontSize="xs" color="gray.400">|</Text>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color={subtextColor}>|</Text>
+                  <Text fontSize="xs" color={subtextColor}>
                     📁 working folder: /projects/{projectId}
                   </Text>
                 </>
               )}
             </HStack>
-            
+
             <Button variant="ghost" onClick={onClose} size="sm">
               閉じる
             </Button>

@@ -135,7 +135,19 @@ class FlowService:
         node.position_x = node_data["position"]["x"]
         node.position_y = node_data["position"]["y"]
         node.node_type = node_data.get("type", node.node_type)
-        node.data = node_data.get("data", node.data)
+
+        if "data" in node_data:
+            new_data = dict(node_data["data"])
+            # The PUT /parameters/ endpoint is the sole owner of parameter_modifications.
+            # The general node update (triggered by position/schema changes in the
+            # frontend) carries a stale copy — always restore from the DB record.
+            for key in ("parameter_modifications", "has_parameter_modifications"):
+                if key in node.data:
+                    new_data[key] = node.data[key]
+                elif key in new_data:
+                    del new_data[key]
+            node.data = new_data
+
         node.save()
 
         return node

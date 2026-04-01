@@ -1,29 +1,34 @@
-from rest_framework import status, viewsets, permissions
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+import ast
+import asyncio
+import json
+import logging
+import os
+from pathlib import Path
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.db import transaction
+from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
-from django.http import JsonResponse
-from .models import FlowProject, FlowNode, FlowEdge
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .code_generation_service import CodeGenerationService
+from .jupyter_execution_service import JupyterExecutionService
+from .models import FlowEdge, FlowNode, FlowProject
+from .run_workflow_service import RunWorkflowService
 from .serializers import (
-    FlowProjectSerializer,
-    FlowNodeSerializer,
-    FlowEdgeSerializer,
     FlowDataSerializer,
+    FlowEdgeSerializer,
+    FlowNodeSerializer,
+    FlowProjectSerializer,
 )
 from .services import FlowService
-import json
-import logging
-from django.contrib.auth.models import User
-import os
-from pathlib import Path
-from django.conf import settings
-from .code_generation_service import CodeGenerationService
-from .run_workflow_service import RunWorkflowService
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +128,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
     """CRUD operations for flow nodes (real-time support)"""
 
     authentication_classes = []
+    lookup_url_kwarg = "node_id"
 
     serializer_class = FlowNodeSerializer
     permission_classes = [AllowAny]
@@ -153,12 +159,35 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+            # Validate nodeType in data
+            data_field = request.data.get("data", {})
+            node_type_val = data_field.get("nodeType") if isinstance(data_field, dict) else None
+            if not node_type_val:
+                return Response(
+                    {
+                        "error": "Missing required field: data.nodeType. "
+                        "Each node's data must contain a non-empty 'nodeType' field "
+                        "(e.g. 'analysis', 'simulation')."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from app.box.models import get_categories
+            valid_categories = [cat[0] for cat in get_categories()]
+            if node_type_val.lower() not in valid_categories:
+                return Response(
+                    {
+                        "error": f"Invalid data.nodeType '{node_type_val}'. "
+                        f"Must be one of: {valid_categories}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Create a node using FlowService (same as existing process)
             node_data = {
                 "id": request.data["id"],
                 "position": request.data["position"],
                 "type": request.data.get("type", "default"),
-                "data": request.data.get("data", {}),
+                "data": data_field,
             }
 
             # Check for existing nodes (avoid creating duplicates)
@@ -775,9 +804,120 @@ class BatchCodeGenerationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
+def _format_sse(event_type: str, data: dict) -> str:
+    """Format a Server-Sent Event string."""
+    return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# Track in-progress workflow executions to prevent concurrent runs
+_running_workflows: set[str] = set()
+
+# Jupyter notebook home directory (configurable via env)
+JUPYTER_HOME = os.environ.get("JUPYTER_HOME", "/home/jovyan")
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunStreamView(APIView):
+    """Run workflow code on a Jupyter kernel and stream output via SSE.
+
+    NOTE: This endpoint uses AllowAny + csrf_exempt to match the existing
+    pattern used by all workflow endpoints in this project. In production,
+    add proper authentication (e.g. SupabaseAuthentication).
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, workflow_id):
+        workflow_id_str = str(workflow_id)
+
+        if workflow_id_str in _running_workflows:
+            return Response(
+                {"error": "This workflow is already running."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            project = get_object_or_404(FlowProject, id=workflow_id)
+        except Exception:
+            return Response(
+                {"error": f"Project {workflow_id} not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        project_name = project.name.replace(" ", "").capitalize()
+        code_dir = Path(settings.BASE_DIR) / "codes/projects"
+        script_path = code_dir / project_name / f"{project_name}.py"
+
+        if not script_path.exists():
+            return Response(
+                {"error": f"Script not found: {script_path.name}. Generate code first."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        code = script_path.read_text(encoding="utf-8")
+
+        # Validate generated code syntax before execution
+        try:
+            ast.parse(code)
+        except SyntaxError as e:
+            return Response(
+                {"error": f"Generated code has syntax error at line {e.lineno}: {e.msg}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Prepend os.chdir so the script runs in the correct working directory
+        working_dir = f"{JUPYTER_HOME}/codes/projects/{project_name}"
+        code = (
+            f"import os\nos.makedirs({working_dir!r}, exist_ok=True)\n"
+            f"os.chdir({working_dir!r})\n\n"
+            + code
+        )
+
+        response = StreamingHttpResponse(
+            self._sync_event_generator(workflow_id_str, project_name, code),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+    def _sync_event_generator(self, workflow_id, project_name, code):
+        """Wrap the async Jupyter execution into a sync generator for WSGI."""
+        _running_workflows.add(workflow_id)
+        loop = asyncio.new_event_loop()
+        try:
+            yield _format_sse("run_started", {
+                "workflow_id": workflow_id,
+                "project_name": project_name,
+            })
+
+            service = JupyterExecutionService()
+            agen = service.execute_code(code)
+
+            while True:
+                try:
+                    event = loop.run_until_complete(agen.__anext__())
+                    yield _format_sse(event["type"], event["data"])
+                except StopAsyncIteration:
+                    break
+                except Exception as e:
+                    logger.error("Jupyter execution stream error: %s", e, exc_info=True)
+                    yield _format_sse("error", {
+                        "ename": type(e).__name__,
+                        "evalue": str(e),
+                        "traceback": [],
+                    })
+                    yield _format_sse("done", {"status": "error"})
+                    break
+        finally:
+            _running_workflows.discard(workflow_id)
+            loop.close()
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class BatchWorkflowRunView(APIView):
-    """Run Workflow Project View"""
+    """Run Workflow Project View (legacy non-streaming)"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -798,7 +938,7 @@ class BatchWorkflowRunView(APIView):
                 "status": "success",
                 "message": f"Workflow project completed successfully.",
                 "workflow_id": str(workflow_id),
-                "result": result 
+                "result": result
             }
 
             return Response(response_data, status=status.HTTP_200_OK)

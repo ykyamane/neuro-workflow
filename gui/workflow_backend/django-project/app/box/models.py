@@ -194,6 +194,16 @@ class PythonFile(models.Model):
             if "widget_type" in param_info:
                 param_data["widget_type"] = param_info["widget_type"]
 
+            # Optimization metadata
+            if "optimizable" in param_info:
+                param_data["optimizable"] = param_info["optimizable"]
+            if "optimization_range" in param_info:
+                param_data["optimization_range"] = param_info["optimization_range"]
+            if "is_objective" in param_info:
+                param_data["is_objective"] = param_info["is_objective"]
+            if "objective_range" in param_info:
+                param_data["objective_range"] = param_info["objective_range"]
+
             converted_params[param_name] = param_data
 
         return converted_params
@@ -209,5 +219,11 @@ class PythonFile(models.Model):
             "dict": "dict",
             "object": "object",
             "any": "any",
+            "file_path": "file_path",
+            "csv_file": "csv_file",
+            "json_file": "json_file",
+            "pickle_file": "pickle_file",
+            "numpy_file": "numpy_file",
+            "hdf5_file": "hdf5_file",
         }
         return type_mapping.get(str(port_type).lower(), "any")
