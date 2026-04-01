@@ -16,3 +16,6 @@ ENV/
 
 # RAG directory (contains API keys)
 rag/
+
+# BrainScaler (separate repos, tracked independently)
+brainscaler/
