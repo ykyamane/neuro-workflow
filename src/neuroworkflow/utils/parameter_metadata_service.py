@@ -33,6 +33,7 @@ class MetadataSource(Enum):
     CUSTOM_DB = "custom_db"
     PUBMED = "pubmed"
     NEUROML_DB = "neuroml_db"
+    LOCAL_RAG = "local_rag"
 
 
 @dataclass
@@ -93,6 +94,8 @@ class ParameterMetadataService:
         elif not self.openai_api_key:
             logger.debug("OpenAI API key not provided, using stub implementation")
         
+        # How long to wait for all DB adapters (e.g. 10s without RAG; 120s+ when Local RAG is used)
+        self.database_query_timeout_sec = float(self.config.get('database_query_timeout_sec', 10))
         # Database adapters configuration (after OpenAI client is ready)
         self.database_adapters = []
         self._initialize_database_adapters()
@@ -102,10 +105,11 @@ class ParameterMetadataService:
         try:
             # Try to import database adapters
             from .database_adapters import (
-                AllenBrainAdapter, 
+                AllenBrainAdapter,
                 NeuroMorphoAdapter,
                 PubMedAdapter,
-                NeuroMLDBAdapter
+                NeuroMLDBAdapter,
+                LocalRAGAdapter,
             )
             
             # Initialize Allen Brain Atlas adapter (no API key needed - it's free!)
@@ -157,7 +161,27 @@ class ParameterMetadataService:
             if neuroml_adapter.is_available():
                 self.database_adapters.append(neuroml_adapter)
                 logger.info("NeuroML-DB adapter initialized")
-            
+
+            # Initialize Local RAG adapter (local semantic search / HyperRag-style API)
+            local_rag_config = self.config.get("local_rag", {})
+            local_rag_adapter = LocalRAGAdapter({
+                "base_url": local_rag_config.get("base_url", ""),
+                "api_key": local_rag_config.get("api_key", ""),
+                "username": local_rag_config.get("username", ""),
+                "password": local_rag_config.get("password", ""),
+                "login_endpoint": local_rag_config.get("login_endpoint", ""),
+                "use_username_as_bearer": local_rag_config.get("use_username_as_bearer", True),
+                "enabled": local_rag_config.get("enabled", True),
+                "query_endpoint": local_rag_config.get("query_endpoint", "/query"),
+                "timeout": local_rag_config.get("timeout", 15),
+                "max_chunks": local_rag_config.get("max_chunks", 10),
+                "source_name": local_rag_config.get("source_name", "Local RAG"),
+                "openai_client": self.openai_client,
+            })
+            if local_rag_adapter.is_available():
+                self.database_adapters.append(local_rag_adapter)
+                logger.info("Local RAG adapter initialized")
+
             # Load custom databases from config (if provided)
             custom_databases = self.config.get('custom_databases', [])
             self._load_custom_databases(custom_databases)
@@ -292,10 +316,10 @@ class ParameterMetadataService:
             thread.start()
             threads.append(thread)
         
-        # Wait for all threads with timeout (max 10 seconds total for better UX)
+        # Wait for all threads with timeout (configurable; long when Local RAG is used)
         import time
         start_time = time.time()
-        timeout = 10.0  # 10 seconds max for database queries
+        timeout = self.database_query_timeout_sec
         
         for thread in threads:
             remaining_time = timeout - (time.time() - start_time)
@@ -307,7 +331,7 @@ class ParameterMetadataService:
         # Collect results from queue (wait for all threads to finish or timeout)
         # Collect all results that are ready, even if some threads are still running
         collected_sources = set()
-        max_wait = 12.0  # Wait up to 12 seconds total (10s for threads + 2s buffer)
+        max_wait = timeout + 5.0  # Buffer after thread join to drain queue
         queue_start = time.time()
         
         while (time.time() - queue_start) < max_wait:

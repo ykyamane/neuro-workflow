@@ -80,6 +80,31 @@ def get_metadata_service_instance():
         logger.info(f"OpenAI API key found (length: {len(openai_api_key)}), will use OpenAI for suggestions")
     else:
         logger.info("No OpenAI API key found, will use stub implementation")
+
+    # Local RAG / semantic search (e.g. HyperRag) – optional; only active when BASE_URL is set
+    local_rag_url = os.getenv('LOCAL_RAG_BASE_URL', '').strip()
+    local_rag_enabled = os.getenv('LOCAL_RAG_ENABLED', 'true').lower() in ('true', '1', 'yes')
+    if local_rag_url:
+        config['local_rag'] = {
+            'base_url': local_rag_url,
+            'enabled': local_rag_enabled,
+            'query_endpoint': os.getenv('LOCAL_RAG_QUERY_ENDPOINT', '/query').strip() or '/query',
+            'timeout': int(os.getenv('LOCAL_RAG_TIMEOUT', '90') or '90'),
+            'max_chunks': int(os.getenv('LOCAL_RAG_MAX_CHUNKS', '10') or '10'),
+            'source_name': os.getenv('LOCAL_RAG_SOURCE_NAME', 'Local RAG').strip() or 'Local RAG',
+            'username': os.getenv('LOCAL_RAG_USERNAME', '').strip(),
+            'password': os.getenv('LOCAL_RAG_PASSWORD', ''),
+            'login_endpoint': (os.getenv('LOCAL_RAG_LOGIN_ENDPOINT') or '').strip(),
+            'use_username_as_bearer': os.getenv('LOCAL_RAG_USE_USERNAME_AS_BEARER', 'true').lower() in ('true', '1', 'yes'),
+        }
+        logger.info("Local RAG configured: base_url=%s (use host.docker.internal when backend runs in Docker)", local_rag_url)
+        # Allow enough time for RAG /global_query (often 50–70s); overall adapter wait uses this
+        rag_timeout = int(os.getenv('LOCAL_RAG_TIMEOUT', '90') or '90')
+        config['database_query_timeout_sec'] = max(rag_timeout + 30, 120)
+    else:
+        logger.info("Local RAG not configured (set LOCAL_RAG_BASE_URL in backend .env to enable; use http://host.docker.internal:8006 when using Docker)")
+    if 'database_query_timeout_sec' not in config:
+        config['database_query_timeout_sec'] = 10
     
     try:
         from neuroworkflow.utils.parameter_metadata_service import (

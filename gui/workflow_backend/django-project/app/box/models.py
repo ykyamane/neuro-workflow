@@ -20,17 +20,19 @@ NODE_CATEGORIES = [
 ]
 
 def get_categories():
-    """Get the category directory as a list"""
+    """Get the category directory as a list (only real directories, skip __init__.py etc.)."""
     sub_directories = []
     nodes_path = Path(settings.MEDIA_ROOT)
-    #if not os.path.isdir(nodes_path):
-    #    return NODE_CATEGORIES    
+    if not nodes_path.is_dir():
+        return NODE_CATEGORIES
     for item in os.listdir(nodes_path):
+        if item.startswith("__") or not (nodes_path / item).is_dir():
+            continue
         itemlarge = item.capitalize()
         if item == 'io':
             itemlarge = 'I/O'
         sub_directories.append([item, itemlarge])
-    return sub_directories
+    return sub_directories if sub_directories else NODE_CATEGORIES
 
 
 def get_upload_path(instance, filename):

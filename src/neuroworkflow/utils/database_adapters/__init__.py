@@ -11,6 +11,7 @@ from .neuromorpho import NeuroMorphoAdapter
 from .pubmed import PubMedAdapter
 from .neuroml_db import NeuroMLDBAdapter
 from .generic import GenericDatabaseAdapter
+from .local_rag import LocalRAGAdapter
 
 __all__ = [
     'DatabaseAdapter',
@@ -19,5 +20,6 @@ __all__ = [
     'PubMedAdapter',
     'NeuroMLDBAdapter',
     'GenericDatabaseAdapter',
+    'LocalRAGAdapter',
 ]
 
