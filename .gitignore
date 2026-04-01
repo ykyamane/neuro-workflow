@@ -26,3 +26,20 @@ rag/
 
 # BrainScaler (separate repos, tracked independently)
 brainscaler/
+
+# Internal dev logs and notes
+logs/
+CLAUDE.md
+README_bk.md
+
+# Local helper scripts (contain hardcoded paths)
+test_features_quick.py
+test_installation.py
+sync_with_upstream.sh
+compare_upstream.sh
+install_docker.sh
+
+# Env snapshots (contain keys)
+env_at_workflow_backend
+env_at_workflow_frontend
+psql
