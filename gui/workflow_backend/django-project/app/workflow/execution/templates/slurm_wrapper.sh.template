@@ -1,0 +1,64 @@
+#!/bin/bash
+# ============================================================================
+# NeuroWorkflow Slurm Job Wrapper
+#
+# This template is staged alongside the generated Python script on the
+# compute node.  The RemoteSlurmExecutor fills in the {{placeholders}}
+# before submission.
+#
+# Outputs:
+#   stdout.log      – captured standard output
+#   stderr.log      – captured standard error
+#   exit_code.txt   – numeric exit code of the Python script
+#   manifest.json   – job metadata written after completion
+# ============================================================================
+
+#SBATCH --job-name={{JOB_NAME}}
+#SBATCH --output={{RUN_DIR}}/slurm-%j.out
+#SBATCH --error={{RUN_DIR}}/slurm-%j.err
+{{SBATCH_EXTRAS}}
+
+set -uo pipefail
+
+RUN_DIR="{{RUN_DIR}}"
+SCRIPT="{{SCRIPT_NAME}}"
+
+cd "${RUN_DIR}" || exit 1
+
+echo "=== NeuroWorkflow Job ==="
+echo "Run ID:    {{RUN_ID}}"
+echo "Project:   {{PROJECT_NAME}}"
+echo "Node:      $(hostname)"
+echo "Start:     $(date -Iseconds)"
+echo "========================="
+
+# ── Environment setup ──────────────────────────────────────────────────
+# Activate a conda/venv environment if configured.
+if [ -n "${NW_CONDA_ENV:-}" ]; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate "${NW_CONDA_ENV}"
+elif [ -n "${NW_VENV_PATH:-}" ]; then
+    source "${NW_VENV_PATH}/bin/activate"
+fi
+
+# ── Execution ──────────────────────────────────────────────────────────
+python "${SCRIPT}" > stdout.log 2> stderr.log
+EXIT_CODE=$?
+echo ${EXIT_CODE} > exit_code.txt
+
+# ── Manifest ───────────────────────────────────────────────────────────
+cat > manifest.json <<MANIFEST_EOF
+{
+  "run_id": "{{RUN_ID}}",
+  "project_name": "{{PROJECT_NAME}}",
+  "script": "${SCRIPT}",
+  "exit_code": ${EXIT_CODE},
+  "node": "$(hostname)",
+  "start_time": "$(date -Iseconds -r stdout.log 2>/dev/null || echo unknown)",
+  "end_time": "$(date -Iseconds)",
+  "slurm_job_id": "${SLURM_JOB_ID:-unknown}"
+}
+MANIFEST_EOF
+
+echo "=== Job finished with exit code ${EXIT_CODE} ==="
+exit ${EXIT_CODE}

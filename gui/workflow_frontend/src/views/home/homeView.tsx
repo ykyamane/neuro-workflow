@@ -19,6 +19,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CodeEditorModal } from './components/codeEditorModal';
+import { JUPYTER_BASE_URL, API_BASE_URL } from '../../config/urls';
 import '@xyflow/react/dist/style.css';
 import SideBoxArea from '../box/boxView';
 import ChatbotArea from './components/chatbotView';
@@ -35,6 +36,7 @@ import { useWorkflowApi } from '../../hooks/useWorkflowApi';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import NodeDetailsContent from './components/nodeDetailModal';
 import { DeleteConfirmDialog } from './components/deleteConfirmDialog';
+import RunStatusPanel from './components/runStatusPanel';
 import { useTabContext } from '../../components/tabs/TabManager';
 import { useFlowStore, PROJECT_ID_KEY } from '../../stores/flowStore';
 import { convertToStrIncFloat } from '../../utils/typeConversion';
@@ -106,26 +108,7 @@ const HomeView = () => {
       const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
       const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
 
-      // Build JupyterLab URL (development mode)
-
-      // If the host contains a port, replace it with :8000. Otherwise keep the host as-is.
-      // Example: example.com:3000 -> example.com:8000
-      const jupyterBase = ((): string => {
-        try {
-          if (typeof window === 'undefined') return 'http://localhost:8000';
-          const { protocol, hostname, host } = window.location;
-          // host includes port if present (hostname:port)
-          if (host.includes(':')) {
-            return `${protocol}//${hostname}:8000`;
-          }
-          return `${protocol}//${host}`;
-        } catch (e) {
-          return 'http://localhost:8000';
-        }
-      })();
-
-      // Construct the JupyterLab URL using the detected base
-      const jupyterUrl = `${jupyterBase}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
+      const jupyterUrl = `${JUPYTER_BASE_URL}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
       
       // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
@@ -1112,6 +1095,11 @@ const HomeView = () => {
           </Box>
         )}
         
+        {/* Async run status panel */}
+        {selectedProject && (
+          <RunStatusPanel workflowId={selectedProject} />
+        )}
+
         {/* Node menu */}
         {nodeMenuPosition && (
           <NodeMenu
@@ -1163,7 +1151,7 @@ const HomeView = () => {
           onClose={onCodeClose}
           identifier={selectedNode?.data.file_name || ''}
           endpoints={{
-            baseUrl: 'http://localhost:3000/api/box',
+            baseUrl: `${API_BASE_URL}/box`,
             getCode: '/files/{identifier}/code/',
             saveCode: '/files/{identifier}/code/',
           }}
@@ -1187,6 +1175,5 @@ const HomeView = () => {
     </div>
   );
 }
-//http://localhost:3000/api/workflow/${projectId}/code/
 
 export default HomeView;

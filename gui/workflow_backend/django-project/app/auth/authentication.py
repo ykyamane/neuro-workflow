@@ -1,6 +1,5 @@
 import jwt
 import requests
-from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from rest_framework import authentication, exceptions
 from django.conf import settings
@@ -8,214 +7,195 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
-class SupabaseAuthentication(authentication.BaseAuthentication):
-    """
-    Supabase JWT Authentication class
-    """
+_jwks_cache: dict = {}
+
+
+def _fetch_jwks(jwks_url: str) -> list:
+    """Fetch and cache JWKS keys from a remote endpoint."""
+    cached = _jwks_cache.get(jwks_url)
+    if cached:
+        return cached
+    try:
+        resp = requests.get(jwks_url, timeout=5)
+        resp.raise_for_status()
+        keys = resp.json().get("keys", [])
+    except Exception as e:
+        raise jwt.InvalidTokenError(f"Failed to fetch JWKS from {jwks_url}: {e}")
+    if keys:
+        _jwks_cache[jwks_url] = keys
+    return keys
+
+
+def _verify_rs256(token: str, jwks_url: str, **decode_kwargs) -> dict:
+    """Verify a JWT using RS256 against a JWKS endpoint."""
+    keys = _fetch_jwks(jwks_url)
+    unverified = jwt.get_unverified_header(token)
+    kid = unverified.get("kid")
+    public_key = None
+    for key in keys:
+        if key.get("kid") == kid:
+            public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
+            break
+    if not public_key:
+        _jwks_cache.pop(jwks_url, None)
+        keys = _fetch_jwks(jwks_url)
+        for key in keys:
+            if key.get("kid") == kid:
+                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
+                break
+    if not public_key:
+        raise jwt.InvalidTokenError("No matching key found in JWKS")
+    return jwt.decode(token, public_key, algorithms=["RS256"], **decode_kwargs)
+
+
+def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
+    """Get-or-create a Django User from an external identity provider."""
+    User = get_user_model()
+    extra = extra or {}
+
+    try:
+        return User.objects.get(username=user_id)
+    except User.DoesNotExist:
+        pass
+
+    if email:
+        try:
+            user = User.objects.get(email=email)
+            user.username = user_id
+            user.save(update_fields=["username"])
+            return user
+        except User.DoesNotExist:
+            pass
+
+    return User.objects.create_user(
+        username=user_id,
+        email=email or "",
+        first_name=extra.get("first_name", ""),
+        last_name=extra.get("last_name", ""),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Base bearer-token authenticator
+# ---------------------------------------------------------------------------
+
+class _BearerAuthentication(authentication.BaseAuthentication):
+    """Extract a Bearer token from the Authorization header."""
 
     def authenticate(self, request):
         auth_header = authentication.get_authorization_header(request).split()
-
         if not auth_header or auth_header[0].lower() != b"bearer":
             return None
-
-        if len(auth_header) == 1:
-            msg = "Invalid token header. No credentials provided."
-            raise exceptions.AuthenticationFailed(msg)
-        elif len(auth_header) > 2:
-            msg = "Invalid token header. Token string should not contain spaces."
-            raise exceptions.AuthenticationFailed(msg)
-
+        if len(auth_header) != 2:
+            raise exceptions.AuthenticationFailed("Malformed Authorization header.")
         try:
             token = auth_header[1].decode("utf-8")
         except UnicodeError:
-            msg = "Invalid token header. Token string should not contain invalid characters."
-            raise exceptions.AuthenticationFailed(msg)
-
+            raise exceptions.AuthenticationFailed("Invalid characters in token.")
         return self.authenticate_credentials(token)
 
     def authenticate_credentials(self, token):
-        """
-        Supabase JWTValidate the token and get or create the user
-        """
+        raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Keycloak OIDC authentication
+# ---------------------------------------------------------------------------
+
+class KeycloakAuthentication(_BearerAuthentication):
+    """Verify JWTs issued by a Keycloak realm (RS256 via JWKS)."""
+
+    def authenticate_credentials(self, token):
+        kc_url = getattr(settings, "KEYCLOAK_URL", None)
+        kc_realm = getattr(settings, "KEYCLOAK_REALM", None)
+        if not kc_url or not kc_realm:
+            return None
+
+        jwks_url = f"{kc_url}/realms/{kc_realm}/protocol/openid-connect/certs"
+        issuer = f"{kc_url}/realms/{kc_realm}"
+        kc_client = getattr(settings, "KEYCLOAK_CLIENT_ID", None)
+
+        decode_kwargs: dict = {"issuer": issuer}
+        if kc_client:
+            decode_kwargs["audience"] = kc_client
+
         try:
-            # Get the Supabase public key and validate the token
-            payload = self.verify_token(token)
-
-            # Get user information
-            user_id = payload.get("sub")
-            email = payload.get("email")
-
-            if not user_id or not email:
-                raise exceptions.AuthenticationFailed("Invalid token payload.")
-
-            # Get or create a Django user
-            user = self.get_or_create_user(user_id, email, payload)
-
-            return (user, token)
-
+            payload = _verify_rs256(token, jwks_url, **decode_kwargs)
         except jwt.ExpiredSignatureError:
             raise exceptions.AuthenticationFailed("Token has expired.")
         except jwt.InvalidTokenError as e:
-            raise exceptions.AuthenticationFailed(f"Invalid token: {str(e)}")
-        except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
-            raise exceptions.AuthenticationFailed("Authentication failed.")
+            raise exceptions.AuthenticationFailed(f"Invalid token: {e}")
 
-    def verify_token(self, token):
-        """Validate a Supabase JWT token.
+        sub = payload.get("sub")
+        email = payload.get("email", "")
+        preferred = payload.get("preferred_username", "")
+        user = _get_or_create_user(
+            user_id=sub,
+            email=email,
+            extra={
+                "first_name": payload.get("given_name", ""),
+                "last_name": payload.get("family_name", ""),
+            },
+        )
+        return (user, token)
 
-        Tries HS256 verification with the JWT secret first (standard Supabase
-        setup), then falls back to RS256 via the JWKS endpoint.
-        """
-        supabase_url = settings.SUPABASE_URL
+
+# ---------------------------------------------------------------------------
+# Supabase authentication (kept for backward compatibility)
+# ---------------------------------------------------------------------------
+
+class SupabaseAuthentication(_BearerAuthentication):
+    """Verify JWTs issued by Supabase (HS256 secret or RS256 JWKS)."""
+
+    def authenticate_credentials(self, token):
+        supabase_url = getattr(settings, "SUPABASE_URL", None)
         jwt_secret = getattr(settings, "SUPABASE_JWT_SECRET", None)
+        if not supabase_url:
+            return None
 
         decode_kwargs = dict(
             audience="authenticated",
             issuer=f"{supabase_url}/auth/v1",
         )
 
-        # --- HS256 with JWT secret (preferred) ---
-        if jwt_secret:
-            try:
-                return jwt.decode(
-                    token, jwt_secret, algorithms=["HS256"], **decode_kwargs,
-                )
-            except jwt.InvalidTokenError:
-                logger.debug("HS256 verification failed, trying JWKS fallback")
-
-        # --- RS256 via JWKS (fallback) ---
-        jwks_url = f"{supabase_url}/auth/v1/jwks"
         try:
-            jwks_response = requests.get(jwks_url, timeout=5)
-            jwks_response.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise jwt.InvalidTokenError(f"Failed to fetch JWKS: {e}")
-        try:
-            jwks = jwks_response.json()
-        except ValueError as e:
-            raise jwt.InvalidTokenError(f"Invalid JWKS response: {e}")
+            if jwt_secret:
+                try:
+                    payload = jwt.decode(
+                        token, jwt_secret, algorithms=["HS256"], **decode_kwargs,
+                    )
+                    return self._resolve_user(payload, token)
+                except jwt.InvalidTokenError:
+                    logger.debug("HS256 failed, trying JWKS")
 
-        keys = jwks.get("keys")
-        if not keys:
-            raise jwt.InvalidTokenError(
-                f"JWKS response has no 'keys' field: {jwks}"
-            )
+            jwks_url = f"{supabase_url}/auth/v1/jwks"
+            payload = _verify_rs256(token, jwks_url, **decode_kwargs)
+            return self._resolve_user(payload, token)
 
-        unverified_header = jwt.get_unverified_header(token)
-        public_key = None
-        for key in keys:
-            if key["kid"] == unverified_header.get("kid"):
-                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
-                break
+        except jwt.ExpiredSignatureError:
+            raise exceptions.AuthenticationFailed("Token has expired.")
+        except jwt.InvalidTokenError as e:
+            raise exceptions.AuthenticationFailed(f"Invalid token: {e}")
+        except Exception as e:
+            logger.error(f"Supabase auth error: {e}")
+            raise exceptions.AuthenticationFailed("Authentication failed.")
 
-        if not public_key:
-            raise jwt.InvalidTokenError("Unable to find appropriate key")
-
-        return jwt.decode(
-            token, public_key, algorithms=["RS256"], **decode_kwargs,
-        )
-
-    def get_or_create_user(self, user_id, email, payload):
-        """
-        Get or create Django users from Supabase user information
-        """
-        User = get_user_model()
-
-        # First, Search by Supabase UID
-        try:
-            user = User.objects.get(username=user_id)
-            return user
-        except User.DoesNotExist:
-            pass
-
-        # Next, Search by mail address
-        try:
-            user = User.objects.get(email=email)
-            # Update username to Supabase UID
-            user.username = user_id
-            user.save()
-            return user
-        except User.DoesNotExist:
-            pass
-
-        # Create new user
-        user = User.objects.create_user(
-            username=user_id,
+    @staticmethod
+    def _resolve_user(payload, token):
+        sub = payload.get("sub")
+        email = payload.get("email")
+        if not sub or not email:
+            raise exceptions.AuthenticationFailed("Invalid token payload.")
+        user = _get_or_create_user(
+            user_id=sub,
             email=email,
-            first_name=payload.get("user_metadata", {}).get("first_name", ""),
-            last_name=payload.get("user_metadata", {}).get("last_name", ""),
+            extra={
+                "first_name": payload.get("user_metadata", {}).get("first_name", ""),
+                "last_name": payload.get("user_metadata", {}).get("last_name", ""),
+            },
         )
-
-        return user
-
-
-# settings.py
-"""
-SUPABASE_URL = 'https://your-project.supabase.co'
-SUPABASE_ANON_KEY = 'your-anon-key'
-
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'your_app.authentication.SupabaseAuthentication',
-        # Add other authentication classes as needed
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-}
-
-# CORS設定
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    # Also added the production frontend URL
-]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
-"""
-
-# views.py
-"""
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def protected_view(request):
-    return Response({
-        'message': 'Hello authenticated user!',
-        'user': {
-            'id': request.user.id,
-            'username': request.user.username,
-            'email': request.user.email,
-        }
-    })
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def user_profile(request):
-    return Response({
-        'user': {
-            'id': request.user.id,
-            'username': request.user.username,
-            'email': request.user.email,
-            'first_name': request.user.first_name,
-            'last_name': request.user.last_name,
-            'date_joined': request.user.date_joined,
-        }
-    })
-"""
+        return (user, token)

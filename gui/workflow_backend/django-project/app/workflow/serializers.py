@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FlowProject, FlowNode, FlowEdge
+from .models import FlowProject, FlowNode, FlowEdge, WorkflowRun
 from django.contrib.auth.models import User
 
 from app.box.models import get_categories
@@ -195,3 +195,47 @@ class FlowDataSerializer(serializers.Serializer):
                         f"Each edge must have a '{field}' field"
                     )
         return value
+
+
+class WorkflowRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowRun
+        fields = [
+            "id",
+            "workflow",
+            "user",
+            "backend",
+            "status",
+            "slurm_job_id",
+            "exit_code",
+            "stdout",
+            "stderr",
+            "error_message",
+            "resource_requests",
+            "artifacts",
+            "submitted_at",
+            "started_at",
+            "finished_at",
+        ]
+        read_only_fields = [
+            "id",
+            "user",
+            "status",
+            "slurm_job_id",
+            "exit_code",
+            "stdout",
+            "stderr",
+            "error_message",
+            "artifacts",
+            "submitted_at",
+            "started_at",
+            "finished_at",
+        ]
+
+
+class WorkflowRunSubmitSerializer(serializers.Serializer):
+    backend = serializers.ChoiceField(
+        choices=WorkflowRun.Backend.choices,
+        default=WorkflowRun.Backend.JUPYTER,
+    )
+    resource_requests = serializers.DictField(required=False, default=dict)

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useToast } from "@chakra-ui/react";
+import { JUPYTER_BASE_URL } from "../config/urls";
 
 interface JupyterHubConfig {
   baseUrl: string;
@@ -27,7 +28,7 @@ interface UseJupyterHubReturn {
 
 const useJupyterHub = (
   config: JupyterHubConfig = {
-    baseUrl: "http://localhost:8000",
+    baseUrl: JUPYTER_BASE_URL,
     apiEndpoint: "/api/jupyterhub",
     isDevelopment: true, // Default is development mode
   }

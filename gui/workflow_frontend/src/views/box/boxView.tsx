@@ -39,6 +39,7 @@ import { IconType } from 'react-icons';
 import { FiBox, FiCopy, FiTrash2, FiEdit2, FiCode, FiRefreshCw, FiChevronDown, FiChevronRight, FiMenu } from 'react-icons/fi'; // Use as default icon
 import { SchemaFields } from '../home/type';
 import { createAuthHeaders } from '../../api/authHeaders';
+import { JUPYTER_BASE_URL } from '../../config/urls';
 import { useTabContext } from '../../components/tabs/TabManager';
 
 interface SidebarProps {
@@ -517,25 +518,11 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
 
   // Open Jupyter in a new tab
   const OpenJupyter = (filename : string, category : string) => {
-    // Build JupyterLab URL (development mode)
     const chkPy = filename.includes(".py");
     if (!chkPy) {
       filename += ".py";
     }
-    const jupyterBase = ((): string => {
-      try {
-        if (typeof window === 'undefined') return 'http://localhost:8000';
-        const { protocol, hostname, host } = window.location;
-        // host includes port if present (hostname:port)
-        if (host.includes(':')) {
-          return `${protocol}//${hostname}:8000`;
-        }
-        return `${protocol}//${host}`;
-      } catch (e) {
-        return 'http://localhost:8000';
-      }
-    })();
-    const jupyterUrl = jupyterBase+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename
+    const jupyterUrl = JUPYTER_BASE_URL+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename
 
     let projectId = localStorage.getItem('projectId');
     projectId = projectId ? projectId : "";

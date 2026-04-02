@@ -20,14 +20,17 @@ from rest_framework.views import APIView
 
 from .code_generation_service import CodeGenerationService
 from .jupyter_execution_service import JupyterExecutionService
-from .models import FlowEdge, FlowNode, FlowProject
+from .models import FlowEdge, FlowNode, FlowProject, WorkflowRun
 from .run_workflow_service import RunWorkflowService
 from .serializers import (
     FlowDataSerializer,
     FlowEdgeSerializer,
     FlowNodeSerializer,
     FlowProjectSerializer,
+    WorkflowRunSerializer,
+    WorkflowRunSubmitSerializer,
 )
+from .execution import LocalExecutor, RemoteSlurmExecutor
 from .services import FlowService
 
 logger = logging.getLogger(__name__)
@@ -1034,3 +1037,146 @@ class FlowNodeInstanceNameUpdateView(APIView):
                 {"error": f"InstanceName update failed: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+# ---------------------------------------------------------------------------
+# Async run / status API (Phase 3)
+# ---------------------------------------------------------------------------
+
+def _get_executor(backend_name: str):
+    """Instantiate the appropriate execution backend."""
+    if backend_name == WorkflowRun.Backend.SLURM:
+        return RemoteSlurmExecutor()
+    return LocalExecutor()
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunSubmitView(APIView):
+    """Submit a workflow run (returns immediately with run_id + status)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, workflow_id):
+        project = get_object_or_404(FlowProject, id=workflow_id)
+        ser = WorkflowRunSubmitSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        backend_choice = ser.validated_data["backend"]
+        resource_reqs = ser.validated_data.get("resource_requests", {})
+        project_name = project.name.replace(" ", "").capitalize()
+
+        script_path = (
+            Path(settings.BASE_DIR)
+            / "codes"
+            / "projects"
+            / project_name
+            / f"{project_name}.py"
+        )
+        code = script_path.read_text() if script_path.exists() else ""
+
+        user = request.user if request.user.is_authenticated else None
+        run = WorkflowRun.objects.create(
+            workflow=project,
+            user=user,
+            backend=backend_choice,
+            status=WorkflowRun.Status.PENDING,
+            resource_requests=resource_reqs,
+        )
+
+        executor = _get_executor(backend_choice)
+        try:
+            exec_result = executor.submit(
+                workflow_id=str(workflow_id),
+                project_name=project_name,
+                code=code,
+                resource_requests=resource_reqs,
+            )
+            run.status = exec_result.status.value
+            if exec_result.remote_job_id:
+                run.slurm_job_id = exec_result.remote_job_id
+            run.save()
+        except Exception as exc:
+            logger.exception("Failed to submit run %s", run.id)
+            run.status = WorkflowRun.Status.FAILED
+            run.error_message = str(exc)
+            run.save()
+
+        return Response(
+            WorkflowRunSerializer(run).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunDetailView(APIView):
+    """Get status / logs / artifacts for a specific run."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, workflow_id, run_id):
+        run = get_object_or_404(WorkflowRun, id=run_id, workflow_id=workflow_id)
+
+        if run.status in (
+            WorkflowRun.Status.PENDING,
+            WorkflowRun.Status.RUNNING,
+        ):
+            executor = _get_executor(run.backend)
+            try:
+                exec_result = executor.get_status(str(run.id))
+                run.status = exec_result.status.value
+                if exec_result.exit_code is not None:
+                    run.exit_code = exec_result.exit_code
+                if exec_result.stdout:
+                    run.stdout = exec_result.stdout
+                if exec_result.stderr:
+                    run.stderr = exec_result.stderr
+                if exec_result.error:
+                    run.error_message = exec_result.error
+                if exec_result.started_at:
+                    run.started_at = exec_result.started_at
+                if exec_result.finished_at:
+                    run.finished_at = exec_result.finished_at
+                run.save()
+            except Exception as exc:
+                logger.warning("Status poll failed for run %s: %s", run.id, exc)
+
+        return Response(WorkflowRunSerializer(run).data)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunListView(APIView):
+    """List all runs for a workflow."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, workflow_id):
+        runs = WorkflowRun.objects.filter(workflow_id=workflow_id)[:50]
+        return Response(WorkflowRunSerializer(runs, many=True).data)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunCancelView(APIView):
+    """Cancel a running workflow run."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, workflow_id, run_id):
+        run = get_object_or_404(WorkflowRun, id=run_id, workflow_id=workflow_id)
+        if run.status not in (
+            WorkflowRun.Status.PENDING,
+            WorkflowRun.Status.RUNNING,
+        ):
+            return Response(
+                {"error": f"Cannot cancel run in '{run.status}' state"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        executor = _get_executor(run.backend)
+        cancelled = executor.cancel(str(run.id))
+        if cancelled:
+            run.status = WorkflowRun.Status.CANCELLED
+            run.save()
+        return Response(WorkflowRunSerializer(run).data)

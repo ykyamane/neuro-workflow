@@ -9,6 +9,9 @@ from .config import (
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
     SUPABASE_JWT_SECRET,
+    KEYCLOAK_URL,
+    KEYCLOAK_REALM,
+    KEYCLOAK_CLIENT_ID,
     SECRET_KEY,
 )
 
@@ -22,11 +25,13 @@ SECRET_KEY = SECRET_KEY
 
 DEBUG = True
 
+_extra_hosts = [h.strip() for h in os.getenv("ALLOWED_HOSTS_EXTRA", "").split(",") if h.strip()]
 ALLOWED_HOSTS = [
-    "*",  # Development environment only, specify a specific domain in production
     "localhost",
     "127.0.0.1",
-]
+] + _extra_hosts
+if os.getenv("ALLOWED_HOSTS_ALL", "").lower() in ("1", "true", "yes"):
+    ALLOWED_HOSTS = ["*"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -131,21 +136,28 @@ REST_FRAMEWORK = {
 }
 
 # ==============================================================================
-# SUPABASE CONFIGURATION
+# AUTHENTICATION PROVIDER CONFIGURATION
 # ==============================================================================
 
 SUPABASE_URL = SUPABASE_URL
 SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
 SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET
 
+KEYCLOAK_URL = KEYCLOAK_URL
+KEYCLOAK_REALM = KEYCLOAK_REALM
+KEYCLOAK_CLIENT_ID = KEYCLOAK_CLIENT_ID
+
 # ==============================================================================
 # CORS CONFIGURATION
 # ==============================================================================
 
+_cors_extra = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS_EXTRA", "").split(",") if o.strip()]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+] + _cors_extra
+if os.getenv("CORS_ALLOW_ALL", "").lower() in ("1", "true", "yes"):
+    CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -175,10 +187,11 @@ CORS_EXPOSE_HEADERS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+_csrf_extra = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS_EXTRA", "").split(",") if o.strip()]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+] + _csrf_extra
 
 # ==============================================================================
 # SECURITY SETTINGS

@@ -21,7 +21,7 @@ services:
       - ../src:/django-app/src:ro
     working_dir: /django-app
     ports:
-      - "3000:3000"
+      - "${BIND_HOST:-127.0.0.1}:3000:3000"
     env_file:
       - ./workflow_backend/.env
     environment:
@@ -40,7 +40,7 @@ services:
   jupyterhub:
     build: ./workflow_backend/django-project/neuroworkflow
     ports:
-      - "8000:8000"
+      - "${BIND_HOST:-127.0.0.1}:8000:8000"
     env_file:
       - .env
     environment:
@@ -58,7 +58,7 @@ services:
     build: ./workflow_frontend
     command: npm run dev:docker
     ports:
-      - "5173:5173"
+      - "${BIND_HOST:-127.0.0.1}:5173:5173"
     volumes:
       - ./workflow_frontend/src:/frontend/src
     env_file:
@@ -74,7 +74,7 @@ services:
     environment:
       - MCP_PROXY_PORT=8001
     ports:
-      - "8001:8001"
+      - "${BIND_HOST:-127.0.0.1}:8001:8001"
     volumes:
       - ./mcp_server/mcp_config.json:/app/mcp_config.json
     depends_on:
@@ -82,9 +82,41 @@ services:
     networks:
       - workflow
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=${KEYCLOAK_DB_PASSWORD:-keycloak}
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HTTP_RELATIVE_PATH=/auth
+      - KC_HOSTNAME_STRICT=false
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:8080:8080"
+    depends_on:
+      - keycloak-db
+    networks:
+      - workflow
+
+  keycloak-db:
+    image: postgres:16
+    volumes:
+      - keycloak_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=${KEYCLOAK_DB_PASSWORD:-keycloak}
+    networks:
+      - workflow
+
 volumes:
   postgres_data:
   jupyterhub-data:
+  keycloak_data:
 
 networks:
   workflow:

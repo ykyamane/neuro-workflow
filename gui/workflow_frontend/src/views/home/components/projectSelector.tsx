@@ -29,6 +29,7 @@ import { createAuthHeaders } from '../../../api/authHeaders';
 import LogViewModal, { LogEntry } from "./logViewModal";
 import { runWorkflowStream } from '../../../api/workflowRunApi';
 import { WorkflowContextEditor } from '../../../components/WorkflowContextEditor';
+import { JUPYTER_BASE_URL } from '../../../config/urls';
 
 export const ProjectSelector = ({ 
   projects, 
@@ -201,21 +202,7 @@ export const ProjectSelector = ({
       const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
       const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
 
-      // Build JupyterLab URL (development mode)
-      const jupyterBase = ((): string => {
-        try {
-          if (typeof window === 'undefined') return 'http://localhost:8000';
-          const { protocol, hostname, host } = window.location;
-          // host includes port if present (hostname:port)
-          if (host.includes(':')) {
-            return `${protocol}//${hostname}:8000`;
-          }
-          return `${protocol}//${host}`;
-        } catch (e) {
-          return 'http://localhost:8000';
-        }
-      })();
-      const jupyterUrl = `${jupyterBase}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
+      const jupyterUrl = `${JUPYTER_BASE_URL}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
       
       // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
