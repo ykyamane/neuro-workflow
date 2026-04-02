@@ -23,6 +23,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const AUTH_INIT_TIMEOUT_MS = 5000;
+
     const init = async () => {
       try {
         if (isKeycloakConfigured) {
@@ -32,8 +34,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (u) setUser(u as User);
           }
         } else {
-          const currentUser = await authService.getCurrentUser();
-          if (currentUser) setUser(currentUser as User);
+          const result = await Promise.race([
+            authService.getCurrentUser(),
+            new Promise<null>(resolve =>
+              setTimeout(() => resolve(null), AUTH_INIT_TIMEOUT_MS)
+            ),
+          ]);
+          if (result) setUser(result as User);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -46,16 +53,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const { data: { subscription } } = authService.onAuthStateChange(
       async (event, session) => {
-        setLoading(true);
-        if (event === 'SIGNED_IN') {
-          const u = await authService.getCurrentUser();
-          if (u) setUser(u as User);
+        if (event === 'SIGNED_IN' && session?.user) {
+          setUser(session.user as User);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           setUser(session.user as User);
         }
-        setLoading(false);
       }
     );
 
