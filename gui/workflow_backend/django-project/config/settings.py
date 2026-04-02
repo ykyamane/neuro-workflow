@@ -26,11 +26,9 @@ SECRET_KEY = SECRET_KEY
 DEBUG = True
 
 _extra_hosts = [h.strip() for h in os.getenv("ALLOWED_HOSTS_EXTRA", "").split(",") if h.strip()]
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-] + _extra_hosts
-if os.getenv("ALLOWED_HOSTS_ALL", "").lower() in ("1", "true", "yes"):
+if os.getenv("ALLOWED_HOSTS_ALL", "").lower() in ("0", "false", "no"):
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"] + _extra_hosts
+else:
     ALLOWED_HOSTS = ["*"]
 
 ROOT_URLCONF = "config.urls"
