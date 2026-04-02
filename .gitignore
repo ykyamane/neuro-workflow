@@ -27,10 +27,14 @@ rag/
 # BrainScaler (separate repos, tracked independently)
 brainscaler/
 
-# Internal dev logs and notes
+# Internal dev logs, notes, and reports
 logs/
 CLAUDE.md
 README_bk.md
+docs/RIKEN_DEPLOYMENT_REPORT.md
+docs/RIKEN_DEPLOYMENT_SUMMARY.md
+docs/RIKEN_DEPLOYMENT_PLAN.md
+docs/BRAINSCALER_BYOK_REPORT.md
 
 # Local helper scripts (contain hardcoded paths)
 test_features_quick.py
