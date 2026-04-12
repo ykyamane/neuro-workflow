@@ -19,10 +19,15 @@ from neuroworkflow.nodes.simulation.SimulateSonataNetworkNode import SimulateSon
 
 def main():
     """Run a simple neural simulation workflow."""
+    # Get the absolute path to the data directory (relative to this script)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(script_dir)
+    data_path = os.path.join(repo_root, "data", "300_pointneurons")
+    
     # Create nodes
     build_network = BuildSonataNetworkNode("SonataNetworkBuilder")
     build_network.configure(
-        sonata_path="../data/300_pointneurons",
+        sonata_path=data_path,
         net_config_file="circuit_config.json",
         sim_config_file="simulation_config.json",
         hdf5_hyperslab_size=1024

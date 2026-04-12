@@ -25,6 +25,7 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { ExternalLinkIcon, RepeatIcon, SettingsIcon, CopyIcon } from '@chakra-ui/icons';
+import { JUPYTER_BASE_URL } from '../../../config/urls';
 
 interface JupyterModalProps {
   isOpen: boolean;
@@ -48,7 +49,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
   onClose,
   projectId,
   title = "Jupyter Lab",
-  jupyterBaseUrl = "http://localhost:8000",
+  jupyterBaseUrl = JUPYTER_BASE_URL,
   isDevelopment = true, // Default is development mode
   jwtToken, // For production environment
 }) => {
@@ -89,7 +90,7 @@ const JupyterModal: React.FC<JupyterModalProps> = ({
 
       if (isDevelopment) {
         // Development mode: Directly access the URL containing the project ID
-        jupyterUrl = `http://localhost:8000/hub/login?username=user1&password=password`;
+        jupyterUrl = `${JUPYTER_BASE_URL}/hub/login?username=user1&password=password`;
 
         console.log(`Development mode: Initializing Jupyter for project ${projectId}`);
         console.log(`URL: ${jupyterUrl}`);

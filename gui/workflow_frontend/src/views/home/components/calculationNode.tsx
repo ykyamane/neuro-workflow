@@ -21,6 +21,7 @@ import { useRef } from 'react';
 import { EditIcon, DeleteIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { FiCode } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
+import { JUPYTER_BASE_URL } from '../../../config/urls';
 import { generateHandleId } from '@/utils/handleId';
 
 interface NodeCallbacks {
@@ -84,21 +85,7 @@ export const CalculationNode = ({
 
   // Open Jupyter in a new tab
   const OpenJupyter = (filename : string, category : string) => {
-    const jupyterBase = ((): string => {
-      try {
-        if (typeof window === 'undefined') return 'http://localhost:8000';
-        const { protocol, hostname, host } = window.location;
-        // host includes port if present (hostname:port)
-        if (host.includes(':')) {
-          return `${protocol}//${hostname}:8000`;
-        }
-        return `${protocol}//${host}`;
-      } catch (e) {
-        return 'http://localhost:8000';
-      }
-    })();
-    // JupyterLab URLを構築（開発モード）
-    const jupyterUrl = jupyterBase+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename;
+    const jupyterUrl = JUPYTER_BASE_URL+"/user/user1/lab/workspaces/auto-E/tree/codes/nodes/"+category.replace('/','').toLowerCase()+"/"+filename;
     
     let projectId = localStorage.getItem('projectId');
     projectId = projectId ? projectId : "";
@@ -172,7 +159,7 @@ export const CalculationNode = ({
         {/* Node name (center) */}
         <HStack justify="space-between" align="center">
           <Text fontSize="sm" fontWeight="bold" flex="1" textAlign="center">
-            {data.instanceName || data.label }
+            {data.instanceName || data.label || data.file_name || data.nodeType || 'Unnamed Node'}
           </Text>
         </HStack>
       </Box>

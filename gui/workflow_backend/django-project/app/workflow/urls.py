@@ -9,6 +9,10 @@ from .views import (
     WorkflowRunStreamView,
     FlowNodeInstanceNameUpdateView,
     FlowNodeParameterUpdateView,
+    WorkflowRunSubmitView,
+    WorkflowRunDetailView,
+    WorkflowRunListView,
+    WorkflowRunCancelView,
 )
 
 app_name = "workflow"
@@ -90,6 +94,27 @@ urlpatterns = [
         WorkflowRunStreamView.as_view(),
         name="workflow-run-stream"
     ),  # POST (Run workflow on Jupyter, SSE streaming output)
+    # Async run management
+    path(
+        "<uuid:workflow_id>/runs/",
+        WorkflowRunListView.as_view(),
+        name="workflow-run-list"
+    ),  # GET (list runs)
+    path(
+        "<uuid:workflow_id>/runs/submit/",
+        WorkflowRunSubmitView.as_view(),
+        name="workflow-run-submit"
+    ),  # POST (submit a new run)
+    path(
+        "<uuid:workflow_id>/runs/<uuid:run_id>/",
+        WorkflowRunDetailView.as_view(),
+        name="workflow-run-detail"
+    ),  # GET (run status + logs)
+    path(
+        "<uuid:workflow_id>/runs/<uuid:run_id>/cancel/",
+        WorkflowRunCancelView.as_view(),
+        name="workflow-run-cancel"
+    ),  # POST (cancel a run)
     # Sample Data
     path(
         "sample-flow/", SampleFlowView.as_view(), name="sample-flow"

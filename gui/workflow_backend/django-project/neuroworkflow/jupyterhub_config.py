@@ -17,7 +17,7 @@ c.JupyterHub.spawner_class = DockerSpawner
 
 # Docker spawner configuration - NEST simulator enabled image
 c.DockerSpawner.image = "nest-jupyterlab:latest"  # Built from Dockerfile.nest
-c.DockerSpawner.network_name = "jupyterhub-network"
+c.DockerSpawner.network_name = "jupyterhub-network"  # Use the Docker Compose network (must match docker-compose.yml)
 
 # Remove containers when they stop
 c.DockerSpawner.remove = True
@@ -62,8 +62,8 @@ c.DockerSpawner.args = [
     "--ServerApp.disable_check_xsrf=True"
 ]
 
-# User management
-c.Authenticator.allowed_users = {"user1", "user2"}
+# User management - allow any username for development
+# c.Authenticator.allowed_users = {"user1", "user2"}  # Commented out to allow any username
 
 # Use dummy authenticator for development (change for production!)
 c.JupyterHub.authenticator_class = "jupyterhub.auth.DummyAuthenticator"

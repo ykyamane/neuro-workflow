@@ -1,6 +1,7 @@
 import { createAuthHeaders } from "./authHeaders";
+import { API_BASE_URL } from "../config/urls";
 
-const API_PREFIX = "/api";
+const API_PREFIX = API_BASE_URL;
 
 export interface WorkflowRunSSEEvent {
   type: string;
@@ -70,4 +71,79 @@ export const runWorkflowStream = async (
       }
     }
   }
+};
+
+
+// ---------------------------------------------------------------------------
+// Async run management API (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface WorkflowRunRecord {
+  id: string;
+  workflow: string;
+  user: string | null;
+  backend: "local" | "slurm" | "jupyter";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  slurm_job_id: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  error_message: string;
+  resource_requests: Record<string, unknown>;
+  artifacts: Record<string, unknown>;
+  submitted_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export const submitWorkflowRun = async (
+  workflowId: string,
+  backend: "local" | "slurm" | "jupyter" = "jupyter",
+  resourceRequests: Record<string, unknown> = {}
+): Promise<WorkflowRunRecord> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(`${API_PREFIX}/workflow/${workflowId}/runs/submit/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ backend, resource_requests: resourceRequests }),
+  });
+  if (!res.ok) throw new Error(`Submit failed: ${res.status}`);
+  return res.json();
+};
+
+export const getWorkflowRunStatus = async (
+  workflowId: string,
+  runId: string
+): Promise<WorkflowRunRecord> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(
+    `${API_PREFIX}/workflow/${workflowId}/runs/${runId}/`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`Status fetch failed: ${res.status}`);
+  return res.json();
+};
+
+export const listWorkflowRuns = async (
+  workflowId: string
+): Promise<WorkflowRunRecord[]> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(`${API_PREFIX}/workflow/${workflowId}/runs/`, {
+    headers,
+  });
+  if (!res.ok) throw new Error(`List runs failed: ${res.status}`);
+  return res.json();
+};
+
+export const cancelWorkflowRun = async (
+  workflowId: string,
+  runId: string
+): Promise<WorkflowRunRecord> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(
+    `${API_PREFIX}/workflow/${workflowId}/runs/${runId}/cancel/`,
+    { method: "POST", headers }
+  );
+  if (!res.ok) throw new Error(`Cancel failed: ${res.status}`);
+  return res.json();
 };

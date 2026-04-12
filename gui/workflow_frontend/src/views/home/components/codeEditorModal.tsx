@@ -30,6 +30,7 @@ import {
 } from '@chakra-ui/react';
 import { ArrowRightIcon, DownloadIcon, CopyIcon } from '@chakra-ui/icons';
 import { createAuthHeaders } from '../../../api/authHeaders';
+import { API_BASE_URL } from '../../../config/urls';
 
 // Monaco Editor Type Definitions
 interface Monaco {
@@ -55,7 +56,7 @@ interface ExecutionResult {
 
 // Endpoint configuration type definition
 interface EndpointConfig {
-  baseUrl?: string;  // default: http://localhost:3000/api
+  baseUrl?: string;
   getCode: string;    // GET: Code retrieval endpoint
   saveCode: string;   // PUT: Code save endpoint
   executeCode?: string; // POST: Code execution endpoint (optional)
@@ -97,7 +98,7 @@ export const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
   // Get base URL
-  const getBaseUrl = () => endpoints.baseUrl || 'http://localhost:3000/api';
+  const getBaseUrl = () => endpoints.baseUrl || API_BASE_URL;
 
   // Build endpoint URL
   const buildUrl = (endpoint: string) => {

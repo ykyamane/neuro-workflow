@@ -86,3 +86,54 @@ class FlowEdge(models.Model):
 
     def __str__(self):
         return f"Edge {self.id}: {self.source_node.id} -> {self.target_node.id}"
+
+
+class WorkflowRun(models.Model):
+    """Tracks a single execution of a workflow (local or remote)."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Backend(models.TextChoices):
+        LOCAL = "local", "Local"
+        SLURM = "slurm", "Slurm"
+        JUPYTER = "jupyter", "Jupyter"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workflow = models.ForeignKey(
+        FlowProject, on_delete=models.CASCADE, related_name="runs"
+    )
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="workflow_runs"
+    )
+    backend = models.CharField(
+        max_length=20, choices=Backend.choices, default=Backend.JUPYTER
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    slurm_job_id = models.CharField(max_length=64, blank=True, default="")
+    exit_code = models.IntegerField(null=True, blank=True)
+
+    stdout = models.TextField(blank=True, default="")
+    stderr = models.TextField(blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+
+    resource_requests = models.JSONField(default=dict, blank=True)
+    remote_run_dir = models.CharField(max_length=512, blank=True, default="")
+    artifacts = models.JSONField(default=dict, blank=True)
+
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "workflow_runs"
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"Run {self.id} [{self.status}] of {self.workflow.name}"

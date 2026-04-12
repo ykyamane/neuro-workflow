@@ -36,10 +36,10 @@ def main():
     simulate_vnm = VNMSimulatorNode("VNMSimulation")
     simulate_vnm.configure(
         target_ROI_file="../data/vnm_data/target_roi/allenCube2atlasStn3.nii.gz",
-        target_ROI="4525",
+        target_ROI=[4525],
         simulation_name="ppmi81CXAllenCube2s34gmacomp",
         subject_perm_path="../data/vnm_data/perm",
-        number_of_trials="1"
+        number_of_trials=1
     )
 
     analysis_vnm = VNMGlmAnalysisNode("VNMGlmAnalysis")

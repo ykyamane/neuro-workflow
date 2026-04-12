@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.auth.authentication import SupabaseAuthentication
+from app.auth.authentication import KeycloakAuthentication, SupabaseAuthentication
 
 from .models import Conversation, Message
 from .serializers import (
@@ -24,22 +24,28 @@ from .services.chat_orchestrator import orchestrate_chat
 logger = logging.getLogger(__name__)
 
 
-class _OptionalSupabaseAuthentication(SupabaseAuthentication):
-    """SupabaseAuthentication that returns None instead of 403 on failure.
+class _OptionalAuthentication(KeycloakAuthentication):
+    """Try Keycloak first, then Supabase; return None on any failure.
 
     Chat views use AllowAny with anonymous fallback, so authentication
     errors should be silently ignored rather than blocking the request.
     """
 
+    _supabase = SupabaseAuthentication()
+
     def authenticate(self, request):
-        try:
-            result = super().authenticate(request)
-            if result:
-                logger.info("Chat auth succeeded for user: %s", result[0])
-            return result
-        except drf_exceptions.AuthenticationFailed as e:
-            logger.warning("Chat auth failed (falling back to anonymous): %s", e)
-            return None
+        for backend in (super(), self._supabase):
+            try:
+                result = backend.authenticate(request)
+                if result:
+                    logger.info("Chat auth succeeded for user: %s", result[0])
+                    return result
+            except drf_exceptions.AuthenticationFailed:
+                continue
+            except Exception as e:
+                logger.warning("Chat auth error (skipping): %s", e)
+                continue
+        return None
 
 
 def _get_user(request):
@@ -61,7 +67,7 @@ def _get_user(request):
 class ConversationListCreateView(APIView):
     """List and create conversations."""
 
-    authentication_classes = [_OptionalSupabaseAuthentication]
+    authentication_classes = [_OptionalAuthentication]
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -86,7 +92,7 @@ class ConversationListCreateView(APIView):
 class ConversationDetailView(APIView):
     """Retrieve or delete a conversation."""
 
-    authentication_classes = [_OptionalSupabaseAuthentication]
+    authentication_classes = [_OptionalAuthentication]
     permission_classes = [AllowAny]
 
     def get(self, request, conversation_id):
@@ -123,7 +129,7 @@ class ConversationDetailView(APIView):
 class ChatStreamView(APIView):
     """Handle chat messages with SSE streaming response."""
 
-    authentication_classes = [_OptionalSupabaseAuthentication]
+    authentication_classes = [_OptionalAuthentication]
     permission_classes = [AllowAny]
 
     def post(self, request):

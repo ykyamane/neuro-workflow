@@ -170,6 +170,31 @@ const Header: React.FC = () => {
           </MenuList>
         </Menu>
 
+        {/* Settings Menu */}
+        <Menu>
+          <MenuButton
+            as={Button}
+            variant="ghost"
+            size="md"
+            mx={2}
+            rightIcon={<ChevronDownIcon />}
+            color={headerColor}
+          >
+            Settings
+          </MenuButton>
+          <MenuList bg={menuBg} borderColor={menuBorder}>
+            <MenuItem
+              as={RouterLink}
+              to="/settings/databases"
+              bg={menuBg}
+              color={headerColor}
+              _hover={{ bg: menuHoverBg }}
+            >
+              Custom Databases
+            </MenuItem>
+          </MenuList>
+        </Menu>
+
         {/* User Menu */}
         {user && (
           <Menu>

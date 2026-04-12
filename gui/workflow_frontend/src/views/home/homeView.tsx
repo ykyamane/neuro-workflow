@@ -19,6 +19,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CodeEditorModal } from './components/codeEditorModal';
+import { JUPYTER_BASE_URL, API_BASE_URL } from '../../config/urls';
 import '@xyflow/react/dist/style.css';
 import SideBoxArea from '../box/boxView';
 import ChatbotArea from './components/chatbotView';
@@ -35,6 +36,7 @@ import { useWorkflowApi } from '../../hooks/useWorkflowApi';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import NodeDetailsContent from './components/nodeDetailModal';
 import { DeleteConfirmDialog } from './components/deleteConfirmDialog';
+import RunStatusPanel from './components/runStatusPanel';
 import { useTabContext } from '../../components/tabs/TabManager';
 import { useFlowStore, PROJECT_ID_KEY } from '../../stores/flowStore';
 import { convertToStrIncFloat } from '../../utils/typeConversion';
@@ -106,26 +108,7 @@ const HomeView = () => {
       const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
       const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
 
-      // Build JupyterLab URL (development mode)
-
-      // If the host contains a port, replace it with :8000. Otherwise keep the host as-is.
-      // Example: example.com:3000 -> example.com:8000
-      const jupyterBase = ((): string => {
-        try {
-          if (typeof window === 'undefined') return 'http://localhost:8000';
-          const { protocol, hostname, host } = window.location;
-          // host includes port if present (hostname:port)
-          if (host.includes(':')) {
-            return `${protocol}//${hostname}:8000`;
-          }
-          return `${protocol}//${host}`;
-        } catch (e) {
-          return 'http://localhost:8000';
-        }
-      })();
-
-      // Construct the JupyterLab URL using the detected base
-      const jupyterUrl = `${jupyterBase}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
+      const jupyterUrl = `${JUPYTER_BASE_URL}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
       
       // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
@@ -161,12 +144,29 @@ const HomeView = () => {
 
 
   const handleNodeInfo = useCallback((nodeId: string) => {
-    const node = sharedNodes.find(n => n.id === nodeId);
+    // Try to find node in sharedNodes first
+    let node = sharedNodes.find(n => n.id === nodeId);
+    
+    // If not found, try to get it from ReactFlow instance (for newly added nodes)
+    if (!node && reactFlowInstance.current) {
+      const flowNodes = reactFlowInstance.current.getNodes();
+      node = flowNodes.find(n => n.id === nodeId) as Node<CalculationNodeData> | undefined;
+    }
+    
     if (node) {
       setSelectedNode(node);
       onViewOpen();
+    } else {
+      console.warn(`Node ${nodeId} not found for info display`);
+      toast({
+        title: "Node Not Found",
+        description: "Could not find node information. Please try again.",
+        status: "warning",
+        duration: 2000,
+        isClosable: true,
+      });
     }
-  }, [sharedNodes, onViewOpen]);
+  }, [sharedNodes, onViewOpen, reactFlowInstance, toast]);
 
   // Debounced Storage Function
   const debouncedSave = useCallback((action: () => Promise<void>) => {
@@ -798,6 +798,36 @@ const HomeView = () => {
       return;
     }
 
+    // CRITICAL: Save all nodes to database before generating code
+    // This ensures newly added nodes are persisted and won't disappear
+    toast({
+      title: "Saving nodes...",
+      description: "Ensuring all nodes are saved before code generation",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+
+    // Save all nodes that haven't been saved yet
+    // Get current nodes from ReactFlow instance (includes newly added ones)
+    const currentNodes = reactFlowInstance.current?.getNodes() || sharedNodes;
+    
+    for (const node of currentNodes) {
+      try {
+        await createNodeAPI(node as Node<CalculationNodeData>);
+      } catch (error) {
+        // Node might already exist, try updating instead
+        try {
+          await updateNodeAPI(node.id, node as Partial<Node<CalculationNodeData>>);
+        } catch (updateError) {
+          console.warn(`Failed to save/update node ${node.id}:`, updateError);
+        }
+      }
+    }
+
+    // Wait a bit for all saves to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     setIsGeneratingCode(true);
 
     // Loading status toast
@@ -868,7 +898,7 @@ const HomeView = () => {
     } finally {
       setIsGeneratingCode(false);
     }
-  }, [selectedProject, reactFlowInstance, sharedNodes.length, toast]);
+  }, [selectedProject, reactFlowInstance, sharedNodes, createNodeAPI, updateNodeAPI, toast]);
 
   // Clean up
   useEffect(() => {
@@ -1065,6 +1095,11 @@ const HomeView = () => {
           </Box>
         )}
         
+        {/* Async run status panel */}
+        {selectedProject && (
+          <RunStatusPanel workflowId={selectedProject} />
+        )}
+
         {/* Node menu */}
         {nodeMenuPosition && (
           <NodeMenu
@@ -1116,7 +1151,7 @@ const HomeView = () => {
           onClose={onCodeClose}
           identifier={selectedNode?.data.file_name || ''}
           endpoints={{
-            baseUrl: 'http://localhost:3000/api/box',
+            baseUrl: `${API_BASE_URL}/box`,
             getCode: '/files/{identifier}/code/',
             saveCode: '/files/{identifier}/code/',
           }}
@@ -1140,6 +1175,5 @@ const HomeView = () => {
     </div>
   );
 }
-//http://localhost:3000/api/workflow/${projectId}/code/
 
 export default HomeView;

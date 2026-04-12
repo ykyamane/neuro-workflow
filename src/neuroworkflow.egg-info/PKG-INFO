@@ -35,103 +35,54 @@ A Python library for building and executing neural simulation workflows.
 - Type-safe connections between workflow components
 - Pre-built nodes for common neural simulation tasks
 - Extensible architecture for custom nodes
-- Command-line interface for workflow execution
+- Parameter optimization support for tuning simulation parameters
 
-## Installation
+## Current status
 
-```bash
-# Basic installation
-pip install neuroworkflow
+- The `src` folder contains the core functionality and sample nodes
+- In the examples folder:
+  - `sonata_simulation.py` - Basic simulation example
+  - `neuron_optimization.py` - Example of parameter optimization (not yet completed, but running with some bugs)
+  - `epilepsy_rs.py` - Example of epileptic resting state using the virtual brain TVB
+- In the notebooks folder:
+  - `01_Basic_Simulation.ipynb` - Interactive example of basic simulation
+  - `epilepsy_rs.ipynb` - Interactive example of epileptic resting state using the virtual brain TVB
+  - `SNNbuilder_example1.ipynb` - Interactive example of Spiking Neural Network building using SNNbuilder custom nodes
 
-# With NEST integration
-pip install neuroworkflow[nest]
+## Conference Presentations
 
-# With visualization tools
-pip install neuroworkflow[visualization]
+This work has been presented at several conferences and workshops, receiving valuable feedback that has contributed to its ongoing development:
 
-# For development
-pip install neuroworkflow[dev]
-```
+### 2025
 
-## Quick Start
+- **Winter Workshop**
 
-```python
-from neuroworkflow import WorkflowBuilder
-from neuroworkflow.nodes.network import BuildSonataNetworkNode
-from neuroworkflow.nodes.simulation import SimulateSonataNetworkNode
+  - _"Towards a Generic and Open Software for Building Digital Brains"_
+  - [📄 Poster](posters_conferences/Winter_WorkShop_BM2.pdf)
 
-# Create nodes
-build_network = BuildSonataNetworkNode("NetworkBuilder")
-build_network.configure(sonata_path="/path/to/config")
+- **Unified Theory Workshop** (May 30, 2025)
 
-simulate = SimulateSonataNetworkNode("Simulator")
-simulate.configure(simulation_time=1000.0)
+  - _"NeuroWorkflow: A python-based Graph Framework for Modular Brain Modeling Workflows"_
+  - [📄 Poster](posters_conferences/Unified_Theory_Poster_2025May30.pdf)
 
-# Create and execute workflow
-workflow = (
-    WorkflowBuilder("my_simulation")
-        .add_node(build_network)
-        .add_node(simulate)
-        .connect("NetworkBuilder", "sonata_net", "Simulator", "sonata_net")
-        .connect("NetworkBuilder", "node_collections", "Simulator", "node_collections")
-        .build()
-)
+- **NEST Conference 2025** (June 17, 2025)
 
-workflow.execute()
-```
+  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0"_
+  - [📄 Presentation Slides](posters_conferences/NEST_conference_slides_20250617_Carlos.pdf)
 
-## Creating Custom Nodes
+- **CNS 2025 (Computational Neuroscience Society)**
 
-You can create custom nodes by subclassing the `Node` class. For a detailed step-by-step tutorial, see [Creating Custom Nodes](docs/creating_custom_nodes.md).
+  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0 – The Japan Digital Brain Project"_
+  - [📄 Poster](posters_conferences/Poster_cns2025_Carlos.pdf)
 
-Here's a simple example:
+- **OIST Hackathon** (September 28, 2025)
 
-```python
-from neuroworkflow import Node, NodeDefinitionSchema, PortDefinition, PortType
+  - _"Building BrainModeling Workflows: A proof-of-concept framework"_
+  - [📄 Hackathon Material](posters_conferences/hackathon_material_OIST_carlos_20250928.pdf)
 
-class MyCustomNode(Node):
-    NODE_DEFINITION = NodeDefinitionSchema(
-        type='custom_node',
-        description='My custom node',
-        inputs={
-            'input_data': PortDefinition(
-                type=PortType.OBJECT,
-                description='Input data'
-            )
-        },
-        outputs={
-            'output_data': PortDefinition(
-                type=PortType.OBJECT,
-                description='Output data'
-            )
-        },
-        methods={
-            'process_data': {
-                'description': 'Process the input data',
-                'inputs': ['input_data'],
-                'outputs': ['output_data']
-            }
-        }
-    )
-    
-    def __init__(self, name):
-        super().__init__(name)
-        self._define_process_steps()
-        
-    def _define_process_steps(self):
-        self.add_process_step(
-            "process_data",
-            self.process_data,
-            method_key="process_data"
-        )
-        
-    def process_data(self, input_data):
-        # Process the data
-        output_data = input_data  # Replace with actual processing
-        return {"output_data": output_data}
-```
-
-For a complete example, see the [SpikeAnalysisNode](src/neuroworkflow/nodes/analysis/spike_analysis.py) implementation.
+- **INCF/EBrains Summit**
+  - _"NeuroWorkflow: A Node-Based Framework for Scalable Computational Neuroscience with AI-Ready Infrastructure"_
+  - [📄 Abstract](posters_conferences/abstract_INCF_EBrains_summit.pdf)
 
 ## License
 

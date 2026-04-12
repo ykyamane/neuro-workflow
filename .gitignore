@@ -1,4 +1,5 @@
 .env
+.env.bak
 __pycache__/
 .DS_Store
 *.py[cod]
@@ -27,3 +28,30 @@ node_modules/
 **/key.json
 
 
+# RAG directory (contains API keys)
+rag/
+
+
+# BrainScaler (separate repos, tracked independently)
+brainscaler/
+
+# Internal dev logs, notes, and reports
+logs/
+CLAUDE.md
+README_bk.md
+docs/RIKEN_DEPLOYMENT_REPORT.md
+docs/RIKEN_DEPLOYMENT_SUMMARY.md
+docs/RIKEN_DEPLOYMENT_PLAN.md
+docs/BRAINSCALER_BYOK_REPORT.md
+
+# Local helper scripts (contain hardcoded paths)
+test_features_quick.py
+test_installation.py
+sync_with_upstream.sh
+compare_upstream.sh
+install_docker.sh
+
+# Env snapshots (contain keys)
+env_at_workflow_backend
+env_at_workflow_frontend
+psql

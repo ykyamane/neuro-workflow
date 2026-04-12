@@ -1,0 +1,25 @@
+# Production override for RIKEN deployment.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This override:
+#   - Ensures all ports bind to 127.0.0.1 (behind nginx)
+#   - Disables Vite HMR polling (production)
+#   - Sets secure defaults
+
+services:
+  backend:
+    environment:
+      - ALLOWED_HOSTS_ALL=false
+      # Set these in .env for your domain:
+      # - CORS_ALLOWED_ORIGINS_EXTRA=https://your-server.riken.jp
+      # - CSRF_TRUSTED_ORIGINS_EXTRA=https://your-server.riken.jp
+      # - ALLOWED_HOSTS_EXTRA=your-server.riken.jp
+
+  frontend:
+    command: npm run dev:docker
+    environment:
+      - VITE_API_BASE_URL=/api
+      - VITE_JUPYTER_BASE_URL=/jupyter
+      - VITE_MCP_BASE_URL=/mcp

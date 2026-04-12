@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from .config import (
+    DB_HOST,
     DB_NAME,
     DB_USER,
     DB_PASSWORD,
@@ -8,6 +9,9 @@ from .config import (
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
     SUPABASE_JWT_SECRET,
+    KEYCLOAK_URL,
+    KEYCLOAK_REALM,
+    KEYCLOAK_CLIENT_ID,
     SECRET_KEY,
 )
 
@@ -21,11 +25,11 @@ SECRET_KEY = SECRET_KEY
 
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    "*",  # Development environment only, specify a specific domain in production
-    "localhost",
-    "127.0.0.1",
-]
+_extra_hosts = [h.strip() for h in os.getenv("ALLOWED_HOSTS_EXTRA", "").split(",") if h.strip()]
+if os.getenv("ALLOWED_HOSTS_ALL", "").lower() in ("0", "false", "no"):
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"] + _extra_hosts
+else:
+    ALLOWED_HOSTS = ["*"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -52,6 +56,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "app.box.apps.BoxConfig",
     "app.workflow.apps.WorkflowConfig",
+    "app.metadata.apps.MetadataConfig",
     "app.chat.apps.ChatConfig",
 ]
 
@@ -82,7 +87,7 @@ DATABASES = {
         "NAME": DB_NAME,
         "USER": DB_USER,
         "PASSWORD": DB_PASSWORD,
-        "HOST": "db",
+        "HOST": DB_HOST,
         "PORT": DB_PORT,
     }
 }
@@ -129,21 +134,28 @@ REST_FRAMEWORK = {
 }
 
 # ==============================================================================
-# SUPABASE CONFIGURATION
+# AUTHENTICATION PROVIDER CONFIGURATION
 # ==============================================================================
 
 SUPABASE_URL = SUPABASE_URL
 SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
 SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET
 
+KEYCLOAK_URL = KEYCLOAK_URL
+KEYCLOAK_REALM = KEYCLOAK_REALM
+KEYCLOAK_CLIENT_ID = KEYCLOAK_CLIENT_ID
+
 # ==============================================================================
 # CORS CONFIGURATION
 # ==============================================================================
 
+_cors_extra = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS_EXTRA", "").split(",") if o.strip()]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+] + _cors_extra
+if os.getenv("CORS_ALLOW_ALL", "").lower() in ("1", "true", "yes"):
+    CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -173,10 +185,11 @@ CORS_EXPOSE_HEADERS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+_csrf_extra = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS_EXTRA", "").split(",") if o.strip()]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+] + _csrf_extra
 
 # ==============================================================================
 # SECURITY SETTINGS
