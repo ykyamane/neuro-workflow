@@ -29,9 +29,7 @@ class AuthService {
     const kc = getKeycloak();
     try {
       const authenticated = await kc.init({
-        onLoad: "check-sso",
-        silentCheckSsoRedirectUri:
-          window.location.origin + "/silent-check-sso.html",
+        onLoad: "login-required",
         checkLoginIframe: false,
       });
       return authenticated;

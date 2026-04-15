@@ -33,6 +33,7 @@ export default defineConfig({
       },
     },
     host: true,
+    allowedHosts: ["snnbuilder.riken.jp", "localhost"],
   },
   resolve: {
     alias: {

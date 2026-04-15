@@ -204,7 +204,14 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
                 existing_node.position_x = node_data["position"]["x"]
                 existing_node.position_y = node_data["position"]["y"]
                 existing_node.node_type = node_data.get("type", existing_node.node_type)
-                existing_node.data = node_data.get("data", existing_node.data)
+                new_data = node_data.get("data", existing_node.data)
+                if isinstance(new_data, dict):
+                    for key in ("parameter_modifications", "has_parameter_modifications"):
+                        if key in existing_node.data:
+                            new_data[key] = existing_node.data[key]
+                        elif key in new_data:
+                            del new_data[key]
+                existing_node.data = new_data
                 existing_node.save()
 
                 serializer = FlowNodeSerializer(existing_node)
