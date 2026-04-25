@@ -151,3 +151,6 @@ class NodeDefinitionSchema:
     inputs: Dict[str, Union[PortDefinition, Dict[str, Any], str]] = field(default_factory=dict)
     outputs: Dict[str, Union[PortDefinition, Dict[str, Any], str]] = field(default_factory=dict)
     methods: Dict[str, Union[MethodDefinition, Dict[str, Any], str]] = field(default_factory=dict)
+    stage: Optional[str] = None        # brain modeling stage (see NODE_CREATION_GUIDE.md)
+    tool: Optional[str] = None         # simulator or library (e.g. "NEST", "TVB", "Brian2")
+    model_source: Optional[str] = None # URL to the origin model, paper, or repository
