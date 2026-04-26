@@ -9,6 +9,7 @@ services:
       - ./workflow_backend/.env
     # ports:
     #   - "5432:5432"
+    restart: unless-stopped
     networks:
       - workflow
 
@@ -33,6 +34,7 @@ services:
       - JUPYTER_EXECUTION_USER=${JUPYTER_EXECUTION_USER:-user1}
     depends_on:
       - db
+    restart: unless-stopped
     networks:
       - workflow
       - jupyterhub-network
@@ -65,6 +67,7 @@ services:
       - ./workflow_frontend/.env
     depends_on:
       - backend 
+    restart: unless-stopped
     networks:
       - workflow
 
@@ -79,6 +82,7 @@ services:
       - ./mcp_server/mcp_config.json:/app/mcp_config.json
     depends_on:
       - backend 
+    restart: unless-stopped
     networks:
       - workflow
 
@@ -99,6 +103,7 @@ services:
       - "${BIND_HOST:-127.0.0.1}:8080:8080"
     depends_on:
       - keycloak-db
+    restart: unless-stopped
     networks:
       - workflow
 
@@ -110,6 +115,7 @@ services:
       - POSTGRES_DB=keycloak
       - POSTGRES_USER=keycloak
       - POSTGRES_PASSWORD=${KEYCLOAK_DB_PASSWORD:-keycloak}
+    restart: unless-stopped
     networks:
       - workflow
 
