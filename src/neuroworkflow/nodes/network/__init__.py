@@ -6,4 +6,6 @@ This package provides nodes for building neural networks from various formats.
 Import nodes directly from their modules:
     from neuroworkflow.nodes.network.TVBConnectivitySetUpNode import TVBConnectivitySetUpNode
     from neuroworkflow.nodes.network.BuildSonataNetworkNode import BuildSonataNetworkNode
+    from neuroworkflow.nodes.network.TVBModelNodeV2 import TVBModelNodeV2
+    from neuroworkflow.nodes.network.TVBCouplingNodeV2 import TVBCouplingNodeV2
 """

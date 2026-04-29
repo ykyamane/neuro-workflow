@@ -375,6 +375,9 @@ async def get_node(workflow_id: str, node_id: str) -> dict[str, Any]:
     instanceName, parameter_modifications), and computed fields
     (has_parameter_modifications, modified_parameters, parameter_modification_count).
 
+    NOTE: In each parameter object, always read "default_value" as the current value.
+    The "value" field is legacy and may be stale — ignore it.
+
     Args:
         workflow_id: UUID of the workflow.
         node_id: String ID of the node (React Flow node ID).
@@ -586,7 +589,7 @@ async def delete_edge(workflow_id: str, edge_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def update_node_parameter(workflow_id: str, node_id: str, parameter_key: str, parameter_value: Any, parameter_field: str = "value") -> dict[str, Any]:
+async def update_node_parameter(workflow_id: str, node_id: str, parameter_key: str, parameter_value: Any, parameter_field: str = "default_value") -> dict[str, Any]:
     """Update a specific parameter value in a node's schema.
 
     Modifies node.data.schema.parameters[parameter_key][parameter_field] and records
@@ -598,8 +601,12 @@ async def update_node_parameter(workflow_id: str, node_id: str, parameter_key: s
         node_id: String ID of the node.
         parameter_key: Key in schema.parameters to update (e.g. "learning_rate", "num_neurons").
         parameter_value: The new value to set (any JSON-serializable type).
-        parameter_field: Which field of the parameter to update. Defaults to "value".
-            Other options: "default_value", "constraints", etc.
+        parameter_field: Which field of the parameter to update. Defaults to "default_value".
+            Other options: "constraints", etc.
+
+    IMPORTANT: Always use parameter_field="default_value" (the default) when reading or
+    writing parameter values. The "value" field is legacy and may be stale — ignore it.
+    The code generator and GUI both use "default_value" as the source of truth.
 
     Returns a dict with status, message, node_id, workflow_id, parameter_key,
     parameter_field, parameter_value, and updated_parameter (full parameter object after update).

@@ -4,6 +4,7 @@ the set of all existing anatomical connections between brain areas in the virtua
 """
 
 from typing import Dict, Any, Optional
+import os
 import numpy as np
 
 from neuroworkflow.core.node import Node
@@ -29,7 +30,7 @@ class TVBConnectivitySetUpNode(Node):
         
         parameters={
             'connectivity_file': ParameterDefinition(
-                default_value='sc.zip',
+                default_value='neuroworkflow/data/tvb_data/connectivity_marmoset.zip',
                 description='structural connectivity matrix, from MRI',
                 constraints={},
                 optimizable=False,
@@ -102,7 +103,14 @@ class TVBConnectivitySetUpNode(Node):
         else:
             file_path = self._parameters['connectivity_file']
             print(f"[{self.name}] Using connectivity file from parameter: {file_path}")
-            
+
+        # TVB's from_file resolves relative paths inside the tvb_data package,
+        # so convert to absolute using this node file's location as anchor.
+        if not os.path.isabs(file_path):
+            _node_dir = os.path.dirname(os.path.abspath(__file__))
+            file_path = os.path.abspath(os.path.join(_node_dir, '../../', file_path))
+            print(f"[{self.name}] Resolved absolute path: {file_path}")
+
         con = connectivity.Connectivity.from_file(file_path)      
         nregions = len(con.region_labels)                               #number of regions
         con.weights = con.weights - con.weights * np.eye((nregions))    #remove self-connection
@@ -123,16 +131,37 @@ class TVBConnectivitySetUpNode(Node):
             a flag indicating the visualization is completed
         """
         
-        # Visualization.
-        plt.figure(figsize=(12,12))
+        labels = tvb_connectivity.region_labels
+        n = len(labels)
+
+        fig = plt.figure(figsize=(15, 7))
+        fig.suptitle('TVB Structural Connectivity', fontsize=20)
+
+        # Weights
+        plt.subplot(121)
         plt.imshow(tvb_connectivity.weights, interpolation='nearest', aspect='equal', cmap='jet')
-        plt.title('TVB Structural Connectome', fontsize=20)
-        plt.xticks(range(0, len(tvb_connectivity.region_labels)), tvb_connectivity.region_labels, fontsize=10, rotation=90)
-        plt.yticks(range(0, len(tvb_connectivity.region_labels)), tvb_connectivity.region_labels, fontsize=10)
-        cb=plt.colorbar(shrink=0.8)
-        cb.set_label('weights', fontsize=14)
-        plt.show()
-        
+        plt.xticks(range(n), labels, fontsize=7, rotation=90)
+        plt.yticks(range(n), labels, fontsize=7)
+        cb = plt.colorbar(shrink=0.2)
+        cb.set_label('Weights', fontsize=14)
+
+        # Tract lengths
+        plt.subplot(122)
+        plt.imshow(tvb_connectivity.tract_lengths, interpolation='nearest', aspect='equal', cmap='jet')
+        plt.xticks(range(n), labels, fontsize=7, rotation=90)
+        plt.yticks(range(n), labels, fontsize=7)
+        cb = plt.colorbar(shrink=0.2)
+        cb.set_label('Tract lengths', fontsize=14)
+
+        fig.tight_layout()
+
+        try:
+            from IPython.display import display as ipy_display
+            ipy_display(fig)
+        except Exception:
+            pass
+        plt.close(fig)
+
         return {
             'visualization completed': True
         }

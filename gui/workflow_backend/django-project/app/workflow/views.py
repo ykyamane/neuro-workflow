@@ -571,7 +571,9 @@ class FlowNodeParameterUpdateView(APIView):
             # Validating request data
             parameter_key = request.data.get("parameter_key")
             parameter_value = request.data.get("parameter_value")
-            parameter_field = request.data.get("parameter_field", "value")  # 'value', 'default_value', 'constraints'
+            parameter_field = request.data.get("parameter_field", "default_value")
+            if parameter_field == "value":
+                parameter_field = "default_value"
 
             print(f"🔍 DEBUG: Parsed - parameter_key: {parameter_key}, parameter_value: {parameter_value}, parameter_field: {parameter_field}", flush=True)
 

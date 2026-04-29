@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import sys
 
 
-class TVBConnectivitySetUpNode(Node):
+class TVBConnectivitySetUpNode_1(Node):
     """Node for loading and visualizing the structural connectivity matrix that represents the set of all existing anatomical connections between brain areas"""
     
     NODE_DEFINITION = NodeDefinitionSchema(
@@ -115,38 +115,24 @@ class TVBConnectivitySetUpNode(Node):
     
     def sc_visualization(self, tvb_connectivity: Dict[str, Any]) -> Dict[str, Any]:
         """Visualize connectivity matrix object in TVB format.
-
+        
         Args:
             tvb_connectivity: connectivity matrix object in TVB format.
-
+            
         Returns:
             a flag indicating the visualization is completed
         """
-        labels = tvb_connectivity.region_labels
-        n = len(labels)
-
-        fig = plt.figure(figsize=(15, 7))
-        fig.suptitle('TVB Structural Connectivity', fontsize=20)
-
-        # Weights
-        plt.subplot(121)
+        
+        # Visualization.
+        plt.figure(figsize=(12,12))
         plt.imshow(tvb_connectivity.weights, interpolation='nearest', aspect='equal', cmap='jet')
-        plt.xticks(range(n), labels, fontsize=7, rotation=90)
-        plt.yticks(range(n), labels, fontsize=7)
-        cb = plt.colorbar(shrink=0.2)
-        cb.set_label('Weights', fontsize=14)
-
-        # Tract lengths
-        plt.subplot(122)
-        plt.imshow(tvb_connectivity.tract_lengths, interpolation='nearest', aspect='equal', cmap='jet')
-        plt.xticks(range(n), labels, fontsize=7, rotation=90)
-        plt.yticks(range(n), labels, fontsize=7)
-        cb = plt.colorbar(shrink=0.2)
-        cb.set_label('Tract lengths', fontsize=14)
-
-        fig.tight_layout()
+        plt.title('TVB Structural Connectome', fontsize=20)
+        plt.xticks(range(0, len(tvb_connectivity.region_labels)), tvb_connectivity.region_labels, fontsize=10, rotation=90)
+        plt.yticks(range(0, len(tvb_connectivity.region_labels)), tvb_connectivity.region_labels, fontsize=10)
+        cb=plt.colorbar(shrink=0.8)
+        cb.set_label('weights', fontsize=14)
         plt.show()
-
+        
         return {
             'visualization completed': True
         }
