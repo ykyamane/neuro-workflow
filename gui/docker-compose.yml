@@ -80,6 +80,7 @@ services:
       - "${BIND_HOST:-127.0.0.1}:8001:8001"
     volumes:
       - ./mcp_server/mcp_config.json:/app/mcp_config.json
+      - ./mcp_server/workflow_mcp.py:/app/workflow_mcp.py
     depends_on:
       - backend 
     restart: unless-stopped

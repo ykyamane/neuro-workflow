@@ -13,6 +13,9 @@ from .views import (
     WorkflowRunDetailView,
     WorkflowRunListView,
     WorkflowRunCancelView,
+    WorkflowResultsView,
+    WorkflowReportView,
+    WorkflowCodeView,
 )
 
 app_name = "workflow"
@@ -115,6 +118,24 @@ urlpatterns = [
         WorkflowRunCancelView.as_view(),
         name="workflow-run-cancel"
     ),  # POST (cancel a run)
+    # Results listing
+    path(
+        "<uuid:workflow_id>/results/",
+        WorkflowResultsView.as_view(),
+        name="workflow-results"
+    ),  # GET(list result files with metadata)
+    # Generated code and notebook outputs
+    path(
+        "<uuid:workflow_id>/code/",
+        WorkflowCodeView.as_view(),
+        name="workflow-code"
+    ),  # GET(generated .py code + notebook cell outputs)
+    # Report save/retrieve
+    path(
+        "<uuid:workflow_id>/report/",
+        WorkflowReportView.as_view(),
+        name="workflow-report"
+    ),  # GET(read report), POST(save report)
     # Sample Data
     path(
         "sample-flow/", SampleFlowView.as_view(), name="sample-flow"

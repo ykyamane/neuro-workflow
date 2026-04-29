@@ -9,11 +9,11 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useCallback } from 'react';
-import { FiMenu, FiX, FiPlus } from 'react-icons/fi';
+import { FiMenu, FiX, FiPlus, FiFileText } from 'react-icons/fi';
 import { IoChatboxEllipses } from 'react-icons/io5';
 
 import useChatStore from '@/stores/chatStore';
-import { useFlowStore } from '@/stores/flowStore';
+import { useFlowStore, PROJECT_ID_KEY } from '@/stores/flowStore';
 import {
   listConversations,
   getConversation,
@@ -145,10 +145,12 @@ const ChatbotArea: React.FC = () => {
       setAbortController(controller);
 
       try {
+        const currentProjectId = localStorage.getItem(PROJECT_ID_KEY);
         await sendMessageStream(
           {
             message,
             conversation_id: activeConversationId,
+            project_id: currentProjectId,
           },
           // onEvent
           (event: SSEEvent) => {
@@ -245,7 +247,7 @@ const ChatbotArea: React.FC = () => {
       bottom="16px"
       overflow="hidden"
       position="absolute"
-      top="280px"
+      top="72px"
       left="8px"
       zIndex="1010"
     >
@@ -263,6 +265,7 @@ const ChatbotArea: React.FC = () => {
           direction="column"
           align="stretch"
           height="100%"
+          minH={0}
           width={SIDEBAR_WIDTH}
           transition="transform 0.3s ease-in-out"
           transform={
@@ -307,6 +310,25 @@ const ChatbotArea: React.FC = () => {
               onSelect={handleSelectConversation}
               onDelete={handleDeleteConversation}
               onNew={handleNewConversation}
+            />
+            <IconButton
+              icon={<FiFileText />}
+              aria-label="Generate report"
+              size="xs"
+              variant="ghost"
+              color={subtextColor}
+              _hover={{ color: textColor, bg: hoverBg }}
+              title="Generate Methods section report"
+              onClick={() => handleSend(
+                "Generate a scientific Methods section report for the active project. " +
+                "Step 1: call get_workflow_facts to collect all parameters and results. " +
+                "Step 2: write a Methods section as a neuroscientist would — flowing prose, no bullet points, " +
+                "no mention of node names or workflow software internals; embed all parameter values in the text; " +
+                "use sections: Abstract, Computational Model, Structural Connectivity, Simulation Setup, " +
+                "Stimulation Protocol (if any), Data Recording and Output. " +
+                "Step 3: call save_report to save it. " +
+                "Step 4: reply with only a short confirmation — do not print the full report in chat."
+              )}
             />
             <IconButton
               icon={<FiPlus />}

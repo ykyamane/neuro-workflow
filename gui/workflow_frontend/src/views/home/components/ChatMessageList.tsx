@@ -9,11 +9,12 @@ const ChatMessageList: React.FC = () => {
   const messages = useChatStore((s) => s.messages);
   const activeToolCalls = useChatStore((s) => s.activeToolCalls);
   const isStreaming = useChatStore((s) => s.isStreaming);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages
+  // Scroll within our container only — never propagate to ancestors
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, activeToolCalls]);
 
   // Build display items: messages interleaved with tool calls
@@ -53,7 +54,7 @@ const ChatMessageList: React.FC = () => {
   }
 
   return (
-    <Box flex={1} overflowY="auto" px={2} py={2}>
+    <Box ref={scrollContainerRef} flex={1} minH={0} overflowY="auto" px={2} py={2}>
       <VStack spacing={2} align="stretch">
         {displayItems.length === 0 && !isStreaming && (
           <Box textAlign="center" py={8}>
@@ -82,7 +83,6 @@ const ChatMessageList: React.FC = () => {
             </Box>
           )}
 
-        <div ref={bottomRef} />
       </VStack>
     </Box>
   );

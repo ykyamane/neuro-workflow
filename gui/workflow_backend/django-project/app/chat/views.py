@@ -148,6 +148,10 @@ class ChatStreamView(APIView):
                 conversation = Conversation.objects.get(
                     id=conversation_id, user=user, is_active=True,
                 )
+                # Update project context if the active project changed
+                if project_id and str(conversation.project_id) != str(project_id):
+                    conversation.project_id = project_id
+                    conversation.save(update_fields=["project_id"])
             except Conversation.DoesNotExist:
                 return Response(
                     {"error": "Conversation not found"},

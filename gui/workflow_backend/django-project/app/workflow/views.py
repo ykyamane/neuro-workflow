@@ -1049,6 +1049,144 @@ class FlowNodeInstanceNameUpdateView(APIView):
 
 
 # ---------------------------------------------------------------------------
+# Results listing and report saving
+# ---------------------------------------------------------------------------
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowResultsView(APIView):
+    """List simulation result files for a workflow project."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, workflow_id):
+        project = get_object_or_404(FlowProject, id=workflow_id)
+        project_name = project.name.replace(" ", "").capitalize()
+        results_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name / "results"
+
+        if not results_dir.exists():
+            return JsonResponse({"status": "success", "results": [], "results_dir": str(results_dir)})
+
+        files = []
+        for f in sorted(results_dir.iterdir()):
+            if not f.is_file():
+                continue
+            entry = {
+                "filename": f.name,
+                "size_bytes": f.stat().st_size,
+                "path": str(f.relative_to(Path(settings.BASE_DIR) / "codes/projects" / project_name)),
+            }
+            if f.suffix == ".npz":
+                try:
+                    import numpy as np
+                    with np.load(f, allow_pickle=False) as npz:
+                        entry["arrays"] = {k: list(npz[k].shape) for k in npz.files}
+                except Exception as e:
+                    entry["arrays"] = {"error": str(e)}
+            files.append(entry)
+
+        return JsonResponse({"status": "success", "results": files, "results_dir": str(results_dir)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowCodeView(APIView):
+    """Return the generated Python code and notebook cell outputs for a workflow."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, workflow_id):
+        project = get_object_or_404(FlowProject, id=workflow_id)
+        project_name = project.name.replace(" ", "").capitalize()
+        project_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name
+
+        result = {}
+
+        # Generated Python code
+        code_path = project_dir / f"{project_name}.py"
+        if code_path.exists():
+            result["code"] = code_path.read_text(encoding="utf-8")
+        else:
+            result["code"] = None
+
+        # Notebook cell outputs (text/stdout from executed cells only)
+        notebook_outputs = []
+        notebook_path = project_dir / f"{project_name}.ipynb"
+        if notebook_path.exists():
+            try:
+                import json as _json
+                nb = _json.loads(notebook_path.read_text(encoding="utf-8"))
+                for cell in nb.get("cells", []):
+                    if cell.get("cell_type") != "code":
+                        continue
+                    source = "".join(cell.get("source", []))
+                    cell_outputs = []
+                    for out in cell.get("outputs", []):
+                        if out.get("output_type") in ("stream", "execute_result", "display_data"):
+                            text = out.get("text") or out.get("data", {}).get("text/plain") or []
+                            if isinstance(text, list):
+                                text = "".join(text)
+                            if text.strip():
+                                cell_outputs.append(text.strip())
+                    if cell_outputs:
+                        notebook_outputs.append({
+                            "source_snippet": source[:200],
+                            "outputs": cell_outputs,
+                        })
+            except Exception as e:
+                notebook_outputs = [{"error": str(e)}]
+
+        result["notebook_outputs"] = notebook_outputs
+        return JsonResponse({"status": "success", **result})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowReportView(APIView):
+    """Save or retrieve a markdown report for a workflow project."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, workflow_id):
+        project = get_object_or_404(FlowProject, id=workflow_id)
+        project_name = project.name.replace(" ", "").capitalize()
+        report_text = request.data.get("report_text", "")
+        filename = request.data.get("filename", "report.md")
+
+        if not report_text:
+            return JsonResponse({"error": "report_text is required"}, status=400)
+
+        project_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name
+        project_dir.mkdir(parents=True, exist_ok=True)
+        report_path = project_dir / filename
+
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(report_text)
+
+        return JsonResponse({
+            "status": "success",
+            "message": f"Report saved to {filename}",
+            "path": str(report_path),
+            "size_bytes": report_path.stat().st_size,
+        })
+
+    def get(self, request, workflow_id):
+        project = get_object_or_404(FlowProject, id=workflow_id)
+        project_name = project.name.replace(" ", "").capitalize()
+        filename = request.GET.get("filename", "report.md")
+        report_path = Path(settings.BASE_DIR) / "codes/projects" / project_name / filename
+
+        if not report_path.exists():
+            return JsonResponse({"error": "Report not found"}, status=404)
+
+        return JsonResponse({
+            "status": "success",
+            "filename": filename,
+            "report_text": report_path.read_text(encoding="utf-8"),
+        })
+
+
+# ---------------------------------------------------------------------------
 # Async run / status API (Phase 3)
 # ---------------------------------------------------------------------------
 
