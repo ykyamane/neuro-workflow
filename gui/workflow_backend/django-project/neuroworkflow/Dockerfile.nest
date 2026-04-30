@@ -123,6 +123,15 @@ RUN . /root/.env/bin/activate && \
 		jupyterhub tvb-library tvb-framework statsmodels hdf5storage && \
 	find /root/.cache -type f -delete
 
+# Reinstall h5py from source against system HDF5 1.14.6.
+# The pip wheels for h5py bundle their own HDF5 library, which collides with
+# the system HDF5 used by NEST/TVB and breaks workflows that touch both.
+# Use h5py >=3.13 (first version with HDF5 1.14.x support and Cython 3
+# compatibility) to ensure it builds in this environment.
+RUN . /root/.env/bin/activate && \
+	HDF5_DIR=${HDF5_DIR} pip install --no-cache-dir --no-binary=h5py --force-reinstall "h5py>=3.13" && \
+	find /root/.cache -type f -delete
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
