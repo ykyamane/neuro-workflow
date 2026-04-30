@@ -16,9 +16,10 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -27,7 +28,7 @@ urlpatterns = [
     path("api/workflow/", include("app.workflow.urls")),
     path("api/metadata/", include("app.metadata.urls")),
     path("api/chat/", include("app.chat.urls")),
-    # <uuid:user_id>/<uuid:workflow_id>/
+    re_path(r"^api/viewer/(?P<path>.*)$", serve, {"document_root": settings.PROJECTS_ROOT}),
 ]
 
 if settings.DEBUG:

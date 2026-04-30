@@ -12,8 +12,8 @@ interface UseKeyboardShortcutsParams {
   autoSaveEnabled: boolean;
   isViewOpen: boolean;
   isCodeOpen: boolean;
+  onRequestDeleteNodes: (nodeIds: string[]) => void;
   deleteEdgeAPI: (edgeId: string) => Promise<void>;
-  deleteNodeAPI: (nodeId: string) => Promise<void>;
 }
 
 export const useKeyboardShortcuts = ({
@@ -25,17 +25,31 @@ export const useKeyboardShortcuts = ({
   autoSaveEnabled,
   isViewOpen,
   isCodeOpen,
+  onRequestDeleteNodes,
   deleteEdgeAPI,
-  deleteNodeAPI,
 }: UseKeyboardShortcutsParams) => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        Boolean(target?.isContentEditable);
+
       // Disable deletion when modal is open
-      if (isViewOpen || isCodeOpen) {
+      if (isViewOpen || isCodeOpen || isTypingTarget) {
         return;
       }
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
+        const selectedNodes = sharedNodes.filter(node => node.selected);
+        if (selectedNodes.length > 0) {
+          event.preventDefault();
+          onRequestDeleteNodes(selectedNodes.map(node => node.id));
+          return;
+        }
+
         const selectedEdges = sharedEdges.filter(edge => edge.selected);
         if (selectedEdges.length > 0) {
           event.preventDefault();
@@ -54,38 +68,6 @@ export const useKeyboardShortcuts = ({
             isClosable: true,
           });
         }
-
-        const selectedNodes = sharedNodes.filter(node => node.selected);
-        if (selectedNodes.length > 0) {
-          event.preventDefault();
-          const nodeIds = selectedNodes.map(node => node.id);
-
-          if (autoSaveEnabled) {
-            selectedNodes.forEach(node => {
-              deleteNodeAPI(node.id);
-            });
-
-            const relatedEdges = sharedEdges.filter(
-              (edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target)
-            );
-            relatedEdges.forEach(edge => {
-              deleteEdgeAPI(edge.id);
-            });
-          }
-
-          setSharedNodes((nds: Node<CalculationNodeData>[]) => nds.filter((node: Node<CalculationNodeData>) => !node.selected));
-          setSharedEdges((eds: Edge[]) => eds.filter(
-            (edge: Edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
-          ));
-
-          toast({
-            title: "Deleted",
-            description: `${selectedNodes.length} node(s) deleted`,
-            status: "info",
-            duration: 2000,
-            isClosable: true,
-          });
-        }
       }
     };
 
@@ -93,7 +75,7 @@ export const useKeyboardShortcuts = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sharedNodes, sharedEdges, setSharedNodes, setSharedEdges, toast, autoSaveEnabled, isViewOpen, isCodeOpen]);
+  }, [sharedNodes, sharedEdges, setSharedNodes, setSharedEdges, toast, autoSaveEnabled, isViewOpen, isCodeOpen, onRequestDeleteNodes, deleteEdgeAPI]);
 };
 
 export default useKeyboardShortcuts;

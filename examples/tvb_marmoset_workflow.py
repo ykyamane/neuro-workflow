@@ -1,13 +1,6 @@
 """
 TVB Marmoset Brain Simulation — three demonstrations, one workflow.
 
-Sim 1 → Sim 2: weights, model a, coupling, integrator, monitor period, sim length
-Sim 2 → Sim 3: stimulus T only (10 s period → 30 s period, giving 2 pulses)
-
-Output files (./results/):
-  sim1_temporal_average.npz, sim1_bold.npz
-  sim2_temporal_average.npz, sim2_bold.npz
-  sim3_temporal_average.npz, sim3_bold.npz
 """
 
 import os
@@ -34,7 +27,7 @@ from neuroworkflow.nodes.simulation.TVBSimulatorNodeV2 import TVBSimulatorNodeV2
 from neuroworkflow.nodes.stimulus.TVBStimuliRegionNodeV2 import TVBStimuliRegionNodeV2
 from neuroworkflow.nodes.analysis.TVBTimeSeriesPlotNodeV2 import TVBTimeSeriesPlotNodeV2
 
-# ── Instantiate nodes ──────────────────────────────────────────────────────────
+# ── Instantiate nodes 
 
 conn       = TVBConnectivitySetUpNode("Connectivity")
 model      = TVBModelNodeV2("Model")
@@ -49,7 +42,7 @@ plot2      = TVBTimeSeriesPlotNodeV2("Plot2")
 
 conn.configure(connectivity_file=CONNECTIVITY_FILE)
 
-# ── Build topology (shared across all simulations) ─────────────────────────────
+# ── Build topology (shared across all simulations) 
 
 wf = WorkflowBuilder("TVB_Marmoset")
 
@@ -82,9 +75,8 @@ wf.connect("Simulator",    "tvb_simtime_2",    "Plot2",      "tvb_simtime")
 
 workflow = wf.build()
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 # SIM 1 — Resting state (30 s, no stimulus)
-# ═══════════════════════════════════════════════════════════════════════════════
 
 print("=" * 60)
 print("SIM 1: Resting state")
@@ -120,11 +112,11 @@ success = workflow.execute()
 print("Sim 1 done.\n" if success else "Sim 1 FAILED.\n")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 # SIM 2 — Stimulus response (60 s, PulseTrain every 10 s)
 # Changes from Sim 1: model a, coupling, integrator, monitor period,
 #                     stimulus weights, simulation length
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 
 print("=" * 60)
 print("SIM 2: Stimulus response")
@@ -158,10 +150,10 @@ success = workflow.execute()
 print("Sim 2 done.\n" if success else "Sim 2 FAILED.\n")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 # SIM 3 — BOLD demonstration (60 s, 2 pulses at 5 s and 35 s)
 # Changes from Sim 2: stimulus T only (10 000 ms → 30 000 ms)
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 
 print("=" * 60)
 print("SIM 3: BOLD demonstration")
@@ -188,3 +180,8 @@ plot2.configure(
 print("\nExecuting...")
 success = workflow.execute()
 print("Sim 3 done.\n" if success else "Sim 3 FAILED.\n")
+
+
+
+
+

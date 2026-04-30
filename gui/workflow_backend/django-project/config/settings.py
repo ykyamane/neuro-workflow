@@ -226,6 +226,8 @@ MEDIA_URL = "nodes/"
 # 変更必須
 MEDIA_ROOT = os.path.join(BASE_DIR, "codes/nodes")
 
+PROJECTS_ROOT = os.path.join(BASE_DIR, "codes/projects")
+
 # ==============================================================================
 # FILE UPLOAD SETTINGS
 # ==============================================================================

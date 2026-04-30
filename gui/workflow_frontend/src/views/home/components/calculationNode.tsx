@@ -8,21 +8,13 @@ import {
   HStack, 
   useToast,
   IconButton, 
-  Button,
-  useDisclosure,
-  AlertDialog,
-  AlertDialogOverlay,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogBody,
-  AlertDialogFooter,
   Tooltip, Icon } from "@chakra-ui/react";
-import { useRef } from 'react';
 import { EditIcon, DeleteIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
-import { FiCode } from "react-icons/fi";
+import { FiCode, FiEye } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
 import { JUPYTER_BASE_URL } from '../../../config/urls';
 import { generateHandleId } from '@/utils/handleId';
+import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface NodeCallbacks {
   onJupyter?: (nodeId: string) => void;
@@ -39,11 +31,6 @@ export const CalculationNode = ({
   ...callbacks 
 }: NodeProps<CalculationNodeData> & NodeCallbacks) => {
   const schema = data.schema || { inputs: {}, outputs: {}, parameters: {} };
-
-  const [nodeToAction, setNodeToAction] = useState<NodeTypeWithIcon | null>(null);
-  const { isOpen: isDeleteAlertOpen, onOpen: onDeleteAlertOpen, onClose: onDeleteAlertClose } = useDisclosure();
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const toast = useToast();
 
   //console.log("This is the schema data", schema);
@@ -93,41 +80,83 @@ export const CalculationNode = ({
     addJupyterTab(projectId, filename, jupyterUrl);
   };
 
-  // Opens a delete confirmation dialog
-  const openDeleteDialog = (node: NodeTypeWithIcon) => {
-    if (!node.label) {
+  const normalizeProjectFolderName = (projectName: string) => {
+    const trimmed = projectName.replace(/\s/g, '').toLowerCase();
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  };
+
+  const normalizeViewerOutputDir = (rawOutputDir?: unknown) => {
+    const fallback = 'results/viewer';
+
+    if (typeof rawOutputDir !== 'string' || rawOutputDir.trim() === '') {
+      return fallback;
+    }
+
+    let normalized = rawOutputDir.trim().replace(/\\/g, '/');
+
+    normalized = normalized.replace(/^\.\/+/, '');
+    normalized = normalized.replace(/^\/+/, '');
+
+    const projectsMarker = 'codes/projects/';
+    const markerIndex = normalized.indexOf(projectsMarker);
+    if (markerIndex >= 0) {
+      normalized = normalized.slice(markerIndex + projectsMarker.length);
+      const parts = normalized.split('/').filter(Boolean);
+      if (parts.length > 1) {
+        normalized = parts.slice(1).join('/');
+      }
+    }
+
+    return normalized || fallback;
+  };
+
+  const isBrainViewerNode = () => (
+    data.file_name === 'TVBMarmosetBrainViewerNode.py' ||
+    data.label === 'TVBMarmosetBrainViewerNode' ||
+    data.label === 'MarmosetBrainViewer'
+  );
+
+  const handleOpenBrainViewer = async () => {
+    const projectId = localStorage.getItem('projectId');
+    if (!projectId) {
       toast({
-        title: "Error",
-        description: "No label available for deletion",
-        status: "error",
-        duration: 3000,
+        title: "No Project Selected",
+        description: "Please select a project first",
+        status: "warning",
+        duration: 2500,
         isClosable: true,
       });
       return;
     }
 
-    setNodeToAction(node);
-    onDeleteAlertOpen();
-  };
-
-// Delete execution on workflow
-  const handleDeleteNode = async () => {
-    if (!id) return;
-
     try {
-      setIsDeleting(id);
-      callbacks.onDelete?.(id);
+      const headers = await createAuthHeaders();
+      const response = await fetch(`/api/workflow/${projectId}/`, {
+        credentials: 'include',
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load project metadata (${response.status})`);
+      }
+
+      const project = await response.json();
+      const projectFolder = normalizeProjectFolderName(project?.name || projectId);
+      const configuredOutputDir = data.schema?.parameters?.output_dir?.default_value;
+      const viewerOutputDir = normalizeViewerOutputDir(configuredOutputDir);
+      const dataPath = `/api/viewer/${projectFolder}/${viewerOutputDir}/connectivity_data.json`;
+      const viewerUrl = `/brain-viewer.html?data=${encodeURIComponent(dataPath)}`;
+
+      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.error('Error deleting node:', error);
+      console.error('Error opening brain viewer:', error);
       toast({
-        title: "Error",
-        description: `Failed to delete node: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        title: "Viewer Error",
+        description: error instanceof Error ? error.message : "Failed to open brain viewer",
         status: "error",
-        duration: 5000,
+        duration: 3500,
         isClosable: true,
       });
-    } finally {
-      setIsDeleting(null);
     }
   };
 
@@ -197,6 +226,27 @@ export const CalculationNode = ({
               boxShadow="sm"
             />
           </Tooltip>
+          {isBrainViewerNode() && (
+            <Tooltip label="Open Brain Viewer" hasArrow>
+              <IconButton
+                aria-label="Open Brain Viewer"
+                size="xs"
+                variant="solid"
+                bg="teal.400"
+                color="white"
+                icon={<Icon as={FiEye} boxSize={2.5} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenBrainViewer();
+                }}
+                _hover={{ bg: "teal.500", transform: "scale(1.1)" }}
+                minW="18px"
+                h="18px"
+                borderRadius="sm"
+                boxShadow="sm"
+              />
+            </Tooltip>
+          )}
           <Tooltip label="Edit Node" hasArrow>
             <IconButton
               aria-label="Edit Node"
@@ -226,9 +276,8 @@ export const CalculationNode = ({
               icon={<DeleteIcon boxSize={2.5} />}
               onClick={(e) => {
                 e.stopPropagation();
-                //callbacks.onDelete?.(id);
                 e.preventDefault();
-                openDeleteDialog(data);
+                callbacks.onDelete?.(id);
               }}
               _hover={{ bg: "red.500", transform: "scale(1.1)" }}
               minW="18px"
@@ -422,48 +471,6 @@ export const CalculationNode = ({
           ID: {id}
         </Box>
       )}
-
-      {/* Delete confirmation alert dialog */}
-      <AlertDialog
-          isOpen={isDeleteAlertOpen}
-          leastDestructiveRef={cancelRef}
-          onClose={onDeleteAlertClose}
-        >
-          <AlertDialogOverlay>
-            <AlertDialogContent bg="gray.800" color="white">
-              <AlertDialogHeader fontSize="lg" fontWeight="bold">
-                Delete Node
-              </AlertDialogHeader>
-
-              <AlertDialogBody>
-                Are you sure you want to delete "{nodeToAction?.label}"?
-                <br />
-                <Text fontSize="sm" color="gray.400" mt={2}>
-                  This action cannot be undone.
-                </Text>
-              </AlertDialogBody>
-
-              <AlertDialogFooter>
-                <Button 
-                  ref={cancelRef} 
-                  onClick={onDeleteAlertClose}
-                  variant="ghost"
-                  color="gray.300"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  colorScheme="red" 
-                  onClick={handleDeleteNode} 
-                  ml={3}
-                  isLoading={isDeleting === nodeToAction?.file_id}
-                >
-                  Delete
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialogOverlay>
-        </AlertDialog>
     </Box>
   );
 };

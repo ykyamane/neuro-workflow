@@ -19,6 +19,7 @@ services:
     volumes:
       - ./workflow_backend:/django-app
       - ${NODES_DIR}:/django-app/django-project/codes/nodes
+      - ./workflow_backend/django-project/codes/projects:/django-app/django-project/codes/projects
       - ../src:/django-app/src:ro
     working_dir: /django-app
     ports:
@@ -63,6 +64,7 @@ services:
       - "${BIND_HOST:-127.0.0.1}:5173:5173"
     volumes:
       - ./workflow_frontend/src:/frontend/src
+      - ./workflow_frontend/public:/frontend/public
     env_file:
       - ./workflow_frontend/.env
     depends_on:

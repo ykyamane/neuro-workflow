@@ -576,6 +576,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         style: { stroke: '#aaaaaa', strokeWidth: 2 },
         type: 'default',
       }}
+      deleteKeyCode={null}
       selectionOnDrag
       multiSelectionKeyCode="Meta"
     >

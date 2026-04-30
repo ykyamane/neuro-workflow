@@ -17,6 +17,13 @@ import {
   useDisclosure,
   Text,
   useToast,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  VStack,
 } from '@chakra-ui/react';
 import { CodeEditorModal } from './components/codeEditorModal';
 import { JUPYTER_BASE_URL, API_BASE_URL } from '../../config/urls';
@@ -69,9 +76,17 @@ const HomeView = () => {
   const { isOpen: isViewOpen, onOpen: onViewOpen, onClose: onViewClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
+  const {
+    isOpen: isNodeDeleteOpen,
+    onOpen: onNodeDeleteOpen,
+    onClose: onNodeDeleteClose,
+  } = useDisclosure();
   const [selectedNode, setSelectedNode] = useState<Node<CalculationNodeData> | null>(null);
+  const [nodesPendingDelete, setNodesPendingDelete] = useState<Node<CalculationNodeData>[]>([]);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [isDeletingNodes, setIsDeletingNodes] = useState(false);
+  const nodeDeleteCancelRef = useRef<HTMLButtonElement>(null);
 
   // Comon Selector
   const sharedNodes = useFlowStore(state => state.sharedNodes);
@@ -269,66 +284,23 @@ const HomeView = () => {
     handleRefreshNodeData();
   }, [uploadedNodes]);
 
-  // handleNodeDelete
-  const handleNodeDelete = useCallback(async (nodeId: string) => {
-    try {
-      if (selectedProject && autoSaveEnabled) {
-        const headers = await createAuthHeaders();
-        await fetch(`/api/workflow/${selectedProject}/nodes/${nodeId}/`, {
-          method: 'DELETE',
-          credentials: 'include',
-          headers: {
-            ...headers,
-          },
-        });
-      }
- 
-      //const n = sharedNodes;
-      setSharedNodes((nds) => nds.filter((node) => node.id !== nodeId));
-      setSharedEdges((eds) => {
-        const relatedEdges = eds.filter(
-          (edge) => edge.source === nodeId || edge.target === nodeId
-        );
-        
-        if (selectedProject && autoSaveEnabled) {
-          relatedEdges.forEach(async (edge) => {
-            const headers = await createAuthHeaders();
-            await fetch(`/api/workflow/${selectedProject}/edges/${edge.id}/`, {
-              method: 'DELETE',
-              credentials: 'include',
-              headers: {
-                ...headers,
-              },
-            });
-          });
-        }
-
-        const projectId = localStorage.getItem(PROJECT_ID_KEY);
-        handleProjectChange( projectId );
-        
-        return eds.filter(
-          (edge) => edge.source !== nodeId && edge.target !== nodeId
-        );
-      });
-      
-      toast({
-        title: "Deleted",
-        description: `Node deleted`,
-        status: "info",
-        duration: 2000,
-        isClosable: true,
-      });
-    } catch (error) {
-      console.error('Error deleting node:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete node",
-        status: "error",
-        duration: 2000,
-        isClosable: true,
-      });
+  const requestNodeDelete = useCallback((nodeIds: string[]) => {
+    if (nodeIds.length === 0) {
+      return;
     }
-  }, [setSharedNodes, setSharedEdges, toast, autoSaveEnabled, selectedProject]);
+
+    const pendingNodes = sharedNodes.filter((node) => nodeIds.includes(node.id));
+    if (pendingNodes.length === 0) {
+      return;
+    }
+
+    setNodesPendingDelete(pendingNodes);
+    onNodeDeleteOpen();
+  }, [sharedNodes, onNodeDeleteOpen]);
+
+  const handleNodeDelete = useCallback((nodeId: string) => {
+    requestNodeDelete([nodeId]);
+  }, [requestNodeDelete]);
 
   // Define nodeTypes in useMemo - map all category types to calculationNode components
   const nodeTypes = useMemo(() => {
@@ -600,8 +572,8 @@ const HomeView = () => {
     autoSaveEnabled,
     isViewOpen,
     isCodeOpen,
+    onRequestDeleteNodes: requestNodeDelete,
     deleteEdgeAPI,
-    deleteNodeAPI,
   });
 
   // handleRefreshNodeData
@@ -646,39 +618,73 @@ const HomeView = () => {
     }
   }, []);
 
-  // Node deletion process (from menu)
-  const handleDeleteNode = useCallback(() => {
-    if (selectedNodeId) {
+  const closeNodeDeleteDialog = useCallback(() => {
+    setNodesPendingDelete([]);
+    onNodeDeleteClose();
+  }, [onNodeDeleteClose]);
+
+  const handleConfirmNodeDelete = useCallback(async () => {
+    if (nodesPendingDelete.length === 0) {
+      return;
+    }
+
+    const nodeIds = nodesPendingDelete.map((node) => node.id);
+
+    try {
+      setIsDeletingNodes(true);
+
       if (autoSaveEnabled) {
-        deleteNodeAPI(selectedNodeId);
+        await Promise.all(nodeIds.map((nodeId) => deleteNodeAPI(nodeId)));
       }
-      
-      setSharedNodes((nds) => nds.filter((node) => node.id !== selectedNodeId));
+
+      setSharedNodes((nds) => nds.filter((node) => !nodeIds.includes(node.id)));
       setSharedEdges((eds) => {
         const relatedEdges = eds.filter(
-          (edge) => edge.source === selectedNodeId || edge.target === selectedNodeId
+          (edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target)
         );
-        
+
         if (autoSaveEnabled) {
-          relatedEdges.forEach(edge => {
+          relatedEdges.forEach((edge) => {
             deleteEdgeAPI(edge.id);
           });
         }
-        
+
+        const projectId = localStorage.getItem(PROJECT_ID_KEY);
+        handleProjectChange(projectId);
+
         return eds.filter(
-          (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
+          (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
         );
       });
-      
+
       toast({
         title: "Deleted",
-        description: `Node ${selectedNodeId} deleted`,
+        description: `${nodeIds.length} node(s) deleted`,
         status: "info",
         duration: 2000,
         isClosable: true,
       });
+      closeNodeDeleteDialog();
+    } catch (error) {
+      console.error('Error deleting node:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete node",
+        status: "error",
+        duration: 2000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingNodes(false);
     }
-  }, [selectedNodeId, setSharedNodes, setSharedEdges, toast, autoSaveEnabled]);
+  }, [nodesPendingDelete, autoSaveEnabled, deleteNodeAPI, setSharedNodes, setSharedEdges, deleteEdgeAPI, toast, closeNodeDeleteDialog]);
+
+  // Node deletion process (from menu)
+  const handleDeleteNode = useCallback(() => {
+    if (selectedNodeId) {
+      requestNodeDelete([selectedNodeId]);
+    }
+  }, [selectedNodeId, requestNodeDelete]);
 
   // Edge removal process (from the menu)
   const handleDeleteEdge = useCallback(() => {
@@ -1172,6 +1178,84 @@ const HomeView = () => {
           project={projectToDelete}
           isDeleting={isDeletingProject}
         />
+
+        <AlertDialog
+          isOpen={isNodeDeleteOpen}
+          leastDestructiveRef={nodeDeleteCancelRef}
+          onClose={() => {
+            if (!isDeletingNodes) {
+              closeNodeDeleteDialog();
+            }
+          }}
+        >
+          <AlertDialogOverlay>
+            <AlertDialogContent>
+              <AlertDialogHeader fontSize="lg" fontWeight="bold" color="red.600">
+                Delete Node{nodesPendingDelete.length === 1 ? '' : 's'}
+              </AlertDialogHeader>
+
+              <AlertDialogBody>
+                <VStack spacing={3} align="stretch">
+                  <Text>
+                    You are about to permanently delete {nodesPendingDelete.length} node{nodesPendingDelete.length === 1 ? '' : 's'} from this workflow.
+                  </Text>
+
+                  {nodesPendingDelete.length === 1 ? (
+                    <Text
+                      p={3}
+                      bg="red.50"
+                      borderRadius="md"
+                      borderLeft="4px solid"
+                      borderColor="red.400"
+                      fontWeight="semibold"
+                      color="red.700"
+                    >
+                      Node Name: {nodesPendingDelete[0]?.data.instanceName || nodesPendingDelete[0]?.data.label || nodesPendingDelete[0]?.id}
+                    </Text>
+                  ) : (
+                    <Box
+                      p={3}
+                      bg="red.50"
+                      borderRadius="md"
+                      borderLeft="4px solid"
+                      borderColor="red.400"
+                      color="red.700"
+                    >
+                      {nodesPendingDelete.map((node) => (
+                        <Text key={node.id} fontWeight="semibold">
+                          • {node.data.instanceName || node.data.label || node.id}
+                        </Text>
+                      ))}
+                    </Box>
+                  )}
+
+                  <Text fontSize="sm" color="gray.600">
+                    Connected edges will also be removed. This action cannot be undone.
+                  </Text>
+                </VStack>
+              </AlertDialogBody>
+
+              <AlertDialogFooter>
+                <Button
+                  ref={nodeDeleteCancelRef}
+                  onClick={closeNodeDeleteDialog}
+                  isDisabled={isDeletingNodes}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  colorScheme="red"
+                  onClick={handleConfirmNodeDelete}
+                  ml={3}
+                  isLoading={isDeletingNodes}
+                  loadingText="Deleting..."
+                >
+                  Delete Node{nodesPendingDelete.length === 1 ? '' : 's'}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialogOverlay>
+        </AlertDialog>
     </div>
   );
 }
