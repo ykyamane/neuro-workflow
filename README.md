@@ -128,6 +128,13 @@ This work has been presented at several conferences and workshops, receiving val
   - [📄 Abstract](posters_conferences/abstract_INCF_EBrains_summit.pdf)
   - [📄 Poster](posters_conferences/EBRAINS-Summit-2025-Poster.pdf)
 
+### 2026
+
+- **Unified Theory Workshop** (April 23, 2026)
+
+  - _"NeuroWorkflow: Agent-Assisted Brain Modeling"_
+  - [📄 Poster](posters_conferences/poster_unified_theory_20260425.pdf)
+
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) - see the LICENSE file for details.
