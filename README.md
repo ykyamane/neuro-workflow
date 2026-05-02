@@ -96,44 +96,45 @@ To set up the web application, follow the detailed instructions in `gui/README.m
 
 This work has been presented at several conferences and workshops, receiving valuable feedback that has contributed to its ongoing development:
 
-### 2025
-
-- **Winter Workshop**
-
-  - _"Towards a Generic and Open Software for Building Digital Brains"_
-  - [📄 Poster](posters_conferences/Winter_WorkShop_BM2.pdf)
-
-- **Unified Theory Workshop** (May 30, 2025)
-
-  - _"NeuroWorkflow: A python-based Graph Framework for Modular Brain Modeling Workflows"_
-  - [📄 Poster](posters_conferences/Unified_Theory_Poster_2025May30.pdf)
-
-- **NEST Conference 2025** (June 17, 2025)
-
-  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0"_
-  - [📄 Presentation Slides](posters_conferences/NEST_conference_slides_20250617_Carlos.pdf)
-
-- **CNS 2025 (Computational Neuroscience Society)**
-
-  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0 – The Japan Digital Brain Project"_
-  - [📄 Poster](posters_conferences/Poster_cns2025_Carlos.pdf)
-
-- **RIKEN CBS Hackathon** (September 28, 2025)
-
-  - _"Building BrainModeling Workflows: A proof-of-concept framework"_
-  - [📄 Hackathon Material](posters_conferences/hackathon_material_OIST_carlos_20250928.pdf)
-
-- **INCF/EBrains Summit**
-  - _"NeuroWorkflow: A Node-Based Framework for Scalable Computational Neuroscience with AI-Ready Infrastructure"_
-  - [📄 Abstract](posters_conferences/abstract_INCF_EBrains_summit.pdf)
-  - [📄 Poster](posters_conferences/EBRAINS-Summit-2025-Poster.pdf)
-
 ### 2026
 
 - **Unified Theory Workshop** (April 23, 2026)
 
   - _"NeuroWorkflow: Agent-Assisted Brain Modeling"_
   - [📄 Poster](posters_conferences/poster_unified_theory_20260425.pdf)
+
+### 2025
+
+- **INCF/EBrains Summit**
+
+  - _"NeuroWorkflow: A Node-Based Framework for Scalable Computational Neuroscience with AI-Ready Infrastructure"_
+  - [📄 Abstract](posters_conferences/abstract_INCF_EBrains_summit.pdf)
+  - [📄 Poster](posters_conferences/EBRAINS-Summit-2025-Poster.pdf)
+
+- **RIKEN CBS Hackathon** (September 28, 2025)
+
+  - _"Building BrainModeling Workflows: A proof-of-concept framework"_
+  - [📄 Hackathon Material](posters_conferences/hackathon_material_OIST_carlos_20250928.pdf)
+
+- **CNS 2025 (Computational Neuroscience Society)**
+
+  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0 – The Japan Digital Brain Project"_
+  - [📄 Poster](posters_conferences/Poster_cns2025_Carlos.pdf)
+
+- **NEST Conference 2025** (June 17, 2025)
+
+  - _"A Graph-Based, In-Memory Workflow Library for Brain/MINDS 2.0"_
+  - [📄 Presentation Slides](posters_conferences/NEST_conference_slides_20250617_Carlos.pdf)
+
+- **Unified Theory Workshop** (May 30, 2025)
+
+  - _"NeuroWorkflow: A python-based Graph Framework for Modular Brain Modeling Workflows"_
+  - [📄 Poster](posters_conferences/Unified_Theory_Poster_2025May30.pdf)
+
+- **Winter Workshop**
+
+  - _"Towards a Generic and Open Software for Building Digital Brains"_
+  - [📄 Poster](posters_conferences/Winter_WorkShop_BM2.pdf)
 
 ## License
 
