@@ -16,7 +16,7 @@ A Python library for building and executing neural simulation workflows.
 
 </div>
 
-This project is supported by the **<a href="https://brainminds.jp/" target="_blank">Brain/MINDS 2.0</a>** initiative and is being developed by the **<a href="https://www.oist.jp/research/research-units/ncu" target="_blank">Neural Computation Unit (Doya Lab)</a>** at the **Okinawa Institute of Science and Technology (OIST)** in collaboration with partners.
+This project is supported by the **<a href="https://brainminds.jp/" target="_blank">Brain/MINDS 2.0</a>** initiative and is being developed by the **<a href="https://www.oist.jp/research/research-units/ncu" target="_blank">Neural Computation Unit</a>** at the **Okinawa Institute of Science and Technology (OIST)** in collaboration with partners.
 
 ## Preview
 
