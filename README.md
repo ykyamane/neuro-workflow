@@ -10,7 +10,7 @@ A Python library for building and executing neural simulation workflows.
 
 <img src="img/BM2.0.png" alt="Brain/MINDS 2.0 Logo" width="200"/>
 
-### Developed by Neural Computation Unit (Doya Lab) at OIST and Collaborators
+### Developed by Neural Computation Unit at OIST and Collaborators
 
 <img src="img/oist.png" alt="OIST Logo" width="200"/>
 
