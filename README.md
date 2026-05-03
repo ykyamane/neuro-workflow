@@ -30,7 +30,20 @@ Get a first impression of NeuroWorkflow in action:
 
 <br><br>
 
-<a href="https://youtu.be/hC4NUOuR3OI?si=VwYyRLDbtXGk6RiF" target="_blank">🎥 Watch a short NeuroWorkflow demonstration video</a>
+🎥 **Video demonstrations:**
+
+<a href="https://youtu.be/HvcTYz3RIM8" target="_blank">Basal Ganglia Model of the Macaque on Neuro-Workflow using NEST</a>
+<br><small>Credits: Carlos Enrique Gutierrez</small>
+
+<br>
+
+<a href="https://youtu.be/_FAjMHKHhGw" target="_blank">Marmoset Full-Brain Model on Neuro-Workflow using TVB</a>
+<br><small>Credits: Carlos Enrique Gutierrez and Henrik Skibbe</small>
+
+<br>
+
+<a href="https://youtu.be/hC4NUOuR3OI?si=VwYyRLDbtXGk6RiF" target="_blank">First View of Neuro-Workflow</a>
+<br><small>Credits: Carlos Enrique Gutierrez</small>
 
 </div>
 
