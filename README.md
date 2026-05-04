@@ -1,6 +1,28 @@
 # NeuroWorkflow
 
-A Python library for building and executing neural simulation workflows.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Brain/MINDS 2.0](https://img.shields.io/badge/Supported%20by-Brain%2FMINDS%202.0-green)](https://brainminds.jp/)
+
+**A Python framework for building and executing computational neuroscience workflows through a unified node-based architecture.**
+
+---
+
+## Why NeuroWorkflow?
+
+Modern brain modeling workflows require complex sequences of data processing, model configuration, and analysis steps. While powerful tools exist, they typically focus on single simulation environments and demand advanced programming knowledge — limiting accessibility, reproducibility, and collaboration.
+
+NeuroWorkflow addresses this through a **node-based graph framework** that transforms complex scientific workflows into modular, reusable, and interpretable components:
+
+- **Simulator interoperability** — TVB, NEST, and custom solvers run as interchangeable nodes through a unified interface
+- **AI-ready infrastructure** — each node contains structured metadata and semantic descriptions enabling accurate workflow composition by LLM agents via protocols such as MCP
+- **Accessibility** — researchers without extensive programming backgrounds, as well as AI agents, can assemble, reuse, and extend brain models
+- **Reproducibility** — workflows are serializable graphs that make pipelines shareable and executable across environments
+- **Extensibility** — any Python function can be wrapped as a node; new simulators and tools can be integrated without changing the core
+
+> *"Well-documented nodes, enabled by our schema system, establish the foundation for organizing computational neuroscience functions, algorithms and tools, ready for AI few-shot learning."*
+
+---
 
 ## Support and Development
 
@@ -18,15 +40,15 @@ A Python library for building and executing neural simulation workflows.
 
 This project is supported by the **<a href="https://brainminds.jp/" target="_blank">Brain/MINDS 2.0</a>** initiative and is being developed by the **<a href="https://www.oist.jp/research/research-units/ncu" target="_blank">Neural Computation Unit</a>** at the **Okinawa Institute of Science and Technology (OIST)** in collaboration with partners.
 
+---
+
 ## Preview
 
 Get a first impression of NeuroWorkflow in action:
 
 <div align="center">
 
-<img src="img/screen1.png" alt="NeuroWorkflow Screenshot 1" width="250" style="margin: 5px;"/>
-<img src="img/screen2.png" alt="NeuroWorkflow Screenshot 2" width="250" style="margin: 5px;"/>
-<img src="img/screen3.png" alt="NeuroWorkflow Screenshot 3" width="250" style="margin: 5px;"/>
+<img src="img/figureBM2_NW.png" alt="NeuroWorkflow Overview" width="800"/>
 
 <br><br>
 
@@ -46,6 +68,8 @@ Get a first impression of NeuroWorkflow in action:
 <br><small>Credits: Carlos Enrique Gutierrez</small>
 
 </div>
+
+---
 
 ## Current Status
 
@@ -105,6 +129,8 @@ To set up the web application, follow the detailed instructions in `gui/README.m
 - Web app location: `gui/workflow_backend/django-project/codes/neuroworkflow/core/`
 - This ensures the web app stays synchronized with the latest API updates
 
+---
+
 ## Conference Presentations
 
 This work has been presented at several conferences and workshops, receiving valuable feedback that has contributed to its ongoing development:
@@ -148,6 +174,8 @@ This work has been presented at several conferences and workshops, receiving val
 
   - _"Towards a Generic and Open Software for Building Digital Brains"_
   - [📄 Poster](posters_conferences/Winter_WorkShop_BM2.pdf)
+
+---
 
 ## License
 
