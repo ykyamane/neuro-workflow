@@ -1,4 +1,4 @@
-# NeuroWorkflow
+# Neuro-Workflow
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -8,11 +8,11 @@
 
 ---
 
-## Why NeuroWorkflow?
+## Why Neuro-Workflow?
 
 Modern brain modeling workflows require complex sequences of data processing, model configuration, and analysis steps. While powerful tools exist, they typically focus on single simulation environments and demand advanced programming knowledge — limiting accessibility, reproducibility, and collaboration.
 
-NeuroWorkflow addresses this through a **node-based graph framework** that transforms complex scientific workflows into modular, reusable, and interpretable components:
+Neuro-Workflow addresses this through a **node-based graph framework** that transforms complex scientific workflows into modular, reusable, and interpretable components:
 
 - **Simulator interoperability** — TVB, NEST, and custom solvers run as interchangeable nodes through a unified interface
 - **AI-ready infrastructure** — each node contains structured metadata and semantic descriptions enabling accurate workflow composition by LLM agents via protocols such as MCP
@@ -32,11 +32,11 @@ This project is supported by the **<a href="https://brainminds.jp/" target="_bla
 
 ## Preview
 
-Get a first impression of NeuroWorkflow in action:
+Get a first impression of Neuro-Workflow in action:
 
 <div align="center">
 
-<img src="img/figureBM2_NW.png" alt="NeuroWorkflow Overview" width="800"/>
+<img src="img/figureBM2_NW.png" alt="Neuro-Workflow Overview" width="800"/>
 
 <br><br>
 
@@ -61,9 +61,9 @@ Get a first impression of NeuroWorkflow in action:
 
 ## Current Status
 
-### NeuroWorkflow Python API
+### Neuro-Workflow Python API
 
-NeuroWorkflow provides a comprehensive Python API for building and executing computational neuroscience workflows using a node-based system. The core functionality is organized as follows:
+Neuro-Workflow provides a comprehensive Python API for building and executing computational neuroscience workflows using a node-based system. The core functionality is organized as follows:
 
 #### Node System
 
@@ -73,7 +73,7 @@ NeuroWorkflow provides a comprehensive Python API for building and executing com
 
 #### Creating Custom Nodes
 
-For developers interested in extending NeuroWorkflow with custom functionality:
+For developers interested in extending Neuro-Workflow with custom functionality:
 
 - **📋 Node Schema**: See `NODE_SCHEMA.md` for detailed node structure specifications
 - **📝 Template**: Use `CustomNodeTemplate.py` as a starting point for new nodes
@@ -81,7 +81,7 @@ For developers interested in extending NeuroWorkflow with custom functionality:
 
 #### Python API Examples
 
-The following examples demonstrate how to use the NeuroWorkflow Python API to create and execute workflows:
+The following examples demonstrate how to use the Neuro-Workflow Python API to create and execute workflows:
 
 **Examples folder:**
 
@@ -95,9 +95,9 @@ The following examples demonstrate how to use the NeuroWorkflow Python API to cr
 - `epilepsy_rs.ipynb` - Interactive epileptic resting state example with TVB
 - `SNNbuilder_example1.ipynb` - Spiking Neural Network building with SNNbuilder custom nodes
 
-### NeuroWorkflow Web Application
+### Neuro-Workflow Web Application
 
-For users who prefer a graphical interface, NeuroWorkflow includes a comprehensive web application that provides visual workflow building capabilities.
+For users who prefer a graphical interface, Neuro-Workflow includes a comprehensive web application that provides visual workflow building capabilities.
 
 #### Installation
 
@@ -167,7 +167,7 @@ This work has been presented at several conferences and workshops, receiving val
 
 ## Publications
 
-NeuroWorkflow is currently under preparation for publication. If you use it in your research, please check back for the citation or contact us.
+Neuro-Workflow is currently under preparation for publication. If you use it in your research, please check back for the citation or contact us.
 
 ### Related Publications
 
