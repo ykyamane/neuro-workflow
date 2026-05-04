@@ -26,18 +26,6 @@ NeuroWorkflow addresses this through a **node-based graph framework** that trans
 
 ## Support and Development
 
-<div align="center">
-
-### Supported by Brain/MINDS 2.0
-
-<img src="img/BM2.0.png" alt="Brain/MINDS 2.0 Logo" width="200"/>
-
-### Developed by Neural Computation Unit at OIST and Collaborators
-
-<img src="img/oist.png" alt="OIST Logo" width="200"/>
-
-</div>
-
 This project is supported by the **<a href="https://brainminds.jp/" target="_blank">Brain/MINDS 2.0</a>** initiative and is being developed by the **<a href="https://www.oist.jp/research/research-units/ncu" target="_blank">Neural Computation Unit</a>** at the **Okinawa Institute of Science and Technology (OIST)** in collaboration with partners.
 
 ---
