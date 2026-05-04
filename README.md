@@ -165,6 +165,18 @@ This work has been presented at several conferences and workshops, receiving val
 
 ---
 
+## Publications
+
+NeuroWorkflow is currently under preparation for publication. If you use it in your research, please check back for the citation or contact us.
+
+### Related Publications
+
+- Gutierrez et al. (2022). *A Spiking Neural Network Builder for Systematic Data-to-Model Workflow.* Frontiers in Neuroinformatics. https://doi.org/10.3389/fninf.2022.855765
+
+- Gutierrez et al. (2025). *Topological basal ganglia model with dopamine-modulated spike-timing-dependent plasticity reproduces reinforcement learning, discriminatory learning, and neuropsychiatric disorders.* bioRxiv. https://doi.org/10.1101/2025.11.10.687760
+
+---
+
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) - see the LICENSE file for details.
