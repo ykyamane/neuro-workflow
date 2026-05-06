@@ -175,7 +175,10 @@ class AuthService {
   onAuthStateChange(callback: (event: string, session: any) => void) {
     if (isKeycloakConfigured) {
       const kc = getKeycloak();
-      kc.onAuthSuccess = () => callback("SIGNED_IN", { user: this.getCurrentUser() });
+      kc.onAuthSuccess = async () => {
+        const user = await this.getCurrentUser();
+        callback("SIGNED_IN", user ? { user } : null);
+      };
       kc.onAuthLogout = () => callback("SIGNED_OUT", null);
       kc.onTokenExpired = () => {
         kc.updateToken(30).catch(() => callback("SIGNED_OUT", null));
