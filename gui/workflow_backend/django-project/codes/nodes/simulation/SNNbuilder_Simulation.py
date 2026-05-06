@@ -99,6 +99,12 @@ class SNNbuilder_Simulation(Node):
                 default_value='execution',
                 description='Mode of operation',
                 constraints={'allowed_values': ['execution', 'script', 'both']}
+            ),
+
+            'nest_kernel_settings': ParameterDefinition(
+                default_value={'overwrite_files': True},
+                description='Dict passed to nest.SetKernelStatus() before simulation. '
+                            'Use to set overwrite_files, resolution, rng_seed, local_num_threads, etc.'
             )
         },
         
@@ -440,15 +446,21 @@ class SNNbuilder_Simulation(Node):
             print(f"[{self.name}] Experiment reference: {validated_params['experiment_reference']}")
         print(f"[{self.name}] Duration: {sim_time} ms")
         
+        # Apply kernel settings (e.g. overwrite_files, resolution, rng_seed)
+        kernel_settings = validated_params.get('nest_kernel_settings', {})
+        if kernel_settings:
+            nest.SetKernelStatus(kernel_settings)
+
         # Record start time
         self._start_time = time.time()
-        
+
         try:
             # Execute NEST simulation
             if verbose:
                 print(f"[{self.name}] Calling nest.Simulate({sim_time})...")
             
             nest.Simulate(sim_time)
+            nest.raster_plot.from_device(self.get_input_port("recording_devices").value, hist=True)
             
             # Record end time
             self._end_time = time.time()

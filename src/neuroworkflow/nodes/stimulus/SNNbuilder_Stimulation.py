@@ -84,7 +84,7 @@ class SNNbuilder_Stimulation(Node):
                     'label': 'poisson_stim',
                     'start': 0.0,
                     'stop': 1000.0,
-                    'rate': 100.0
+                    'rate': 40000.0
                 },
                 description='Parameters for poisson_generator stimulation'
             ),
