@@ -52,8 +52,36 @@ def _verify_rs256(token: str, jwks_url: str, **decode_kwargs) -> dict:
     return jwt.decode(token, public_key, algorithms=["RS256"], **decode_kwargs)
 
 
+def _verify_keycloak_client(payload: dict, expected_client: str | None) -> None:
+    """Validate that a Keycloak token was issued for this frontend client.
+
+    Keycloak access tokens commonly use ``azp`` (authorized party) for the SPA
+    client and reserve ``aud`` for resource audiences such as ``account``. PyJWT's
+    built-in audience check is therefore too strict for tokens produced by
+    keycloak-js. Accept either ``azp`` or ``aud`` matching the configured client.
+    """
+    if not expected_client:
+        return
+
+    token_audience = payload.get("aud", [])
+    if isinstance(token_audience, str):
+        audiences = {token_audience}
+    else:
+        audiences = set(token_audience or [])
+
+    if payload.get("azp") == expected_client or expected_client in audiences:
+        return
+
+    raise jwt.InvalidTokenError(
+        f"Token was not issued for client '{expected_client}'"
+    )
+
+
 def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
     """Get-or-create a Django User from an external identity provider."""
+    if not user_id:
+        raise exceptions.AuthenticationFailed("Invalid token payload: missing user identifier.")
+
     User = get_user_model()
     extra = extra or {}
 
@@ -119,18 +147,24 @@ class KeycloakAuthentication(_BearerAuthentication):
         issuer = f"{kc_url}/realms/{kc_realm}"
         kc_client = getattr(settings, "KEYCLOAK_CLIENT_ID", None)
 
-        decode_kwargs: dict = {"issuer": issuer}
-        if kc_client:
-            decode_kwargs["audience"] = kc_client
+        decode_kwargs: dict = {
+            "issuer": issuer,
+            "options": {"verify_aud": False},
+        }
 
         try:
             payload = _verify_rs256(token, jwks_url, **decode_kwargs)
+            _verify_keycloak_client(payload, kc_client)
         except jwt.ExpiredSignatureError:
             raise exceptions.AuthenticationFailed("Token has expired.")
         except jwt.InvalidTokenError as e:
             raise exceptions.AuthenticationFailed(f"Invalid token: {e}")
 
-        sub = payload.get("sub")
+        sub = (
+            payload.get("sub")
+            or payload.get("preferred_username")
+            or payload.get("email")
+        )
         email = payload.get("email", "")
         preferred = payload.get("preferred_username", "")
         user = _get_or_create_user(
