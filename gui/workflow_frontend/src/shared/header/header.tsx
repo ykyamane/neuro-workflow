@@ -219,6 +219,15 @@ const Header: React.FC = () => {
             </MenuButton>
             <MenuList bg={menuBg} borderColor={menuBorder} minW="160px">
               <MenuItem
+                as={RouterLink}
+                to="/user"
+                bg={menuBg}
+                color={headerColor}
+                _hover={{ bg: menuHoverBg }}
+              >
+                Profile
+              </MenuItem>
+              <MenuItem
                 bg={menuBg}
                 _hover={{ bg: 'red.500', color: 'white' }}
                 color="red.400"

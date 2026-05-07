@@ -23,3 +23,11 @@ export function getKeycloak(): Keycloak {
   }
   return _instance;
 }
+
+export function getAccountConsoleUrl(): string {
+  return `${keycloakUrl.replace(/\/$/, "")}/realms/${keycloakRealm}/account`;
+}
+
+export function getKeycloakClientId(): string {
+  return keycloakClientId;
+}
