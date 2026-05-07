@@ -14,14 +14,14 @@ Three `.env` files are used. They **already exist** in this repo with values set
 | File | Purpose |
 |------|---------|
 | `gui/.env` | `NODES_DIR`, `HOST_PROJECT_PATH` (paths on your machine) |
-| `gui/workflow_backend/.env` | DB, Supabase, Django secret, paths, optional `OPENAI_API_KEY` |
-| `gui/workflow_frontend/.env` | `VITE_API_BASE_URL`, Supabase, paths |
+| `gui/workflow_backend/.env` | DB, Keycloak, Django secret, paths, optional `OPENAI_API_KEY` |
+| `gui/workflow_frontend/.env` | `VITE_API_BASE_URL`, Keycloak, paths |
 
 Copy from the corresponding `env.template` in each folder and set:
 
 - **gui/.env**: `NODES_DIR` = path to `gui/workflow_backend/django-project/codes/nodes` on your host; `HOST_PROJECT_PATH` = path to `gui/workflow_backend/django-project`.
-- **workflow_backend/.env**: Use the same Supabase URL/key as in the frontend; set `HOST_PROJECT_PATH` and other `*_PATH` to your repo’s `gui/workflow_backend/django-project` (and subdirs).
-- **workflow_frontend/.env**: `VITE_API_BASE_URL="http://localhost:3000/api"`; same Supabase URL/key as backend.
+- **workflow_backend/.env**: Set `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` to match the Keycloak service in `docker-compose.yml`; set `HOST_PROJECT_PATH` and other `*_PATH` to your repo’s `gui/workflow_backend/django-project` (and subdirs).
+- **workflow_frontend/.env**: `VITE_API_BASE_URL="http://localhost:3000/api"`; set `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` to point at the same Keycloak realm and client.
 
 ## 2. Create directory for nodes mount (if missing)
 

@@ -210,7 +210,6 @@ const Header: React.FC = () => {
                 <Avatar
                   size="sm"
                   name={user.user_metadata?.name || user.email}
-                  src={user.user_metadata?.avatar_url}
                   bg="brand.500"
                 />
                 <Text fontSize="sm" display={{ base: 'none', md: 'block' }}>

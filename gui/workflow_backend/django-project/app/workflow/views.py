@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.auth.authentication import CombinedJWTAuthentication
+from app.auth.authentication import KeycloakAuthentication
 
 from .code_generation_service import CodeGenerationService
 from .jupyter_execution_service import JupyterExecutionService
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 class FlowProjectViewSet(viewsets.ModelViewSet):
     """CRUD operations for flow projects"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [
         IsAuthenticated,
         IsAuthenticatedAndProjectVisible,
@@ -122,7 +122,7 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
 class FlowNodeViewSet(viewsets.ModelViewSet):
     """CRUD operations for flow nodes (real-time support)"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
     lookup_url_kwarg = "node_id"
     serializer_class = FlowNodeSerializer
@@ -362,7 +362,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
     """CRUD operations on flow edges (real-time support)"""
 
     serializer_class = FlowEdgeSerializer
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -508,7 +508,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
 class SampleFlowView(APIView):
     """Providing sample flow data"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -531,7 +531,7 @@ class SampleFlowView(APIView):
 class JupyterLabView(APIView):
     """Views for integration with JupyterLab"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, workflow_id):
@@ -564,7 +564,7 @@ class JupyterLabView(APIView):
 class FlowNodeParameterUpdateView(APIView):
     """Update the schema.parameters of the FlowNode (leave the base node unchanged)"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def put(self, request, workflow_id, node_id):
@@ -756,7 +756,7 @@ class FlowNodeParameterUpdateView(APIView):
 class BatchCodeGenerationView(APIView):
     """React Flow's JSON to Batch Code Generation View"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id):
@@ -840,7 +840,7 @@ JUPYTER_HOME = os.environ.get("JUPYTER_HOME", "/home/jovyan")
 class WorkflowRunStreamView(APIView):
     """Run workflow code on a Jupyter kernel and stream output via SSE."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id):
@@ -928,7 +928,7 @@ class WorkflowRunStreamView(APIView):
 class BatchWorkflowRunView(APIView):
     """Run Workflow Project View (legacy non-streaming)"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id):
@@ -972,7 +972,7 @@ class BatchWorkflowRunView(APIView):
 class FlowNodeInstanceNameUpdateView(APIView):
     """Update the instanceName of the FlowNode (do not change the base node)"""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def put(self, request, workflow_id, node_id):
@@ -1049,7 +1049,7 @@ class FlowNodeInstanceNameUpdateView(APIView):
 class WorkflowResultsView(APIView):
     """List simulation result files for a workflow project."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, workflow_id):
@@ -1085,7 +1085,7 @@ class WorkflowResultsView(APIView):
 class WorkflowCodeView(APIView):
     """Return the generated Python code and notebook cell outputs for a workflow."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, workflow_id):
@@ -1137,7 +1137,7 @@ class WorkflowCodeView(APIView):
 class WorkflowReportView(APIView):
     """Save or retrieve a markdown report for a workflow project."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id):
@@ -1194,7 +1194,7 @@ def _get_executor(backend_name: str):
 class WorkflowRunSubmitView(APIView):
     """Submit a workflow run (returns immediately with run_id + status)."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id):
@@ -1251,7 +1251,7 @@ class WorkflowRunSubmitView(APIView):
 class WorkflowRunDetailView(APIView):
     """Get status / logs / artifacts for a specific run."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, workflow_id, run_id):
@@ -1295,7 +1295,7 @@ class WorkflowRunDetailView(APIView):
 class WorkflowRunListView(APIView):
     """List all runs for a workflow."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, workflow_id):
@@ -1310,7 +1310,7 @@ class WorkflowRunListView(APIView):
 class WorkflowRunCancelView(APIView):
     """Cancel a running workflow run."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, workflow_id, run_id):

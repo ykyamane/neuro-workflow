@@ -37,7 +37,7 @@ neuro-workflow/
 - React 19, TypeScript ~5.7, Vite 6
 - @xyflow/react (React Flow) for node-based UI
 - Chakra UI 2.8 for components
-- Supabase for auth
+- Keycloak (OIDC) for auth via `keycloak-js`
 - pnpm for package management
 - Dev server: port 5173
 - Path alias: `@` → `src/`
@@ -120,8 +120,8 @@ isort --profile black src/
 Three `.env` files are needed for the web application:
 
 1. **`gui/.env`** — Docker Compose level (NODES_DIR, OPENAI_API_KEY, JUPYTERHUB_API_TOKEN)
-2. **`gui/workflow_backend/.env`** — Django (DB_*, SUPABASE_*, DJANGO_SECRET_KEY, paths)
-3. **`gui/workflow_frontend/.env`** — Vite (VITE_API_BASE_URL, VITE_SUPABASE_*)
+2. **`gui/workflow_backend/.env`** — Django (DB_*, KEYCLOAK_*, DJANGO_SECRET_KEY, paths)
+3. **`gui/workflow_frontend/.env`** — Vite (VITE_API_BASE_URL, VITE_KEYCLOAK_*)
 
 Template: `gui/workflow_backend/env.template`
 
@@ -130,7 +130,7 @@ Template: `gui/workflow_backend/env.template`
 - Nodes in `src/neuroworkflow/nodes/` must be synced to `gui/workflow_backend/django-project/codes/nodes/` for the web app. Docker Compose mounts `NODES_DIR` to handle this.
 - Core library code in `src/neuroworkflow/core/` is also synced to `gui/workflow_backend/django-project/codes/neuroworkflow/core/`.
 - Workflow execution uses JupyterHub's kernel WebSocket API — code is generated from the node graph and sent to a Jupyter kernel for execution.
-- Authentication is handled by Supabase (JWT). The backend verifies tokens via `SUPABASE_JWT_SECRET`.
+- Authentication is handled by Keycloak (OIDC). The frontend uses `keycloak-js` (`onLoad: "login-required"`); the backend verifies access tokens via the realm's JWKS endpoint in `app/auth/authentication.py:KeycloakAuthentication`.
 - The chat feature uses OpenAI API with Function Calling and MCP integration.
 
 ## Code Style
