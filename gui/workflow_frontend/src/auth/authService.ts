@@ -60,15 +60,36 @@ class AuthService {
 
   onAuthStateChange(callback: (event: string, session: { user: User } | null) => void) {
     const kc = getKeycloak();
+    const prev = {
+      onAuthSuccess: kc.onAuthSuccess,
+      onAuthLogout: kc.onAuthLogout,
+      onAuthRefreshSuccess: kc.onAuthRefreshSuccess,
+      onTokenExpired: kc.onTokenExpired,
+    };
     kc.onAuthSuccess = async () => {
       const user = await this.getCurrentUser();
       callback("SIGNED_IN", user ? { user } : null);
     };
     kc.onAuthLogout = () => callback("SIGNED_OUT", null);
+    kc.onAuthRefreshSuccess = async () => {
+      const user = await this.getCurrentUser();
+      callback("TOKEN_REFRESHED", user ? { user } : null);
+    };
     kc.onTokenExpired = () => {
       kc.updateToken(30).catch(() => callback("SIGNED_OUT", null));
     };
-    return { data: { subscription: { unsubscribe: () => {} } } };
+    return {
+      data: {
+        subscription: {
+          unsubscribe: () => {
+            kc.onAuthSuccess = prev.onAuthSuccess;
+            kc.onAuthLogout = prev.onAuthLogout;
+            kc.onAuthRefreshSuccess = prev.onAuthRefreshSuccess;
+            kc.onTokenExpired = prev.onTokenExpired;
+          },
+        },
+      },
+    };
   }
 }
 

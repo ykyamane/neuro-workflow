@@ -99,16 +99,24 @@ def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
         # Pick the oldest user with this email. Multiple rows can occur when an
         # account exists from a previous IdP and a new one was created before
         # the rebind succeeded; prefer the original to preserve owned records.
-        candidates = User.objects.filter(email=email).order_by("pk")
-        count = candidates.count()
-        if count > 1:
-            logger.warning(
-                "Multiple users share email %s (ids=%s). Re-binding the oldest "
-                "to sub=%s; consider deduplicating the rest.",
-                email, list(candidates.values_list("pk", flat=True)), user_id,
-            )
-        user = candidates.first()
-        if user is not None:
+        # Slice [:2] keeps the happy path (zero or one match) at one query;
+        # only the rare duplicate case pays for an extra id lookup to log.
+        candidates = list(
+            User.objects.filter(email=email).order_by("pk")[:2]
+        )
+        if candidates:
+            if len(candidates) > 1:
+                all_ids = list(
+                    User.objects.filter(email=email)
+                    .order_by("pk")
+                    .values_list("pk", flat=True)
+                )
+                logger.warning(
+                    "Multiple users share email %s (ids=%s). Re-binding the "
+                    "oldest to sub=%s; consider deduplicating the rest.",
+                    email, all_ids, user_id,
+                )
+            user = candidates[0]
             user.username = user_id
             user.save(update_fields=["username"])
             return user
