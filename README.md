@@ -4,7 +4,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Brain/MINDS 2.0](https://img.shields.io/badge/Supported%20by-Brain%2FMINDS%202.0-green)](https://brainminds.jp/)
 
-**A Python framework for building and executing computational neuroscience workflows through a unified node-based architecture.**
+**A second-generation brain model builder — organizing multi-scale computational neuroscience as a graph of reusable, schema-defined components, designed to be understood and operated by both humans and AI agents.**
 
 ---
 
@@ -14,7 +14,7 @@ Brain modeling today is fragmented. NEST, TVB, NEURON, and analysis tools each h
 
 Neuro-Workflow is a **second-generation model builder**. Unlike first-generation tools designed solely for human users (i.e. [SNNbuilder](https://doi.org/10.3389/fninf.2022.855765)), it organizes multi-scale brain modeling as a graph of reusable components — each a well-defined Python class with a schema describing its role, inputs, outputs, and parameters. This architecture was built from the ground up to be understood and operated by **both humans and AI agents**.
 
-The key innovation is not the addition of LLMs — it is the **AI-ready infrastructure**. Because every node carries structured metadata, AI agents can support the modeling process through few-shot learning and protocols such as MCP (Model Context Protocol) without deep domain fine-tuning. Even small or locally deployed models can participate effectively, keeping computational overhead and token costs low.
+The key innovation is not the addition of LLMs — it is the **AI-ready infrastructure**. Because every node carries structured metadata, AI agents can support the modeling process through few-shot learning and protocols such as MCP (Model Context Protocol) without deep domain fine-tuning. Even small or locally deployed models can perform well, keeping computational overhead and token costs low.
 
 This architecture enables:
 
