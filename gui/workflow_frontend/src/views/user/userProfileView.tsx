@@ -345,31 +345,33 @@ const UserProfileView: React.FC = () => {
               </SectionCard>
             )}
 
-            <Accordion allowToggle>
-              <AccordionItem border="none">
-                <SectionCard title="Token claims (raw JSON)">
-                  <AccordionButton px={0} _hover={{ bg: 'transparent' }}>
-                    <Box flex="1" textAlign="left" fontSize="sm" color={mutedColor}>
-                      Show all claims from the access token
-                    </Box>
-                    <AccordionIcon />
-                  </AccordionButton>
-                  <AccordionPanel px={0} pt={3}>
-                    <Box
-                      as="pre"
-                      bg={codeBg}
-                      p={3}
-                      borderRadius="md"
-                      fontSize="xs"
-                      overflow="auto"
-                      maxH="400px"
-                    >
-                      {JSON.stringify(tokenParsed ?? {}, null, 2)}
-                    </Box>
-                  </AccordionPanel>
-                </SectionCard>
-              </AccordionItem>
-            </Accordion>
+            {import.meta.env.DEV && (
+              <Accordion allowToggle>
+                <AccordionItem border="none">
+                  <SectionCard title="Token claims (raw JSON)">
+                    <AccordionButton px={0} _hover={{ bg: 'transparent' }}>
+                      <Box flex="1" textAlign="left" fontSize="sm" color={mutedColor}>
+                        Show all claims from the access token (dev builds only)
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel px={0} pt={3}>
+                      <Box
+                        as="pre"
+                        bg={codeBg}
+                        p={3}
+                        borderRadius="md"
+                        fontSize="xs"
+                        overflow="auto"
+                        maxH="400px"
+                      >
+                        {JSON.stringify(tokenParsed ?? {}, null, 2)}
+                      </Box>
+                    </AccordionPanel>
+                  </SectionCard>
+                </AccordionItem>
+              </Accordion>
+            )}
           </VStack>
         )}
       </VStack>

@@ -77,12 +77,20 @@ def _verify_keycloak_client(payload: dict, expected_client: str | None) -> None:
     )
 
 
-def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
+def _get_or_create_user(
+    user_id: str,
+    email: str,
+    extra: dict | None = None,
+    email_verified: bool = False,
+):
     """Get-or-create a Django User from an external identity provider.
 
     Falls back to email-based lookup so users originally provisioned by a
     different IdP (e.g. legacy Supabase records) get re-bound to the new
-    ``sub`` on first login.
+    ``sub`` on first login. The fallback only fires when the IdP has verified
+    the email — without this, an IdP that allows unverified self-registration
+    would let an attacker register with a victim's email and inherit the
+    victim's account on first login.
     """
     if not user_id:
         raise exceptions.AuthenticationFailed("Invalid token payload: missing user identifier.")
@@ -95,7 +103,7 @@ def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
     except User.DoesNotExist:
         pass
 
-    if email:
+    if email and email_verified:
         # Pick the oldest user with this email. Multiple rows can occur when an
         # account exists from a previous IdP and a new one was created before
         # the rebind succeeded; prefer the original to preserve owned records.
@@ -172,7 +180,9 @@ class KeycloakAuthentication(_BearerAuthentication):
         # Issuer in the JWT is set from the URL the *browser* used to obtain
         # the token. In split deployments (browser hits a public URL, backend
         # hits an internal hostname) this differs from KEYCLOAK_URL. Allow an
-        # explicit override.
+        # explicit override. NOTE: KEYCLOAK_ISSUER must reference the same
+        # realm as KEYCLOAK_URL/KEYCLOAK_REALM — a wrong-realm value will
+        # cause all logins to fail at JWT verification. See env.template.
         issuer = (
             getattr(settings, "KEYCLOAK_ISSUER", None)
             or f"{kc_url}/realms/{kc_realm}"
@@ -205,5 +215,6 @@ class KeycloakAuthentication(_BearerAuthentication):
                 "first_name": payload.get("given_name", ""),
                 "last_name": payload.get("family_name", ""),
             },
+            email_verified=bool(payload.get("email_verified", False)),
         )
         return (user, token)
