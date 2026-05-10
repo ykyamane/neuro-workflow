@@ -4,23 +4,27 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Brain/MINDS 2.0](https://img.shields.io/badge/Supported%20by-Brain%2FMINDS%202.0-green)](https://brainminds.jp/)
 
-**A Python framework for building and executing computational neuroscience workflows through a unified node-based architecture.**
+**A second-generation brain model builder — organizing multi-scale computational neuroscience as a graph of reusable, schema-defined components, designed to be understood and operated by both humans and AI agents.**
 
 ---
 
 ## Why Neuro-Workflow?
 
-Modern brain modeling workflows require complex sequences of data processing, model configuration, and analysis steps. While powerful tools exist, they typically focus on single simulation environments and demand advanced programming knowledge — limiting accessibility, reproducibility, and collaboration.
+Brain modeling today is fragmented. NEST, TVB, NEURON, and analysis tools each have separate APIs, data formats, and execution models.
 
-Neuro-Workflow addresses this through a **node-based graph framework** that transforms complex scientific workflows into modular, reusable, and interpretable components:
+Neuro-Workflow is a **second-generation model builder**. Unlike first-generation tools designed solely for human users (i.e. [SNNbuilder](https://doi.org/10.3389/fninf.2022.855765)), it organizes multi-scale brain modeling as a graph of reusable components — each a well-defined Python class with a schema describing its role, inputs, outputs, and parameters. This architecture was built from the ground up to be understood and operated by **both humans and AI agents**.
 
-- **Simulator interoperability** — TVB, NEST, and custom solvers run as interchangeable nodes through a unified interface
-- **AI-ready infrastructure** — each node contains structured metadata and semantic descriptions enabling accurate workflow composition by LLM agents via protocols such as MCP
-- **Accessibility** — researchers without extensive programming backgrounds, as well as AI agents, can assemble, reuse, and extend brain models
-- **Reproducibility** — workflows are serializable graphs that make pipelines shareable and executable across environments
-- **Extensibility** — any Python function can be wrapped as a node; new simulators and tools can be integrated without changing the core
+The key innovation is not the addition of LLMs — it is the **AI-ready infrastructure**. Because every node carries structured metadata, AI agents can support the modeling process through few-shot learning and protocols such as MCP (Model Context Protocol) without deep domain fine-tuning. Even small or locally deployed models can perform well, keeping computational overhead and token costs low.
 
-> *"Well-documented nodes, enabled by our schema system, establish the foundation for organizing computational neuroscience functions, algorithms and tools, ready for AI few-shot learning."*
+This architecture enables:
+
+- **Simulator interoperability** — NEST, TVB, NEURON, and custom solvers run as interchangeable nodes through a unified interface
+- **Human + AI collaboration** — users and agents compose nodes into models, generate executable Python scripts and notebooks, and run simulations
+- **AI-assisted parametrization** — agents retrieve parameter values from open data sources and suggest configurations grounded in the literature
+- **Reproducibility by design** — workflows are serializable graphs; the same pipeline runs on a laptop or a supercomputer
+- **Extensibility** — any Python function becomes a node; new simulators integrate without changing the core
+
+> *"By providing well-documented, schema-defined nodes, Neuro-Workflow establishes a foundation for systematically organizing computational neuroscience functions, algorithms, and tools — enabling AI-augmented scientific discovery in which humans and agents jointly build, test, and extend brain models."*
 
 ---
 
