@@ -9,6 +9,7 @@ import CreateFlowPj from '../../views/file/createView';
 import BoxUpload from '../../views/box/uploadView';
 import NotFoundView from '../../views/notFound/notFound';
 import CustomDatabaseManager from '../../views/home/components/CustomDatabaseManager';
+import UserProfileView from '../../views/user/userProfileView';
 
 export interface Tab {
   id: string;
@@ -144,6 +145,7 @@ export const TabManager: React.FC = () => {
                     <Route path="/file/new" element={<CreateFlowPj />} />
                     <Route path="/box/upload" element={<BoxUpload />} />
                     <Route path="/settings/databases" element={<CustomDatabaseManager />} />
+                    <Route path="/user" element={<UserProfileView />} />
                     <Route path="/*" element={<NotFoundView />} />
                   </Routes>
                 </Box>

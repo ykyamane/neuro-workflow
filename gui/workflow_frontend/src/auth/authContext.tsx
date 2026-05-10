@@ -1,15 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from './supabase';
 import { authService } from './authService';
-import { isKeycloakConfigured } from './keycloak';
+import { User, AuthResult } from './types';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signUp: (data: { email: string; password: string; name: string }) => Promise<any>;
-  signIn: (data: { email: string; password: string }) => Promise<any>;
-  signOut: () => Promise<any>;
-  resetPassword: (email: string) => Promise<any>;
+  signUp: () => Promise<AuthResult>;
+  signIn: () => Promise<AuthResult>;
+  signOut: () => Promise<AuthResult>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,24 +21,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const AUTH_INIT_TIMEOUT_MS = 5000;
-
     const init = async () => {
       try {
-        if (isKeycloakConfigured) {
-          const authenticated = await authService.initKeycloak();
-          if (authenticated) {
-            const u = await authService.getCurrentUser();
-            if (u) setUser(u as User);
-          }
-        } else {
-          const result = await Promise.race([
-            authService.getCurrentUser(),
-            new Promise<null>(resolve =>
-              setTimeout(() => resolve(null), AUTH_INIT_TIMEOUT_MS)
-            ),
-          ]);
-          if (result) setUser(result as User);
+        const authenticated = await authService.init();
+        if (authenticated) {
+          const u = await authService.getCurrentUser();
+          if (u) setUser(u);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -52,13 +38,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     init();
 
     const { data: { subscription } } = authService.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
-          setUser(session.user as User);
+          setUser(session.user);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          setUser(session.user as User);
+          setUser(session.user);
         }
       }
     );
@@ -68,19 +54,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const signUp = async (data: { email: string; password: string; name: string }) => {
+  const signUp = async () => {
     setLoading(true);
     try {
-      return await authService.signUp(data);
+      return await authService.signUp();
     } finally {
       setLoading(false);
     }
   };
 
-  const signIn = async (data: { email: string; password: string }) => {
+  const signIn = async () => {
     setLoading(true);
     try {
-      return await authService.signIn(data);
+      return await authService.signIn();
     } finally {
       setLoading(false);
     }
@@ -95,11 +81,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const resetPassword = async (email: string) => {
-    return await authService.resetPassword(email);
-  };
-
-  const value = { user, loading, signUp, signIn, signOut, resetPassword };
+  const value = { user, loading, signUp, signIn, signOut };
 
   return (
     <AuthContext.Provider value={value}>

@@ -21,7 +21,7 @@ def user_bob(db):
 def auth_client():
     """Return a factory that yields an APIClient force-authenticated as a user.
 
-    We bypass the real JWT decoders (CombinedJWTAuthentication) and rely on
+    We bypass the real JWT decoder (KeycloakAuthentication) and rely on
     DRF's force_authenticate, which exercises permission_classes correctly.
     """
 

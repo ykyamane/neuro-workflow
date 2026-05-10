@@ -77,8 +77,21 @@ def _verify_keycloak_client(payload: dict, expected_client: str | None) -> None:
     )
 
 
-def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
-    """Get-or-create a Django User from an external identity provider."""
+def _get_or_create_user(
+    user_id: str,
+    email: str,
+    extra: dict | None = None,
+    email_verified: bool = False,
+):
+    """Get-or-create a Django User from an external identity provider.
+
+    Falls back to email-based lookup so users originally provisioned by a
+    different IdP (e.g. legacy Supabase records) get re-bound to the new
+    ``sub`` on first login. The fallback only fires when the IdP has verified
+    the email — without this, an IdP that allows unverified self-registration
+    would let an attacker register with a victim's email and inherit the
+    victim's account on first login.
+    """
     if not user_id:
         raise exceptions.AuthenticationFailed("Invalid token payload: missing user identifier.")
 
@@ -90,14 +103,31 @@ def _get_or_create_user(user_id: str, email: str, extra: dict | None = None):
     except User.DoesNotExist:
         pass
 
-    if email:
-        try:
-            user = User.objects.get(email=email)
+    if email and email_verified:
+        # Pick the oldest user with this email. Multiple rows can occur when an
+        # account exists from a previous IdP and a new one was created before
+        # the rebind succeeded; prefer the original to preserve owned records.
+        # Slice [:2] keeps the happy path (zero or one match) at one query;
+        # only the rare duplicate case pays for an extra id lookup to log.
+        candidates = list(
+            User.objects.filter(email=email).order_by("pk")[:2]
+        )
+        if candidates:
+            if len(candidates) > 1:
+                all_ids = list(
+                    User.objects.filter(email=email)
+                    .order_by("pk")
+                    .values_list("pk", flat=True)
+                )
+                logger.warning(
+                    "Multiple users share email %s (ids=%s). Re-binding the "
+                    "oldest to sub=%s; consider deduplicating the rest.",
+                    email, all_ids, user_id,
+                )
+            user = candidates[0]
             user.username = user_id
             user.save(update_fields=["username"])
             return user
-        except User.DoesNotExist:
-            pass
 
     return User.objects.create_user(
         username=user_id,
@@ -129,6 +159,9 @@ class _BearerAuthentication(authentication.BaseAuthentication):
     def authenticate_credentials(self, token):
         raise NotImplementedError
 
+    def authenticate_header(self, request):
+        return 'Bearer realm="api"'
+
 
 # ---------------------------------------------------------------------------
 # Keycloak OIDC authentication
@@ -144,7 +177,16 @@ class KeycloakAuthentication(_BearerAuthentication):
             return None
 
         jwks_url = f"{kc_url}/realms/{kc_realm}/protocol/openid-connect/certs"
-        issuer = f"{kc_url}/realms/{kc_realm}"
+        # Issuer in the JWT is set from the URL the *browser* used to obtain
+        # the token. In split deployments (browser hits a public URL, backend
+        # hits an internal hostname) this differs from KEYCLOAK_URL. Allow an
+        # explicit override. NOTE: KEYCLOAK_ISSUER must reference the same
+        # realm as KEYCLOAK_URL/KEYCLOAK_REALM — a wrong-realm value will
+        # cause all logins to fail at JWT verification. See env.template.
+        issuer = (
+            getattr(settings, "KEYCLOAK_ISSUER", None)
+            or f"{kc_url}/realms/{kc_realm}"
+        )
         kc_client = getattr(settings, "KEYCLOAK_CLIENT_ID", None)
 
         decode_kwargs: dict = {
@@ -166,7 +208,6 @@ class KeycloakAuthentication(_BearerAuthentication):
             or payload.get("email")
         )
         email = payload.get("email", "")
-        preferred = payload.get("preferred_username", "")
         user = _get_or_create_user(
             user_id=sub,
             email=email,
@@ -174,120 +215,6 @@ class KeycloakAuthentication(_BearerAuthentication):
                 "first_name": payload.get("given_name", ""),
                 "last_name": payload.get("family_name", ""),
             },
+            email_verified=bool(payload.get("email_verified", False)),
         )
         return (user, token)
-
-
-# ---------------------------------------------------------------------------
-# Supabase authentication (kept for backward compatibility)
-# ---------------------------------------------------------------------------
-
-class SupabaseAuthentication(_BearerAuthentication):
-    """Verify JWTs issued by Supabase (HS256 secret or RS256 JWKS)."""
-
-    def authenticate_credentials(self, token):
-        supabase_url = getattr(settings, "SUPABASE_URL", None)
-        jwt_secret = getattr(settings, "SUPABASE_JWT_SECRET", None)
-        if not supabase_url:
-            return None
-
-        decode_kwargs = dict(
-            audience="authenticated",
-            issuer=f"{supabase_url}/auth/v1",
-        )
-
-        try:
-            if jwt_secret:
-                try:
-                    payload = jwt.decode(
-                        token, jwt_secret, algorithms=["HS256"], **decode_kwargs,
-                    )
-                    return self._resolve_user(payload, token)
-                except jwt.ExpiredSignatureError:
-                    # Token genuinely expired — propagate to the outer
-                    # handler so the response is "Token has expired." with
-                    # no JWKS round-trip.
-                    raise
-                except jwt.InvalidAlgorithmError:
-                    # Token uses an asymmetric algorithm (e.g. RS256/ES256
-                    # from a Supabase project that migrated to JWKS-signed
-                    # keys). Quietly fall through to JWKS.
-                    logger.debug("HS256 not applicable; falling through to JWKS")
-                except jwt.InvalidTokenError as e:
-                    logger.warning(
-                        "Supabase HS256 verification failed: %s: %s",
-                        type(e).__name__, e,
-                    )
-                    # Fall through to JWKS as a last resort.
-
-            jwks_url = f"{supabase_url}/auth/v1/jwks"
-            payload = _verify_rs256(token, jwks_url, **decode_kwargs)
-            return self._resolve_user(payload, token)
-
-        except jwt.ExpiredSignatureError:
-            raise exceptions.AuthenticationFailed("Token has expired.")
-        except jwt.InvalidTokenError as e:
-            raise exceptions.AuthenticationFailed(f"Invalid token: {e}")
-        except Exception as e:
-            logger.error(f"Supabase auth error: {e}")
-            raise exceptions.AuthenticationFailed("Authentication failed.")
-
-    @staticmethod
-    def _resolve_user(payload, token):
-        sub = payload.get("sub")
-        email = payload.get("email")
-        if not sub or not email:
-            raise exceptions.AuthenticationFailed("Invalid token payload.")
-        user = _get_or_create_user(
-            user_id=sub,
-            email=email,
-            extra={
-                "first_name": payload.get("user_metadata", {}).get("first_name", ""),
-                "last_name": payload.get("user_metadata", {}).get("last_name", ""),
-            },
-        )
-        return (user, token)
-
-
-# ---------------------------------------------------------------------------
-# Combined authentication: try Keycloak first, then Supabase
-# ---------------------------------------------------------------------------
-
-class CombinedJWTAuthentication(authentication.BaseAuthentication):
-    """Attempt Keycloak first, then Supabase.
-
-    - Returns ``None`` only when no Bearer token was supplied, so DRF treats the
-      request as anonymous and ``permission_classes = [IsAuthenticated]``
-      produces a 401 with no further detail.
-    - When a Bearer token *was* supplied but neither backend accepted it, the
-      last :class:`AuthenticationFailed` is re-raised so the client gets a
-      meaningful 401 reason (expired/invalid signature/wrong issuer) instead of
-      a generic "credentials not provided".
-    """
-
-    def __init__(self):
-        self._backends = (KeycloakAuthentication(), SupabaseAuthentication())
-
-    def authenticate(self, request):
-        has_bearer = (
-            authentication.get_authorization_header(request)
-            .lower()
-            .startswith(b"bearer ")
-        )
-        last_failure: exceptions.AuthenticationFailed | None = None
-
-        for backend in self._backends:
-            try:
-                result = backend.authenticate(request)
-            except exceptions.AuthenticationFailed as exc:
-                last_failure = exc
-                continue
-            if result is not None:
-                return result
-
-        if has_bearer and last_failure is not None:
-            raise last_failure
-        return None
-
-    def authenticate_header(self, request):
-        return 'Bearer realm="api"'

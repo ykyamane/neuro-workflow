@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.auth.authentication import CombinedJWTAuthentication
+from app.auth.authentication import KeycloakAuthentication
 
 from .models import Conversation, Message
 from .serializers import (
@@ -39,7 +39,7 @@ def _extract_bearer_token(request) -> str | None:
 class ConversationListCreateView(APIView):
     """List and create conversations."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -62,7 +62,7 @@ class ConversationListCreateView(APIView):
 class ConversationDetailView(APIView):
     """Retrieve or delete a conversation."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, conversation_id):
@@ -97,7 +97,7 @@ class ConversationDetailView(APIView):
 class ChatStreamView(APIView):
     """Handle chat messages with SSE streaming response."""
 
-    authentication_classes = [CombinedJWTAuthentication]
+    authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

@@ -6,12 +6,10 @@ from .config import (
     DB_USER,
     DB_PASSWORD,
     DB_PORT,
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    SUPABASE_JWT_SECRET,
     KEYCLOAK_URL,
     KEYCLOAK_REALM,
     KEYCLOAK_CLIENT_ID,
+    KEYCLOAK_ISSUER,
     SECRET_KEY,
 )
 
@@ -117,7 +115,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "app.auth.authentication.CombinedJWTAuthentication",
+        "app.auth.authentication.KeycloakAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -134,13 +132,10 @@ REST_FRAMEWORK = {
 # AUTHENTICATION PROVIDER CONFIGURATION
 # ==============================================================================
 
-SUPABASE_URL = SUPABASE_URL
-SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
-SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET
-
 KEYCLOAK_URL = KEYCLOAK_URL
 KEYCLOAK_REALM = KEYCLOAK_REALM
 KEYCLOAK_CLIENT_ID = KEYCLOAK_CLIENT_ID
+KEYCLOAK_ISSUER = KEYCLOAK_ISSUER
 
 # ==============================================================================
 # CORS CONFIGURATION

@@ -210,7 +210,6 @@ const Header: React.FC = () => {
                 <Avatar
                   size="sm"
                   name={user.user_metadata?.name || user.email}
-                  src={user.user_metadata?.avatar_url}
                   bg="brand.500"
                 />
                 <Text fontSize="sm" display={{ base: 'none', md: 'block' }}>
@@ -219,6 +218,15 @@ const Header: React.FC = () => {
               </HStack>
             </MenuButton>
             <MenuList bg={menuBg} borderColor={menuBorder} minW="160px">
+              <MenuItem
+                as={RouterLink}
+                to="/user"
+                bg={menuBg}
+                color={headerColor}
+                _hover={{ bg: menuHoverBg }}
+              >
+                Profile
+              </MenuItem>
               <MenuItem
                 bg={menuBg}
                 _hover={{ bg: 'red.500', color: 'white' }}

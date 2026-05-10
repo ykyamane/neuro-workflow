@@ -18,7 +18,7 @@ def test_drf_defaults_are_secure_by_default(settings):
     auths = framework.get("DEFAULT_AUTHENTICATION_CLASSES", [])
     assert "rest_framework.permissions.IsAuthenticated" in perms
     assert "rest_framework.permissions.AllowAny" not in perms
-    assert "app.auth.authentication.CombinedJWTAuthentication" in auths
+    assert "app.auth.authentication.KeycloakAuthentication" in auths
 
 
 def test_health_check_allows_anonymous(auth_client):
