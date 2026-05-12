@@ -80,7 +80,7 @@ class SNNbuilder_Recordable(Node):
             # === SPIKE RECORDER PARAMETERS ===
             'spike_recorder_parameters': ParameterDefinition(
                 default_value={
-                    'record_to': 'ascii',
+                    'record_to': 'memory',
                     'start': 0.0,
                     'stop': 1000.0
                 },

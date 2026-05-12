@@ -6,6 +6,22 @@ Before starting, read `NODE_CREATION_GUIDE.md` to apply the current stage list a
 
 ---
 
+## Design philosophy — composability across models and simulators
+
+Every node you build may one day be connected to a node from a completely different model, simulator, brain region, or scientific team. A NEST basal ganglia node may feed into a TVB cortical node. A single-neuron node may feed into an ensemble node that wraps an entire workflow. A workflow (model/project) is itself a node — its inputs and outputs are its public scientific API.
+
+This means nodes must be designed not just to work today, but to be **connectable by an AI agent tomorrow** without human intervention. An AI connecting two nodes will read port descriptions to determine compatibility — so descriptions must carry scientific meaning, not just data shape.
+
+**Keep this in mind when designing every port:**
+
+- Write port descriptions with **scientific units and semantics**: `"Mean firing rate per nucleus in Hz, dict keyed by population name"` not `"firing rate dict"`.
+- Prefer `DICT` with well-named keys over opaque `OBJECT` — a dict's contents are inspectable; an object is a black box.
+- Use standard neuroscience quantities in key names (`firing_rate_hz`, `membrane_potential_mv`, `spike_times_ms`) so ports from different simulators can be matched semantically.
+- Ask: *"Could an AI agent determine whether this output is scientifically compatible with an input from a node it has never seen?"* If not, the description needs more precision.
+- A node that produces a clean, well-described `DICT` output is more composable than one that returns a simulator-specific object, because any downstream node — regardless of simulator — can read from it.
+
+---
+
 ## Step 0 — Audit existing nodes first
 
 Before writing anything new, search `src/neuroworkflow/nodes/` to understand what already exists.
@@ -51,6 +67,25 @@ Ask the user (all at once, in a single message) for the **required** fields. The
 9. **Methods** — processing method names, which inputs/outputs each uses, and what it does. If multiple methods are needed, list them in execution order (each method's outputs can be used as inputs to later methods).
 
 Available PortTypes: `ANY`, `INT`, `FLOAT`, `STR`, `BOOL`, `LIST`, `DICT`, `OBJECT`, `FILE_PATH`, `CSV_FILE`, `JSON_FILE`, `PICKLE_FILE`, `NUMPY_FILE`, `HDF5_FILE`
+
+### Choosing the right PortType
+
+**Decision rule:** Ask "Could this data be serialized to JSON without losing information?"
+- Yes → use `DICT`, `LIST`, `STR`, `FLOAT`, `BOOL`, or `INT`
+- No (simulator object, model instance, NodeCollection) → use `OBJECT`
+
+**Type-to-data mapping:**
+
+| Data | PortType |
+|------|----------|
+| NEST NodeCollection, TVB model/connectivity object, any simulator-specific instance | `OBJECT` |
+| Parameters, metadata, biological properties, summaries | `DICT` |
+| Neuron/synapse/population name, generated code, file path | `STR` |
+| Spike times, position arrays, result collections | `LIST` |
+| Simulation time, weight, rate, threshold | `FLOAT` |
+| Execution flag, enable/disable toggle | `BOOL` |
+
+**Warning — `OBJECT` overuse:** `OBJECT` is compatible with every other port type in the framework, so it never causes a connection error. This makes it tempting to use everywhere — but it hides what the port actually carries and makes workflows harder to understand. Treat `OBJECT` as a last resort, only when the data genuinely cannot be expressed as a simpler type.
 
 ### Optional / inferred (fill in when known)
 
@@ -189,7 +224,6 @@ class <NodeName>(Node):
 
     def _define_process_steps(self) -> None:
         # Add one call per method, in execution order.
-        # For multi-step nodes, later methods can receive outputs of earlier ones via self._context.
         self.add_process_step("<method>", self.<method>, method_key="<method>")
 
     def <method>(self, <inputs>) -> Dict[str, Any]:
@@ -199,14 +233,40 @@ class <NodeName>(Node):
         raise NotImplementedError
 ```
 
+### Reading parameters inside methods
+
+Use `self._parameters["key"]` — there is no `get_parameter()` method:
+
+```python
+def my_method(self, some_input) -> Dict[str, Any]:
+    bin_size = float(self._parameters["bin_size"])
+    title    = str(self._parameters["title"])
+```
+
+### Passing data between steps
+
+The framework puts each step's return dict into `self._context`. The next step receives values from it by matching parameter names. No instance variables needed for inter-step data:
+
+```python
+def step_one(self, some_input) -> Dict[str, Any]:
+    result = compute(some_input)
+    return {"intermediate": result}      # key name must match step_two's parameter name
+
+def step_two(self, intermediate) -> Dict[str, Any]:  # name matches → wired automatically
+    final = process(intermediate)
+    return {"output_port": final}        # key must match declared output port name
+```
+
+Use instance variables (`self._x`) only for truly internal bookkeeping, not for passing data between steps.
+
 ---
 
 ## Step 4 — Register the node
 
-Add the import to `src/neuroworkflow/nodes/sandbox/__init__.py` (or the stage `__init__.py` if placing directly into a stage):
+No import registration needed. The `__init__.py` files in stage/sandbox folders are just package markers (empty or a docstring). Import the node directly from its module:
 
 ```python
-from .<NodeName> import <NodeName>
+from neuroworkflow.nodes.sandbox.<NodeName> import <NodeName>
 ```
 
 ---
@@ -241,7 +301,8 @@ Report:
 - File path created
 - Checklist status
 - Whether sandbox or stage folder was used, and what validation is needed before promotion
-- If using the web app: sync to `gui/workflow_backend/django-project/codes/nodes/<stage>/` or rely on the Docker NODES_DIR mount
+
+Note: syncing nodes to the GUI (`gui/workflow_backend/django-project/codes/nodes/`) is a separate production step done after the node is validated and promoted — it is outside the scope of this skill.
 
 ---
 
