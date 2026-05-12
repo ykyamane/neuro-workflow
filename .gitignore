@@ -56,3 +56,6 @@ env_at_workflow_backend
 env_at_workflow_frontend
 psql
 temp/
+
+# Sandbox nodes (local experimentation only)
+src/neuroworkflow/nodes/sandbox/
