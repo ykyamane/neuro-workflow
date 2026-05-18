@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   Node,
+  Edge,
   ReactFlowInstance,
   NodeProps,
 } from '@xyflow/react';
@@ -51,11 +52,11 @@ import { convertToStrIncFloat } from '../../utils/typeConversion';
 
 const HomeView = () => {
   const toast = useToast();
-  const { user, setHasPendingSaves, registerSaveFlusher } = useAuth();
+  const { user, loading: authLoading, setHasPendingSaves, registerSaveFlusher } = useAuth();
   const currentUserId = user?.id ?? null;
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
   const { data: uploadedNodes, isLoading: isNodesLoading, error, refetch: refetchNodes } = useUploadedNodes();
-  const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  const reactFlowInstance = useRef<ReactFlowInstance<Node<CalculationNodeData>, Edge> | null>(null);
   const { isOpen: isCodeOpen, onOpen: onCodeOpen, onClose: onCodeClose } = useDisclosure();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -69,7 +70,7 @@ const HomeView = () => {
   const pendingActionRef = useRef<(() => Promise<void>) | null>(null);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const updateNodeAPIRef = useRef<(nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => Promise<void>>();
+  const updateNodeAPIRef = useRef<((nodeId: string, nodeData: Partial<Node<CalculationNodeData>>) => Promise<void>) | null>(null);
 
   // Node menu related status
   const [nodeMenuPosition, setNodeMenuPosition] = useState<{ x: number, y: number } | null>(null);
@@ -129,11 +130,7 @@ const HomeView = () => {
     try {
       // Get project name
       const projectName = projects.find(p => p.id === selectedProject)?.name || selectedProject;
-      // Initial capitalization
-      const trimedProjectName = projectName.replace(/\s/g, '').toLowerCase();
-      const capitalizedProjectName = trimedProjectName.charAt(0).toUpperCase() + trimedProjectName.slice(1);
-
-      const jupyterUrl = `${JUPYTER_BASE_URL}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${capitalizedProjectName}/${capitalizedProjectName}.py`;
+      const jupyterUrl = `${JUPYTER_BASE_URL}/user/user1/lab/workspaces/auto-E/tree/codes/projects/${selectedProject}/workflow.py`;
       
       // Create new tab
       addJupyterTab(selectedProject, projectName, jupyterUrl);
@@ -375,10 +372,9 @@ const HomeView = () => {
 
   // Change category color from the sidebar
   const handleChangeCategoryColor = useCallback((catname: string, color: string) => {
-    console.log('Change category color for sidebar color change');
-    //let a = uploadedNodes?.categories[catname]['color'] = color;
-    handleRefreshNodeData();
-  }, [uploadedNodes]);
+    console.log('Change category color for sidebar color change', { catname, color });
+    void refetchNodes();
+  }, [refetchNodes]);
 
   const requestNodeDelete = useCallback((nodeIds: string[]) => {
     if (nodeIds.length === 0) {
@@ -400,7 +396,7 @@ const HomeView = () => {
 
   // Define nodeTypes in useMemo - map all category types to calculationNode components
   const nodeTypes = useMemo(() => {
-    const calculationNodeComponent = (props: NodeProps<CalculationNodeData>) => (
+    const calculationNodeComponent = (props: NodeProps<Node<CalculationNodeData>>) => (
       <CalculationNode
         {...props}
         onJupyter={handleNodeJupyter}
@@ -454,6 +450,8 @@ const HomeView = () => {
 
   // Monitor connection status
   useEffect(() => {
+    if (authLoading) return;
+
     const checkConnection = async () => {
       try {
         const headers = await createAuthHeaders();
@@ -474,15 +472,7 @@ const HomeView = () => {
     const interval = setInterval(checkConnection, 30000);
 
     return () => clearInterval(interval);
-  });
-
-  // Execute onChange on first load
-  useEffect(() => {
-      const projectId = localStorage.getItem(PROJECT_ID_KEY);
-
-    handleProjectChange( projectId );
-  }, []);
-
+  }, [authLoading]);
 
   // Reset everything tied to the previous user when the signed-in user changes
   // (logout, then login as a different user). Skip the very first run so that
@@ -506,14 +496,26 @@ const HomeView = () => {
 
   // Get project list — refetch whenever the signed-in user changes
   useEffect(() => {
-    if (!currentUserId) {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
       setProjects([]);
       return;
     }
+
     const fetchProjects = async () => {
       try {
         console.log('Fetching projects...');
         const header = await createAuthHeaders();
+        if (!header.Authorization) {
+          console.warn('Projects API skipped — no auth token available');
+          setProjects([]);
+          setIsConnected(false);
+          return;
+        }
+
         const response = await fetch('/api/workflow/', {
           credentials: 'include',
           headers: {
@@ -566,7 +568,7 @@ const HomeView = () => {
     };
 
     fetchProjects();
-  }, [toast, currentUserId]);
+  }, [toast, currentUserId, user, authLoading]);
 
   // Start project deletion
   const handleProjectDeleteStart = useCallback((project: Project) => {
@@ -637,7 +639,7 @@ const HomeView = () => {
   }, [projectToDelete, selectedProject, toast, onDeleteClose]);
 
   // Get flow data when selecting a project
-  const handleProjectChange = async (projectId: string) => {
+  const handleProjectChange = async (projectId: string | null) => {
     if (!projectId) {
       setSelectedProject(null);
       setSharedNodes([]);
@@ -662,10 +664,11 @@ const HomeView = () => {
 
         // set changed color 
         for (let i = 0; i < flowData.nodes.length; i++) {          
-          const cat_name = flowData.nodes[i].data.nodeType.toLowerCase();
+          const nodeType = flowData.nodes[i].data.nodeType;
+          const cat_name = typeof nodeType === 'string' ? nodeType.toLowerCase() : undefined;
           if (uploadedNodes?.categories != null) {
-            const node_color = uploadedNodes?.categories[cat_name].color;
-            if (flowData.nodes[i].data.color != node_color) {
+            const node_color = cat_name ? uploadedNodes.categories[cat_name]?.color : undefined;
+            if (node_color && flowData.nodes[i].data.color != node_color) {
               flowData.nodes[i].data.color = node_color;
             }
           }
@@ -721,6 +724,16 @@ const HomeView = () => {
   // Keyboard shortcuts (Delete/Backspace for selected nodes/edges).
   // The hook reads nodes/edges from useFlowStore internally so HomeView does
   // not need to subscribe to them at the top level.
+
+  useEffect(() => {
+    if (authLoading || !user || selectedProject || projects.length === 0) {
+      return;
+    }
+    const projectId = localStorage.getItem(PROJECT_ID_KEY);
+    if (projectId && projects.some((project) => project.id === projectId)) {
+      void handleProjectChange(projectId);
+    }
+  }, [authLoading, user, projects, selectedProject, uploadedNodes]);
   useKeyboardShortcuts({
     toast,
     autoSaveEnabled,
@@ -731,7 +744,7 @@ const HomeView = () => {
   });
 
   // handleRefreshNodeData
-  const handleRefreshNodeData = useCallback(async (filename: string) => {
+  const handleRefreshNodeData = useCallback(async (filename?: string) => {
     try {
       console.log('Refreshing node data for filename:', filename);
       
@@ -758,7 +771,7 @@ const HomeView = () => {
       console.log('Refresh API result:', result);
       
       // filename Find a node with
-      if (result.nodes && Array.isArray(result.nodes)) {
+      if (filename && result.nodes && Array.isArray(result.nodes)) {
         const refreshedNode = result.nodes.find((node: any) => node.file_name === filename);
         console.log('Found refreshed node:', refreshedNode);
         return refreshedNode;
@@ -783,33 +796,27 @@ const HomeView = () => {
     }
 
     const nodeIds = nodesPendingDelete.map((node) => node.id);
+    const currentSharedEdges = useFlowStore.getState().sharedEdges;
+    const relatedEdgeIds = currentSharedEdges
+      .filter((edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target))
+      .map((edge) => edge.id);
 
     try {
       setIsDeletingNodes(true);
 
       if (autoSaveEnabled) {
         await Promise.all(nodeIds.map((nodeId) => deleteNodeAPI(nodeId)));
+        await Promise.all(relatedEdgeIds.map((edgeId) => deleteEdgeAPI(edgeId)));
       }
 
       setSharedNodes((nds) => nds.filter((node) => !nodeIds.includes(node.id)));
-      setSharedEdges((eds) => {
-        const relatedEdges = eds.filter(
-          (edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target)
-        );
+      setSharedEdges((eds) =>
+        eds.filter((edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target))
+      );
 
-        if (autoSaveEnabled) {
-          relatedEdges.forEach((edge) => {
-            deleteEdgeAPI(edge.id);
-          });
-        }
-
-        const projectId = localStorage.getItem(PROJECT_ID_KEY);
-        handleProjectChange(projectId);
-
-        return eds.filter(
-          (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
-        );
-      });
+      if (selectedProject) {
+        await handleProjectChange(selectedProject);
+      }
 
       toast({
         title: "Deleted",
@@ -831,7 +838,7 @@ const HomeView = () => {
     } finally {
       setIsDeletingNodes(false);
     }
-  }, [nodesPendingDelete, autoSaveEnabled, deleteNodeAPI, setSharedNodes, setSharedEdges, deleteEdgeAPI, toast, closeNodeDeleteDialog]);
+  }, [nodesPendingDelete, autoSaveEnabled, deleteNodeAPI, setSharedNodes, setSharedEdges, deleteEdgeAPI, selectedProject, toast, closeNodeDeleteDialog]);
 
   // Node deletion process (from menu)
   const handleDeleteNode = useCallback(() => {
@@ -972,6 +979,7 @@ const HomeView = () => {
     // Save all nodes that haven't been saved yet
     // Get current nodes from ReactFlow instance (includes newly added ones)
     const currentNodes = reactFlowInstance.current?.getNodes() || currentSharedNodes;
+    const saveErrors: string[] = [];
     
     for (const node of currentNodes) {
       try {
@@ -982,8 +990,20 @@ const HomeView = () => {
           await updateNodeAPI(node.id, node as Partial<Node<CalculationNodeData>>);
         } catch (updateError) {
           console.warn(`Failed to save/update node ${node.id}:`, updateError);
+          saveErrors.push(node.id);
         }
       }
+    }
+
+    if (saveErrors.length > 0) {
+      toast({
+        title: "Save Failed",
+        description: `Failed to save ${saveErrors.length} node(s) before code generation: ${saveErrors.join(', ')}`,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
     }
 
     // Wait a bit for all saves to complete
@@ -1100,9 +1120,10 @@ const HomeView = () => {
 
           // Apply category colors (same logic as handleProjectChange)
           for (let i = 0; i < flowData.nodes.length; i++) {
-            const cat_name = flowData.nodes[i].data.nodeType.toLowerCase();
-            if (uploadedNodes?.categories != null) {
-              const node_color = uploadedNodes?.categories[cat_name]?.color;
+            const nodeType = flowData.nodes[i].data.nodeType;
+            const cat_name = typeof nodeType === 'string' ? nodeType.toLowerCase() : undefined;
+            if (cat_name && uploadedNodes?.categories != null) {
+              const node_color = uploadedNodes.categories[cat_name]?.color;
               if (node_color && flowData.nodes[i].data.color !== node_color) {
                 flowData.nodes[i].data.color = node_color;
               }

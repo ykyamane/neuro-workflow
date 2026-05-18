@@ -38,10 +38,11 @@ class LocalExecutor(ExecutionBackend):
             status=ExecutionStatus.PENDING,
             submitted_at=datetime.now(timezone.utc),
         )
-        script_path = self.code_dir / project_name / f"{project_name}.py"
+        project_dir = self.code_dir / str(workflow_id)
+        script_path = project_dir / "workflow.py"
 
         if not script_path.exists():
-            script_path.parent.mkdir(parents=True, exist_ok=True)
+            project_dir.mkdir(parents=True, exist_ok=True)
             script_path.write_text(code)
 
         _runs[result.run_id] = {

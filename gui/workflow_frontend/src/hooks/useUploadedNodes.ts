@@ -1,5 +1,7 @@
 import { SchemaFields } from "../views/home/type";
 import { useState, useEffect, useCallback } from "react";
+import { createAuthHeaders } from "../api/authHeaders";
+import { useAuth } from "../auth/authContext";
 
 // Backend response type definition
 interface UploadedNodesResponse {
@@ -41,16 +43,36 @@ interface UseUploadedNodesReturn {
  * A custom hook to get the list of uploaded nodes
  */
 export const useUploadedNodes = (): UseUploadedNodesReturn => {
+  const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<UploadedNodesResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUploadedNodes = useCallback(async () => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
+      setData(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch("/api/box/uploaded-nodes/");
+      const headers = await createAuthHeaders();
+      if (!headers.Authorization) {
+        throw new Error("Authentication token is not available");
+      }
+
+      const response = await fetch("/api/box/uploaded-nodes/", {
+        credentials: "include",
+        headers,
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -68,10 +90,10 @@ export const useUploadedNodes = (): UseUploadedNodesReturn => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authLoading, user]);
 
   useEffect(() => {
-    fetchUploadedNodes();
+    void fetchUploadedNodes();
   }, [fetchUploadedNodes]);
 
   return {
@@ -114,11 +136,23 @@ export const usePythonFiles = (params?: {
   name?: string;
   analyzed_only?: boolean;
 }): UsePythonFilesReturn => {
+  const { user, loading: authLoading } = useAuth();
   const [files, setFiles] = useState<PythonFile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPythonFiles = useCallback(async () => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
+      setFiles([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -135,7 +169,15 @@ export const usePythonFiles = (params?: {
       const url = `/api/box/files/${
         searchParams.toString() ? `?${searchParams.toString()}` : ""
       }`;
-      const response = await fetch(url);
+      const headers = await createAuthHeaders();
+      if (!headers.Authorization) {
+        throw new Error("Authentication token is not available");
+      }
+
+      const response = await fetch(url, {
+        credentials: "include",
+        headers,
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -150,12 +192,19 @@ export const usePythonFiles = (params?: {
     } finally {
       setIsLoading(false);
     }
-  }, [params?.name, params?.analyzed_only]);
+  }, [params?.name, params?.analyzed_only, authLoading, user]);
 
   const deleteFile = useCallback(async (id: string): Promise<boolean> => {
     try {
+      const headers = await createAuthHeaders();
+      if (!headers.Authorization) {
+        throw new Error("Authentication token is not available");
+      }
+
       const response = await fetch(`/api/box/files/${id}/`, {
         method: "DELETE",
+        credentials: "include",
+        headers,
       });
 
       if (!response.ok) {
@@ -173,7 +222,7 @@ export const usePythonFiles = (params?: {
   }, []);
 
   useEffect(() => {
-    fetchPythonFiles();
+    void fetchPythonFiles();
   }, [fetchPythonFiles]);
 
   return {

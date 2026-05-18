@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db import models
 from .models import PythonFile, NODE_CATEGORIES
@@ -19,8 +19,22 @@ from django.core.files import File
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from app.auth.authentication import KeycloakAuthentication
 
 logger = logging.getLogger(__name__)
+
+
+def _can_modify_python_file(user, python_file):
+    """User-created files are owner-only; synced catalog files are shared."""
+    if not user or not user.is_authenticated:
+        return False
+    return not python_file.uploaded_by_id or python_file.uploaded_by_id == user.id
+
+
+def _visible_python_files(user):
+    return PythonFile.objects.filter(is_active=True).filter(
+        models.Q(uploaded_by=user) | models.Q(uploaded_by__isnull=True)
+    )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -28,8 +42,8 @@ class PythonFileUploadView(APIView):
     """Python view for file upload"""
 
     parser_classes = (MultiPartParser, FormParser)
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """Upload a file and analyze it automatically"""
@@ -42,7 +56,7 @@ class PythonFileUploadView(APIView):
                 # Create and analyze files
                 python_file = file_service.create_python_file(
                     file=serializer.validated_data["file"],
-                    user=request.user if request.user.is_authenticated else None,
+                    user=request.user,
                     name=serializer.validated_data.get("name"),
                     description=serializer.validated_data.get("description"),
                     category=serializer.validated_data.get("category", "analysis"),
@@ -73,19 +87,19 @@ class PythonFileUploadView(APIView):
 class PythonFileListView(APIView):
     """Python file list and details view"""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk=None):
         """Get file list or details"""
         if pk:
             # Get details
-            python_file = get_object_or_404(PythonFile, pk=pk, is_active=True)
+            python_file = get_object_or_404(_visible_python_files(request.user), pk=pk)
             serializer = PythonFileSerializer(python_file, context={"request": request})
             return Response(serializer.data)
         else:
             # get list
-            python_files = PythonFile.objects.filter(is_active=True)
+            python_files = _visible_python_files(request.user)
 
             # filtering
             name = request.query_params.get("name")
@@ -107,14 +121,10 @@ class PythonFileListView(APIView):
 
     def delete(self, request, pk):
         """delete file"""
-        python_file = get_object_or_404(PythonFile, pk=pk, is_active=True)
+        python_file = get_object_or_404(_visible_python_files(request.user), pk=pk)
 
         # Permission check
-        if (
-            request.user.is_authenticated
-            and python_file.uploaded_by
-            and python_file.uploaded_by != request.user
-        ):
+        if not _can_modify_python_file(request.user, python_file):
             return Response(
                 {"error": "You don't have permission to delete this file"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -139,15 +149,15 @@ class PythonFileListView(APIView):
 class UploadedNodesView(APIView):
     """API to get a list of uploaded node classes"""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """Returns a list of uploaded node classes"""
         try:
             # Only retrieve valid parsed files
-            python_files = PythonFile.objects.filter(
-                is_active=True, is_analyzed=True, node_classes__isnull=False
+            python_files = _visible_python_files(request.user).filter(
+                is_analyzed=True, node_classes__isnull=False
             ).exclude(node_classes={})
 
             all_nodes = []
@@ -205,25 +215,22 @@ class UploadedNodesView(APIView):
             )
 
 
-import json
-from django.views import View
 from django.http import JsonResponse
-from rest_framework import permissions
 from django.core.files.base import ContentFile
 import os
 import re
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class PythonFileCodeManagementView(View):
+class PythonFileCodeManagementView(APIView):
     """
     Code management view of PythonFile
     GET: Get code
     PUT: save code
     """
 
-    permission_classes = [permissions.AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, filename):
         """Get source code by specifying the file name"""
@@ -234,8 +241,8 @@ class PythonFileCodeManagementView(View):
                 filenames_to_search.append(f"{filename}.py")
 
             # Search by file name
-            python_file = PythonFile.objects.filter(
-                name__in=filenames_to_search, is_active=True
+            python_file = _visible_python_files(request.user).filter(
+                name__in=filenames_to_search
             ).first()
 
             if not python_file:
@@ -287,8 +294,8 @@ class PythonFileCodeManagementView(View):
                 filenames_to_search.append(f"{filename}.py")
 
             # Search by file name
-            python_file = PythonFile.objects.filter(
-                name__in=filenames_to_search, is_active=True
+            python_file = _visible_python_files(request.user).filter(
+                name__in=filenames_to_search
             ).first()
 
             if not python_file:
@@ -297,11 +304,7 @@ class PythonFileCodeManagementView(View):
                 )
 
             # Permission checks (if necessary)
-            if (
-                request.user.is_authenticated
-                and python_file.uploaded_by
-                and python_file.uploaded_by != request.user
-            ):
+            if not _can_modify_python_file(request.user, python_file):
                 return JsonResponse(
                     {"error": "You don't have permission to edit this file"}, status=403
                 )
@@ -333,28 +336,12 @@ class PythonFileCodeManagementView(View):
                 {"error": "Failed to save code", "details": str(e)}, status=500
             )
 
-    def dispatch(self, request, *args, **kwargs):
-        """Route according to HTTP method"""
-        filename = kwargs.get("filename")
-
-        if not filename:
-            return JsonResponse({"error": "filename is required"}, status=400)
-
-        # Only GET and PUT are allowed on the code endpoint
-        if request.method == "GET":
-            return self.get(request, filename)
-        elif request.method == "PUT":
-            return self.put(request, filename)
-        else:
-            return JsonResponse({"error": "Method not allowed"}, status=405)
-
-
 @method_decorator(csrf_exempt, name="dispatch")
 class PythonFileCopyView(APIView):
     """Copy selected Python files"""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """Copy by specifying file ID or file name"""
@@ -390,7 +377,7 @@ class PythonFileCopyView(APIView):
                 try:
                     # Get original file
                     original_file = get_object_or_404(
-                        PythonFile, pk=file_id, is_active=True
+                        _visible_python_files(request.user), pk=file_id
                     )
 
                     # Generate copy name
@@ -411,9 +398,7 @@ class PythonFileCopyView(APIView):
                         ),
                         category=original_file.category,
                         file_content=original_file.file_content,
-                        uploaded_by=(
-                            request.user if request.user.is_authenticated else None
-                        ),
+                        uploaded_by=request.user,
                         node_classes=(
                             original_file.node_classes.copy()
                             if original_file.node_classes
@@ -522,8 +507,8 @@ class PythonFileCopyView(APIView):
                 source_names.append(f"{source_filename}.py")
 
             # Get source file
-            original_file = PythonFile.objects.filter(
-                name__in=source_names, is_active=True
+            original_file = _visible_python_files(request.user).filter(
+                name__in=source_names
             ).first()
 
             if not original_file:
@@ -568,7 +553,7 @@ class PythonFileCopyView(APIView):
                 ),
                 category=original_file.category,
                 file_content=updated_content,
-                uploaded_by=request.user if request.user.is_authenticated else None,
+                uploaded_by=request.user,
                 node_classes=updated_node_classes,
                 is_analyzed=original_file.is_analyzed,  # Keep the original file
                 analysis_error=original_file.analysis_error,
@@ -854,8 +839,8 @@ class PythonFileCopyView(APIView):
 class PythonFileParameterUpdateView(APIView):
     """Update parameter values ​​in a file"""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def put(self, request):
         """Update parameter value"""
@@ -884,14 +869,14 @@ class PythonFileParameterUpdateView(APIView):
             # Get file (search by file_id or filename)
             python_file = None
             if file_id:
-                python_file = get_object_or_404(PythonFile, pk=file_id, is_active=True)
+                python_file = get_object_or_404(_visible_python_files(request.user), pk=file_id)
             elif filename:
                 filenames_to_search = [filename]
                 if not filename.endswith(".py"):
                     filenames_to_search.append(f"{filename}.py")
 
-                python_file = PythonFile.objects.filter(
-                    name__in=filenames_to_search, is_active=True
+                python_file = _visible_python_files(request.user).filter(
+                    name__in=filenames_to_search
                 ).first()
 
             if not python_file:
@@ -900,11 +885,7 @@ class PythonFileParameterUpdateView(APIView):
                 )
 
             # Permission check
-            if (
-                request.user.is_authenticated
-                and python_file.uploaded_by
-                and python_file.uploaded_by != request.user
-            ):
+            if not _can_modify_python_file(request.user, python_file):
                 return Response(
                     {"error": "You don't have permission to edit this file"},
                     status=status.HTTP_403_FORBIDDEN,
@@ -1470,8 +1451,8 @@ class PythonFileParameterUpdateView(APIView):
 class NodeCategoryListView(APIView):
     """View for getting a list of node categories"""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """Returns a list of available categories"""
@@ -1576,8 +1557,8 @@ class NodeCategoryListView(APIView):
 class BulkSyncNodesView(APIView):
     """A view that synchronizes the contents of the nodes folder to the database all at once."""
 
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """Scan the nodes folder and add them to the DB all at once"""

@@ -26,9 +26,12 @@ import {
 import { AttachmentIcon, CloseIcon, CheckIcon } from '@chakra-ui/icons';
 import { useNavigate } from 'react-router-dom';
 import { useCallback } from "react";
+import { createAuthHeaders } from '../../api/authHeaders';
 
 // Category definition
-let categories = {
+type CategoryInfo = { label: string; color: string; description: string };
+
+let categories: Record<string, CategoryInfo> = {
   analysis: { label: 'Analysis', color: 'blue', description: 'Data analysis and statistics' },
   io: { label: 'I/O', color: 'green', description: 'Input/output operations' },
   network: { label: 'Network', color: 'purple', description: 'Network and communication' },
@@ -37,7 +40,14 @@ let categories = {
   stimulus: { label: 'Stimulus', color: 'teal', description: 'Stimulus generation and control' }
 };
 
-type CategoryKey = keyof typeof categories;
+type CategoryKey = string;
+type UploadedNodesResponse = Record<string, CategoryInfo>;
+interface UseUploadedNodesReturn {
+  data: UploadedNodesResponse | null;
+  isLoading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+}
 
 /*
 const CATEGORIES = {
@@ -100,14 +110,6 @@ const BoxUpload: React.FC = () => {
     }
   }, [selectedFiles, fileName]);
 
-  // Categories interface
-  interface UseCategoriesReturn {
-    data: UploadedNodesResponse | null;
-    isLoading: boolean;
-    error: string | null;
-    refetch: () => Promise<void>;
-  }
-
   // Get Categories
   const getCategories = (): UseUploadedNodesReturn => {
     const [data, setData] = useState<UploadedNodesResponse | null>(null);
@@ -119,7 +121,11 @@ const BoxUpload: React.FC = () => {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch("/api/box/categories/");
+        const headers = await createAuthHeaders();
+        const response = await fetch("/api/box/categories/", {
+          credentials: 'include',
+          headers,
+        });
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -285,8 +291,12 @@ const BoxUpload: React.FC = () => {
     if (desc) formData.append('description', desc);
     if (cat) formData.append('category', cat);
 
+    const headers = await createAuthHeaders();
+    delete headers["Content-Type"];
     const response = await fetch('/api/box/upload/', {
       method: 'POST',
+      credentials: 'include',
+      headers,
       body: formData,
       // Note: Do not specify the Content-Type header as it is set automatically.
     });

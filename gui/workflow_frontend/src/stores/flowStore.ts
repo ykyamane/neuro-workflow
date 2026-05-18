@@ -42,7 +42,6 @@ export type FlowStore = {
 
 // Common State Store with temporal middleware for undo/redo
 export const useFlowStore = create<FlowStore>()(
-  // @ts-expect-error - zundo temporal middleware has known typing incompatibility with zustand 4.x generics
   temporal(
     (set) => ({
       sharedNodes: [],

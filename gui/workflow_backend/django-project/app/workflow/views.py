@@ -3,18 +3,16 @@ import asyncio
 import json
 import logging
 import os
-from pathlib import Path
 
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework import status, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,6 +21,12 @@ from app.auth.authentication import KeycloakAuthentication
 from .code_generation_service import CodeGenerationService
 from .jupyter_execution_service import JupyterExecutionService
 from .models import FlowEdge, FlowNode, FlowProject, WorkflowRun
+from .path_utils import (
+    code_file_path,
+    existing_project_dir,
+    notebook_file_path,
+    safe_report_path,
+)
 from .permissions import (
     IsAuthenticatedAndProjectVisible,
     IsOwnerForDestructive,
@@ -69,8 +73,7 @@ class FlowProjectViewSet(viewsets.ModelViewSet):
         """Generate Python files when creating a project"""
         try:
             code_service = CodeGenerationService()
-            project_name = project.name.replace(" ","").capitalize()
-            code_file = code_service.get_code_file_path(project_name)
+            code_file = code_service.get_code_file_path(project, create=True)
 
             # Create a basic template
             python_code = code_service._create_base_template(project)
@@ -151,8 +154,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
         logger.info(f"Creating node in project {project_id} with data: {request.data}")
 
         try:
-            # Check the existence of the project
-            project = get_object_or_404(FlowProject, id=project_id)
+            project = get_accessible_project(request, project_id, write=True)
 
             # Validating request data
             required_fields = ["id", "position"]
@@ -261,8 +263,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
         )
 
         try:
-            # Check the existence of the project
-            project = get_object_or_404(FlowProject, id=project_id)
+            project = get_accessible_project(request, project_id, write=True)
 
             # Checking node existence (direct search by ID)
             try:
@@ -314,8 +315,7 @@ class FlowNodeViewSet(viewsets.ModelViewSet):
         logger.info(f"Deleting node {node_id} from project {project_id}")
 
         try:
-            # Check the existence of the project
-            project = get_object_or_404(FlowProject, id=project_id)
+            project = get_accessible_project(request, project_id, write=True)
 
             # Checking node existence (direct search by ID)
             try:
@@ -389,8 +389,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
         logger.info(f"Creating edge in project {project_id} with data: {request.data}")
 
         try:
-            # Check the existence of the project
-            project = get_object_or_404(FlowProject, id=project_id)
+            project = get_accessible_project(request, project_id, write=True)
 
             # Validating request data
             required_fields = ["id", "source", "target"]
@@ -461,8 +460,7 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
         logger.info(f"Deleting edge {edge_id} from project {project_id}")
 
         try:
-            # Check the existence of the project
-            project = get_object_or_404(FlowProject, id=project_id)
+            project = get_accessible_project(request, project_id, write=True)
 
             # Checking the existence of an edge (direct search by ID)
             try:
@@ -508,8 +506,8 @@ class FlowEdgeViewSet(viewsets.ModelViewSet):
 class SampleFlowView(APIView):
     """Providing sample flow data"""
 
-    authentication_classes = [KeycloakAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def get(self, request):
         """Return sample flow data"""
@@ -530,7 +528,7 @@ class SampleFlowView(APIView):
 @method_decorator(csrf_exempt, name="dispatch")
 class JupyterLabView(APIView):
     """Views for integration with JupyterLab"""
-
+    
     authentication_classes = [KeycloakAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -773,9 +771,7 @@ class BatchCodeGenerationView(APIView):
 
             # Generate code in bulk using the code generation service
             code_service = CodeGenerationService()
-            # Corrected project name
-            project_name = project.name.replace(" ","").capitalize()
-            success = code_service.generate_code_from_flow_data(str(workflow_id), project_name, nodes_data, edges_data)
+            success = code_service.generate_code_from_flow_data(str(workflow_id), project.name, nodes_data, edges_data)
 
             response_data = {
                 "status": "success",
@@ -788,12 +784,9 @@ class BatchCodeGenerationView(APIView):
             if success:
                 response_data["code_status"] = "Code generation completed successfully"
                 # Get Project by Id
-                project = FlowProject.objects.get(id=workflow_id)
-                project_name = project.name.replace(" ","").capitalize()
-
                 # Returns the path of the generated code file.
-                code_file = code_service.get_code_file_path(project_name)
-                notebook_file = code_service.get_notebook_file_path(project_name)
+                code_file = code_service.get_code_file_path(project)
+                notebook_file = code_service.get_notebook_file_path(project)
 
                 response_data["files"] = {
                     "python_file": str(code_file),
@@ -852,11 +845,17 @@ class WorkflowRunStreamView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        project = get_accessible_project(request, workflow_id, write=True)
+        try:
+            project = get_accessible_project(request, workflow_id, write=True)
+        except Exception:
+            return Response(
+                {"error": f"Project {workflow_id} not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        project_name = project.name.replace(" ", "").capitalize()
-        code_dir = Path(settings.BASE_DIR) / "codes/projects"
-        script_path = code_dir / project_name / f"{project_name}.py"
+        project_dir = existing_project_dir(project)
+        project_name = project_dir.name
+        script_path = code_file_path(project)
 
         if not script_path.exists():
             return Response(
@@ -876,7 +875,7 @@ class WorkflowRunStreamView(APIView):
             )
 
         # Prepend os.chdir so the script runs in the correct working directory
-        working_dir = f"{JUPYTER_HOME}/codes/projects/{project_name}"
+        working_dir = f"{JUPYTER_HOME}/codes/projects/{project_dir.name}"
         code = (
             f"import os\nos.makedirs({working_dir!r}, exist_ok=True)\n"
             f"os.chdir({working_dir!r})\n\n"
@@ -938,8 +937,7 @@ class BatchWorkflowRunView(APIView):
 
             # Run Workflow Project Service
             run_workflow_service = RunWorkflowService()
-            # Corrected project name
-            project_name = project.name.replace(" ","").capitalize()
+            project_name = str(project.id)
             result = run_workflow_service.run_workflow_code(str(workflow_id), project_name)
 
             response_data = {
@@ -1054,8 +1052,8 @@ class WorkflowResultsView(APIView):
 
     def get(self, request, workflow_id):
         project = get_accessible_project(request, workflow_id, write=False)
-        project_name = project.name.replace(" ", "").capitalize()
-        results_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name / "results"
+        project_dir = existing_project_dir(project)
+        results_dir = project_dir / "results"
 
         if not results_dir.exists():
             return JsonResponse({"status": "success", "results": [], "results_dir": str(results_dir)})
@@ -1067,7 +1065,7 @@ class WorkflowResultsView(APIView):
             entry = {
                 "filename": f.name,
                 "size_bytes": f.stat().st_size,
-                "path": str(f.relative_to(Path(settings.BASE_DIR) / "codes/projects" / project_name)),
+                "path": str(f.relative_to(project_dir)),
             }
             if f.suffix == ".npz":
                 try:
@@ -1090,13 +1088,12 @@ class WorkflowCodeView(APIView):
 
     def get(self, request, workflow_id):
         project = get_accessible_project(request, workflow_id, write=False)
-        project_name = project.name.replace(" ", "").capitalize()
-        project_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name
+        project_dir = existing_project_dir(project)
 
         result = {}
 
         # Generated Python code
-        code_path = project_dir / f"{project_name}.py"
+        code_path = code_file_path(project)
         if code_path.exists():
             result["code"] = code_path.read_text(encoding="utf-8")
         else:
@@ -1104,7 +1101,7 @@ class WorkflowCodeView(APIView):
 
         # Notebook cell outputs (text/stdout from executed cells only)
         notebook_outputs = []
-        notebook_path = project_dir / f"{project_name}.ipynb"
+        notebook_path = notebook_file_path(project)
         if notebook_path.exists():
             try:
                 import json as _json
@@ -1142,16 +1139,16 @@ class WorkflowReportView(APIView):
 
     def post(self, request, workflow_id):
         project = get_accessible_project(request, workflow_id, write=True)
-        project_name = project.name.replace(" ", "").capitalize()
         report_text = request.data.get("report_text", "")
         filename = request.data.get("filename", "report.md")
 
         if not report_text:
             return JsonResponse({"error": "report_text is required"}, status=400)
 
-        project_dir = Path(settings.BASE_DIR) / "codes/projects" / project_name
-        project_dir.mkdir(parents=True, exist_ok=True)
-        report_path = project_dir / filename
+        try:
+            report_path = safe_report_path(project, filename, create_dir=True)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
 
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(report_text)
@@ -1165,9 +1162,11 @@ class WorkflowReportView(APIView):
 
     def get(self, request, workflow_id):
         project = get_accessible_project(request, workflow_id, write=False)
-        project_name = project.name.replace(" ", "").capitalize()
         filename = request.GET.get("filename", "report.md")
-        report_path = Path(settings.BASE_DIR) / "codes/projects" / project_name / filename
+        try:
+            report_path = safe_report_path(project, filename)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
 
         if not report_path.exists():
             return JsonResponse({"error": "Report not found"}, status=404)
@@ -1204,15 +1203,9 @@ class WorkflowRunSubmitView(APIView):
 
         backend_choice = ser.validated_data["backend"]
         resource_reqs = ser.validated_data.get("resource_requests", {})
-        project_name = project.name.replace(" ", "").capitalize()
+        project_name = str(project.id)
 
-        script_path = (
-            Path(settings.BASE_DIR)
-            / "codes"
-            / "projects"
-            / project_name
-            / f"{project_name}.py"
-        )
+        script_path = code_file_path(project)
         code = script_path.read_text() if script_path.exists() else ""
 
         run = WorkflowRun.objects.create(

@@ -7,6 +7,7 @@ import textwrap
 from pathlib import Path
 from django.conf import settings
 from .models import FlowProject, FlowNode, FlowEdge
+from .path_utils import code_file_path, notebook_file_path, projects_root
 import logging
 import traceback
 
@@ -17,8 +18,7 @@ class CodeGenerationService:
     """A service that generates Python code from workflows (with .ipynb conversion functionality)"""
 
     def __init__(self):
-        self.code_dir = Path(settings.BASE_DIR) / "codes/projects"
-        self.code_dir.mkdir(exist_ok=True)
+        self.code_dir = projects_root()
 
         # Predefined regular expression patterns
         self._compile_patterns()
@@ -32,24 +32,22 @@ class CodeGenerationService:
             ),
         }
 
-    def get_code_file_path(self, project_name):
-        """Get code file path from project ID"""
-        return self.code_dir / str(project_name) / f"{project_name}.py"
+    def get_code_file_path(self, project, *, create=False):
+        """Get the generated Python file path for a project."""
+        return code_file_path(project, create=create)
 
-    def get_notebook_file_path(self, project_name):
-        """Get notebook file path from project ID"""
-        return self.code_dir / str(project_name) / f"{project_name}.ipynb"
+    def get_notebook_file_path(self, project, *, create=False):
+        """Get the generated notebook file path for a project."""
+        return notebook_file_path(project, create=create)
 
     def _convert_py_to_ipynb(self, project_id):
         """Convert Python files to Jupyter Notebook"""
         try:
             # Get Project by Id
             project = FlowProject.objects.get(id=project_id)
-            # Corrected project name
-            project_name = project.name.replace(" ","").capitalize()
             # Get file path
-            code_file = self.get_code_file_path(project_name)
-            notebook_file = self.get_notebook_file_path(project_name)
+            code_file = self.get_code_file_path(project)
+            notebook_file = self.get_notebook_file_path(project, create=code_file.parent.name == str(project.id))
 
             if not code_file.exists():
                 logger.error(f"Python file does not exist: {code_file}")
@@ -996,7 +994,7 @@ if __name__ == "__main__":
                 logger.error(f"DEBUG: Could not find workflow builder marker")
 
             # save to file
-            code_file = self.get_code_file_path(project_name)
+            code_file = self.get_code_file_path(project, create=True)
             code_file.parent.mkdir(parents=True, exist_ok=True)
 
             with open(code_file, "w", encoding="utf-8") as f:

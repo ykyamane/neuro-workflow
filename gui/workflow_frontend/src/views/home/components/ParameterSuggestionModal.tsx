@@ -21,6 +21,7 @@ import {
   IconButton,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon, InfoIcon } from '@chakra-ui/icons';
+import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface ParameterSuggestion {
   value: any;
@@ -79,8 +80,12 @@ const ParameterSuggestionModal: React.FC<ParameterSuggestionModalProps> = ({
       // In Docker, the proxy is configured to route /api to backend:3000
       // In local dev, it routes to localhost:3000
       const apiUrl = `/api/metadata/parameters/suggest/?${params.toString()}`;
-      
-      const response = await fetch(apiUrl);
+      const headers = await createAuthHeaders();
+
+      const response = await fetch(apiUrl, {
+        credentials: 'include',
+        headers,
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));

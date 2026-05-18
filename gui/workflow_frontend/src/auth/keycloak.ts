@@ -5,23 +5,32 @@ const keycloakRealm = import.meta.env.VITE_KEYCLOAK_REALM || "neuroworkflow";
 const keycloakClientId =
   import.meta.env.VITE_KEYCLOAK_CLIENT_ID || "neuroworkflow-app";
 
-if (!keycloakUrl || keycloakUrl.includes("<")) {
+export const isKeycloakConfigured = Boolean(
+  keycloakUrl && !keycloakUrl.includes("<")
+);
+
+if (!isKeycloakConfigured) {
   console.error(
     "VITE_KEYCLOAK_URL is not configured. Authentication will fail."
   );
 }
 
-let _instance: Keycloak | null = null;
+declare global {
+  interface Window {
+    __NEURO_WORKFLOW_KEYCLOAK__?: Keycloak;
+    __NEURO_WORKFLOW_KEYCLOAK_INIT__?: Promise<boolean>;
+  }
+}
 
 export function getKeycloak(): Keycloak {
-  if (!_instance) {
-    _instance = new Keycloak({
+  if (!window.__NEURO_WORKFLOW_KEYCLOAK__) {
+    window.__NEURO_WORKFLOW_KEYCLOAK__ = new Keycloak({
       url: keycloakUrl,
       realm: keycloakRealm,
       clientId: keycloakClientId,
     });
   }
-  return _instance;
+  return window.__NEURO_WORKFLOW_KEYCLOAK__;
 }
 
 export function getAccountConsoleUrl(): string {
