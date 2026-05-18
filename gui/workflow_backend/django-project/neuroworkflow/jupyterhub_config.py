@@ -1,9 +1,5 @@
 import os
 from dockerspawner import DockerSpawner
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from custom_handlers import CORSHandler, AuthStatusHandler
 
 # JupyterHub configuration
 c = get_config()
@@ -11,7 +7,7 @@ c = get_config()
 # Network configuration
 c.JupyterHub.hub_ip = "0.0.0.0"
 c.JupyterHub.port = 8000
-c.JupyterHub.base_url = os.environ.get("JUPYTERHUB_BASE_URL", "/")
+c.JupyterHub.base_url = os.environ.get("JUPYTERHUB_BASE_URL", "/jupyter/")
 
 # Use Docker spawner
 c.JupyterHub.spawner_class = DockerSpawner
@@ -99,18 +95,6 @@ c.JupyterHub.tornado_settings = {
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-CSRFToken'
     }
-}
-
-# CORS settings for cross-origin requests
-c.JupyterHub.extra_handlers = [
-    (r'/api/auth-status', AuthStatusHandler),
-    (r'/api/(.*)', CORSHandler),
-]
-
-# Cookie settings for iframe embedding
-c.JupyterHub.cookie_options = {
-    'SameSite': 'None',
-    'Secure': os.environ.get("JUPYTERHUB_COOKIE_SECURE", "false").lower() == "true",
 }
 
 # =============== SERVICE TOKEN FOR BACKEND ===============
