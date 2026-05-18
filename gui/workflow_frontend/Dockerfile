@@ -1,20 +1,9 @@
-FROM node:24-slim AS build
+FROM node:24-slim
 
 WORKDIR /frontend
 
-COPY package*.json /frontend/
-
-RUN npm ci
-
 COPY . /frontend
 
-RUN npm run build
+RUN npm install
 
-FROM nginx:1.27-alpine
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /frontend/dist /usr/share/nginx/html
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "dev:docker"]
