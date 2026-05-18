@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Handle, NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
+import { Handle, Node, NodeProps, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { CalculationNodeData } from "../type";
 import { 
   Badge, 
@@ -29,7 +29,7 @@ export const CalculationNode = ({
   isConnectable, 
   selected,
   ...callbacks 
-}: NodeProps<CalculationNodeData> & NodeCallbacks) => {
+}: NodeProps<Node<CalculationNodeData>> & NodeCallbacks) => {
   const schema = data.schema || { inputs: {}, outputs: {}, parameters: {} };
   const toast = useToast();
 
@@ -217,7 +217,7 @@ export const CalculationNode = ({
               onClick={(e) => {
                 e.stopPropagation();
                 //callbacks.onJupyter?.(id);
-                OpenJupyter(data.file_name, data.nodeType);
+                OpenJupyter(data.file_name, data.nodeType ?? 'analysis');
               }}
               _hover={{ bg: "orange.500", transform: "scale(1.1)" }}
               minW="18px"

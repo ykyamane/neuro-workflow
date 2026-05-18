@@ -40,8 +40,21 @@ interface UploadedNode {
   color?: string;
 }
 
+const readStoredViewports = (): ProjectViewport[] => {
+  const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
+  if (!viewportStr) return [];
+  try {
+    const parsed = JSON.parse(viewportStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Ignoring invalid saved viewport state:', error);
+    localStorage.removeItem(FLOW_STATE_KEY);
+    return [];
+  }
+};
+
 export interface WorkflowCanvasProps {
-  reactFlowInstance: MutableRefObject<ReactFlowInstance | null>;
+  reactFlowInstance: MutableRefObject<ReactFlowInstance<Node<CalculationNodeData>, Edge> | null>;
   selectedProject: string | null;
   autoSaveEnabled: boolean;
   toast: ReturnType<typeof useToast>;
@@ -89,11 +102,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
   const projectId = localStorage.getItem(PROJECT_ID_KEY);
 
-  let vps: ProjectViewport[] = [];
-  const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-  if (viewportStr) {
-    vps = JSON.parse(viewportStr);
-  }
+  const vps = readStoredViewports();
   let fvp: ProjectViewport = vps.find(view => view.projectId === projectId) ?? {
     projectId: projectId,
     x: 0,
@@ -108,22 +117,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   useEffect(() => {
     const saved = localStorage.getItem(FLOW_STATE_KEY);
     if (saved) {
-      let vps: ProjectViewport[] = [];
-      const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-      if (viewportStr) {
-        vps = JSON.parse(viewportStr);
-        const fvp = vps.find(view => view.projectId === projectId);
-        if(fvp != undefined){
-          setViewport(fvp);
-          requestAnimationFrame(() => setViewport(fvp));
-        }
+      const vps = readStoredViewports();
+      const fvp = vps.find(view => view.projectId === projectId);
+      if(fvp != undefined){
+        setViewport(fvp);
+        requestAnimationFrame(() => setViewport(fvp));
       }
     }
   }, [setViewport, projectId]);
   /* <=== Enable this to save zoom and pan */
 
   // ReactFlow onInit
-  const onInit = useCallback((instance: ReactFlowInstance) => {
+  const onInit = useCallback((instance: ReactFlowInstance<Node<CalculationNodeData>, Edge>) => {
     reactFlowInstance.current = instance;
   }, [reactFlowInstance]);
 
@@ -355,11 +360,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const onMoveEnd: OnMoveEnd = useCallback((_, viewport) => {
     console.log("Move End:", viewport);
 
-    const viewportStr = localStorage.getItem(FLOW_STATE_KEY);
-    let viewportList: ProjectViewport[] = [];
-    if (viewportStr) {
-      viewportList = JSON.parse(viewportStr);
-    }
+    const viewportList = readStoredViewports();
 
     // New Viewport
     const vp = {
@@ -485,7 +486,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         params.targetHandle || 'input'
       );
 
-      const newEdge = {
+      const newEdge: Edge = {
         id: edgeId,
         ...params,
         style: { stroke: '#aaaaaa', strokeWidth: 2 }
@@ -554,7 +555,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // ReactFlow Page - fully controlled by Zustand store
   return (
     <ReactFlow
-      position="absolute"
+      style={{ position: 'absolute' }}
       nodes={sharedNodes}
       edges={sharedEdges}
       onNodesChange={handleNodesChange}

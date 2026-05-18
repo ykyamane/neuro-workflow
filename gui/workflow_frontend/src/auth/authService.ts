@@ -1,26 +1,56 @@
-import { getKeycloak } from "./keycloak";
+import { getKeycloak, isKeycloakConfigured } from "./keycloak";
 import { reAuthBus } from "./reAuthBus";
 import { AuthResult, User } from "./types";
 
 export type { AuthResult } from "./types";
 
 class AuthService {
+  private keycloakInitPromise: Promise<boolean> | null = null;
+  private readonly keycloakInitTimeoutMs = 15000;
+
   async init(): Promise<boolean> {
-    const kc = getKeycloak();
-    try {
-      // Use "check-sso" rather than "login-required" so that a failed
-      // updateToken() (refresh-token invalidated server-side) does not cause
-      // keycloak-js to auto-redirect the browser to the Keycloak login page.
-      // Unauthenticated states are handled by ProtectedRoute -> LoginView, and
-      // refresh failures are surfaced through reAuthBus -> ReAuthGate.
-      return await kc.init({
-        onLoad: "check-sso",
-        checkLoginIframe: false,
-      });
-    } catch (err) {
-      console.error("Keycloak init failed:", err);
-      return false;
+    if (!isKeycloakConfigured) return false;
+    if (this.keycloakInitPromise) return this.keycloakInitPromise;
+    if (window.__NEURO_WORKFLOW_KEYCLOAK_INIT__) {
+      this.keycloakInitPromise = window.__NEURO_WORKFLOW_KEYCLOAK_INIT__;
+      return this.keycloakInitPromise;
     }
+
+    const kc = getKeycloak();
+    if ((kc as any).didInitialize) {
+      return Boolean(kc.authenticated);
+    }
+
+    const initPromise = kc.init({
+      // Use "check-sso" rather than "login-required" so that a failed
+      // updateToken() does not auto-redirect before ReAuthGate can render.
+      onLoad: "check-sso",
+      checkLoginIframe: false,
+    });
+
+    let timeoutId: number | undefined;
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+      timeoutId = window.setTimeout(() => {
+        console.error(`Keycloak init timed out after ${this.keycloakInitTimeoutMs}ms`);
+        resolve(false);
+      }, this.keycloakInitTimeoutMs);
+    });
+
+    this.keycloakInitPromise = window.__NEURO_WORKFLOW_KEYCLOAK_INIT__ = Promise.race([
+      initPromise,
+      timeoutPromise,
+    ])
+      .finally(() => {
+        if (timeoutId !== undefined) {
+          window.clearTimeout(timeoutId);
+        }
+      })
+      .catch((err) => {
+        console.error("Keycloak init failed:", err);
+        return false;
+      });
+
+    return this.keycloakInitPromise;
   }
 
   async signUp(): Promise<AuthResult> {
@@ -64,6 +94,18 @@ class AuthService {
     return kc.token ?? null;
   }
 
+  async getSession() {
+    const user = await this.getCurrentUser();
+    return user ? { user } : null;
+  }
+
+  async updatePassword(_password: string): Promise<AuthResult> {
+    return {
+      success: false,
+      error: { message: "Password updates are handled by the identity provider." },
+    };
+  }
+
   onAuthStateChange(callback: (event: string, session: { user: User } | null) => void) {
     const kc = getKeycloak();
     const prev = {
@@ -76,12 +118,8 @@ class AuthService {
       const user = await this.getCurrentUser();
       callback("SIGNED_IN", user ? { user } : null);
     };
-    // Intentionally do not forward onAuthLogout. keycloak-js fires it both for
-    // explicit kc.logout() calls (which navigate the browser via signOut() and
-    // don't need React state cleanup) and after a failed refresh when it
-    // internally clears tokens — in the latter case wiping the user would make
-    // ProtectedRoute redirect to /login before the re-auth modal can render.
-    // Refresh-failure recovery flows exclusively through reAuthBus.
+    // Refresh-failure recovery flows through reAuthBus/ReAuthGate. Do not clear
+    // React auth state on keycloak-js logout events fired during failed refresh.
     kc.onAuthLogout = () => {};
     kc.onAuthRefreshSuccess = async () => {
       const user = await this.getCurrentUser();

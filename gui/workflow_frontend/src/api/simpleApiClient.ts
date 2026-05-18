@@ -40,7 +40,7 @@ export const apiCall = async <T = any>(
   options?: ApiOptions
 ): Promise<ApiResponse<T>> => {
   try {
-    const client = await ApiClientManager.getInstance();
+    const client = (await ApiClientManager.getInstance()) as any;
 
     // Handling paths
     let processedPath = path.startsWith("/") ? path.substring(1) : path;

@@ -2,7 +2,6 @@ import aspida from "@aspida/fetch";
 import api from "@/api/$api";
 import { getApiConfig } from "./config";
 import { createAuthHeaders } from "./authHeaders";
-import { onRequest, onResponse, onError } from "./apiInterceptors";
 
 // Creating an API client
 const createApiClient = async () => {
@@ -13,20 +12,16 @@ const createApiClient = async () => {
     aspida(fetch, {
       baseURL: config.baseURL,
       headers,
-      timeout: config.timeout,
-      onRequest,
-      onResponse,
-      onError,
     })
   );
 };
 
 // Manage API clients with the Singleton pattern
 class ApiClientManager {
-  private static instance: ReturnType<typeof api> | null = null;
+  private static instance: any = null;
   private static isInitializing = false;
 
-  static async getInstance(): Promise<ReturnType<typeof api>> {
+  static async getInstance(): Promise<any> {
     if (this.isInitializing) {
       // If initialization is in progress, wait until it is complete
       while (this.isInitializing) {
@@ -52,7 +47,7 @@ class ApiClientManager {
   }
 
   // Force a new instance to be created
-  static async forceRefresh(): Promise<ReturnType<typeof api>> {
+  static async forceRefresh(): Promise<any> {
     this.instance = null;
     return this.getInstance();
   }

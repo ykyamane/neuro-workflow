@@ -89,7 +89,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const toast = useToast();
 
-  const [categoryColors, setCategoryColors] = useState({});
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   const [categoryColorKey, setCategoryColorKey] = useState('');
   const [categoryColorValue, setCategoryColorValue] = useState('');
 
@@ -137,41 +137,33 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
     }
   }, [nodes]);
 
-  // Getting values ​​from the color picker and updating the state
-  const handleColorChange = (selectedCategory: string, colorValue: string) => {
-    if (nodes && nodes.categories) {
-      nodes.categories[selectedCategory].color = colorValue;
-      categoryColors[selectedCategory] = colorValue;
-      setCategoryColors(categoryColors);
+  // Getting values from the color picker and updating the state
+  const handleColorChange = async (selectedCategory: string, colorValue: string) => {
+    if (!nodes?.categories?.[selectedCategory]) {
+      return;
+    }
 
-      // Use a computed property name ([inputKey]) to dynamically set the key
-      setCategoryColors(prevCategoryColors => ({
-        ...prevCategoryColors,
-        [categoryColorKey]: categoryColorValue,
-      }));
+    setCategoryColors(prevCategoryColors => ({
+      ...prevCategoryColors,
+      [selectedCategory]: colorValue,
+    }));
+    setCategoryColorKey(selectedCategory);
+    setCategoryColorValue(colorValue);
 
-      // clear input field
-      setCategoryColorKey(selectedCategory);
-      setCategoryColorValue(colorValue);
-      // keep
-      updateCategoryColorAPI(selectedCategory, colorValue);
-
-      // Category color
-      onChangeColor(selectedCategory, colorValue);
+    const updated = await updateCategoryColorAPI(selectedCategory, colorValue);
+    if (updated) {
+      onChangeColor?.(selectedCategory, colorValue);
     }
   };
 
   // Initialize category colors
   const initCategoryColors = () => {
     if(nodes?.categories){
+      const initialColors: Record<string, string> = {};
       for (const key in nodes.categories) {
-        handleColorChange(key, nodes.categories[key].color);
+        initialColors[key] = nodes.categories[key].color;
       }
-      /*
-      for (const node in nodes) {
-        node.color =
-      }
-        */
+      setCategoryColors(initialColors);
     }
   };
 
@@ -336,10 +328,10 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
   };
 
   // Update category color
-  const updateCategoryColorAPI = async (categoryName: string, categoryColor: string) => {
+  const updateCategoryColorAPI = async (categoryName: string, categoryColor: string): Promise<boolean> => {
     if (!categoryName || !categoryColor) {
       console.log('Skipping category color update API call:', { categoryName, categoryColor });
-      return;
+      return false;
     }
 
     // Send category color updates to the server
@@ -373,6 +365,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
       }
 
       setIsColorUpdating(true);
+      return true;
     } catch (error) {
       console.error('Error updating category color:', error);
       setIsColorUpdating(false);
@@ -383,6 +376,7 @@ const SideBoxArea: React.FC<SidebarProps> = ({ nodes, isLoading = false, error, 
         duration: 2000,
         isClosable: true,
       });
+      return false;
     }
   };
 

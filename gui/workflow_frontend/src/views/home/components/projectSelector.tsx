@@ -475,7 +475,6 @@ export const ProjectSelector = ({
             <Select 
               value={selectedProject || ''} 
               onChange={(e) => onProjectChange(e.target.value)}
-              onLoad={(e) => onProjectChange(e.target.value)}
               size="sm"
               bg="white"
               color="gray.800"

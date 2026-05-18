@@ -1122,7 +1122,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                 </Text>
                 {localNodeData.data.__timestamp && (
                   <Text fontSize="xs" color={subtextColor}>
-                    Last updated: {new Date(localNodeData.data.__timestamp).toLocaleTimeString()}
+                    Last updated: {new Date(Number(localNodeData.data.__timestamp)).toLocaleTimeString()}
                   </Text>
                 )}
               </VStack>

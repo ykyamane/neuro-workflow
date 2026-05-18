@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from django.conf import settings
 from .models import FlowProject, FlowNode, FlowEdge
+from .path_utils import code_file_path, projects_root
 import logging
 import traceback
 import subprocess
@@ -14,11 +15,11 @@ class RunWorkflowService:
     """A service that run the Python code generated from the workflow"""
 
     def __init__(self):
-        self.code_dir = Path(settings.BASE_DIR) / "codes/projects"
-        self.code_dir.mkdir(exist_ok=True)
+        self.code_dir = projects_root()
 
     def run_workflow_code(self, workflow_id, project_name):
-        script_path = self.code_dir / str(project_name) / f"{project_name}.py"
+        project = FlowProject.objects.get(id=workflow_id)
+        script_path = code_file_path(project)
 
         logger.info(f"DEBUG: Run Workflow [{project_name}: {script_path}]")
 

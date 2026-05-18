@@ -47,7 +47,7 @@ c.DockerSpawner.volumes = {
 
 # Environment variables for spawned containers
 c.DockerSpawner.environment = {
-    "GRANT_SUDO": "yes", 
+    "GRANT_SUDO": "no", 
     "CHOWN_HOME": "yes",
     "JUPYTER_CONFIG_DIR": "/home/jovyan/.jupyter",
 }
@@ -57,18 +57,25 @@ c.DockerSpawner.notebook_dir = "/home/jovyan"
 c.DockerSpawner.default_url = "/lab"
 
 # JupyterLab CSP settings for iframe embedding
+_frame_origin = os.environ.get("JUPYTERHUB_FRAME_ORIGIN", "https://snnbuilder.riken.jp")
 c.DockerSpawner.args = [
-    "--ServerApp.tornado_settings={'headers':{'Content-Security-Policy':\"frame-ancestors *\"}}",
-    "--ServerApp.allow_origin='*'",
-    "--ServerApp.disable_check_xsrf=True"
+    f"--ServerApp.tornado_settings={{'headers':{{'Content-Security-Policy':\"frame-ancestors 'self' {_frame_origin}\"}}}}",
+    f"--ServerApp.allow_origin='{_frame_origin}'",
 ]
 
-# User management - allow any username for development
-# c.Authenticator.allowed_users = {"user1", "user2"}  # Commented out to allow any username
+# User management
+_allowed_users = {
+    user.strip()
+    for user in os.environ.get("JUPYTERHUB_ALLOWED_USERS", "user1").split(",")
+    if user.strip()
+}
+if _allowed_users:
+    c.Authenticator.allowed_users = _allowed_users
 
-# Use dummy authenticator for development (change for production!)
-c.JupyterHub.authenticator_class = "jupyterhub.auth.DummyAuthenticator"
-c.DummyAuthenticator.password = "password"
+# First-use authentication stores a per-user password instead of accepting a
+# hardcoded deployment-wide dummy password.
+c.JupyterHub.authenticator_class = "firstuseauthenticator.FirstUseAuthenticator"
+c.FirstUseAuthenticator.create_users = False
 
 # Hub configuration
 c.JupyterHub.hub_connect_ip = "jupyterhub"
@@ -87,12 +94,8 @@ c.DockerSpawner.http_timeout = 120
 # Allow embedding in iframes by removing X-Frame-Options restrictions
 c.JupyterHub.tornado_settings = {
     'headers': {
-        # Allow framing from any origin (use with extreme caution in production)
-        'X-Frame-Options': 'ALLOWALL',
-        # Allow any origin to embed (frame-ancestors *). Keep minimal in production.
-        'Content-Security-Policy': "frame-ancestors *",
-        # Basic CORS headers so browsers can perform cross-origin requests to the hub API
-        'Access-Control-Allow-Origin': '*',
+        'Content-Security-Policy': f"frame-ancestors 'self' {_frame_origin}",
+        'Access-Control-Allow-Origin': _frame_origin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-CSRFToken'
     }

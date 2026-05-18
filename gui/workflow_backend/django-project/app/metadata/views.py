@@ -11,10 +11,13 @@ from pathlib import Path
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 import logging
+
+from app.auth.authentication import KeycloakAuthentication
 
 from .serializers import (
     ParameterSuggestionRequestSerializer,
@@ -28,6 +31,20 @@ from .models import CustomDatabase
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _visible_custom_databases(user):
+    return CustomDatabase.objects.filter(is_active=True).filter(
+        Q(created_by=user) | Q(created_by__isnull=True)
+    )
+
+
+def _can_modify_custom_database(user, database):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_staff:
+        return True
+    return database.created_by_id == user.id
 
 # Lazy import function for ParameterMetadataService
 def get_metadata_service_instance():
@@ -171,8 +188,8 @@ class ParameterSuggestionView(APIView):
         - node_type: str (optional) - Type of node this parameter belongs to
         - species: str (optional) - Species to query for (mouse, monkey, human, etc.)
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """
@@ -267,8 +284,8 @@ class SpeciesSpecificParametersView(APIView):
         - species: str (required) - Species (mouse, monkey, human, etc.)
         - parameter_names: str (optional, comma-separated) - Specific parameters to query
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """Get species-specific parameter values."""
@@ -337,13 +354,13 @@ class CustomDatabaseListView(APIView):
     GET /api/metadata/custom-databases/ - List all custom databases
     POST /api/metadata/custom-databases/ - Create a new custom database
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """List all custom databases."""
         try:
-            databases = CustomDatabase.objects.filter(is_active=True)
+            databases = _visible_custom_databases(request.user)
             serializer = CustomDatabaseSerializer(databases, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
@@ -365,7 +382,7 @@ class CustomDatabaseListView(APIView):
         
         try:
             # Create database instance
-            database = serializer.save()
+            database = serializer.save(created_by=request.user)
             
             # Try to test connection
             test_result = self._test_connection(database)
@@ -440,13 +457,13 @@ class CustomDatabaseDetailView(APIView):
     PUT /api/metadata/custom-databases/{id}/ - Update database
     DELETE /api/metadata/custom-databases/{id}/ - Delete database
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, db_id):
         """Get custom database details."""
         try:
-            database = CustomDatabase.objects.get(id=db_id)
+            database = _visible_custom_databases(request.user).get(id=db_id)
             serializer = CustomDatabaseSerializer(database)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except CustomDatabase.DoesNotExist:
@@ -464,7 +481,12 @@ class CustomDatabaseDetailView(APIView):
     def put(self, request, db_id):
         """Update custom database."""
         try:
-            database = CustomDatabase.objects.get(id=db_id)
+            database = _visible_custom_databases(request.user).get(id=db_id)
+            if not _can_modify_custom_database(request.user, database):
+                return Response(
+                    {"error": "You don't have permission to update this database"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             serializer = CustomDatabaseSerializer(database, data=request.data, partial=True)
             
             if not serializer.is_valid():
@@ -502,7 +524,12 @@ class CustomDatabaseDetailView(APIView):
     def delete(self, request, db_id):
         """Delete custom database (soft delete by setting is_active=False)."""
         try:
-            database = CustomDatabase.objects.get(id=db_id)
+            database = _visible_custom_databases(request.user).get(id=db_id)
+            if not _can_modify_custom_database(request.user, database):
+                return Response(
+                    {"error": "You don't have permission to delete this database"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             database.is_active = False
             database.save()
             return Response(
@@ -563,8 +590,8 @@ class DatabaseConnectionTestView(APIView):
     
     POST /api/metadata/custom-databases/test-connection/
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """Test connection to a database."""

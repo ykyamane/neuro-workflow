@@ -115,13 +115,14 @@ class RemoteSlurmExecutor(ExecutionBackend):
         local_dir = self.local_staging / run_id
         local_dir.mkdir(parents=True, exist_ok=True)
 
-        script_name = f"{project_name}.py"
+        safe_job_name = re.sub(r"[^A-Za-z0-9_-]", "-", str(workflow_id))[:20]
+        script_name = "workflow.py"
         (local_dir / script_name).write_text(code)
 
         rr = resource_requests or {}
         sbatch_lines = [
             "#!/bin/bash",
-            f"#SBATCH --job-name=nw-{project_name[:20]}",
+            f"#SBATCH --job-name=nw-{safe_job_name}",
             f"#SBATCH --output={remote_run_dir}/slurm-%j.out",
             f"#SBATCH --error={remote_run_dir}/slurm-%j.err",
         ]

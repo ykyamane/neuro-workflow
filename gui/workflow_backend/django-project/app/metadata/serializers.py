@@ -33,6 +33,13 @@ class ParameterSuggestionResponseSerializer(serializers.Serializer):
 
 class CustomDatabaseSerializer(serializers.ModelSerializer):
     """Serializer for CustomDatabase model."""
+
+    api_key = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
     
     class Meta:
         model = CustomDatabase

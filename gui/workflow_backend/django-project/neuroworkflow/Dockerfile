@@ -1,7 +1,7 @@
 FROM jupyterhub/jupyterhub:4.0
 
-# Install Docker Spawner
-RUN pip install dockerspawner
+# Install DockerSpawner and a production-suitable first-use authenticator
+RUN pip install dockerspawner jupyterhub-firstuseauthenticator
 
 # Create users
 RUN useradd -m user1
