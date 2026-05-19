@@ -5,6 +5,9 @@
 #
 # This override keeps the base compose file usable for local development while
 # applying production runtime settings for snnbuilder.riken.jp.
+#
+# Requires Docker Compose with YAML merge tag support (`!override` / `!reset`),
+# e.g. Docker Compose v2.24.4+.
 
 services:
   backend:
@@ -26,6 +29,7 @@ services:
       - JUPYTERHUB_AUTHENTICATOR=firstuse
       - JUPYTERHUB_BASE_URL=/jupyter/
       - JUPYTERHUB_COOKIE_SECURE=true
+      - JUPYTERHUB_COOKIE_SAMESITE=None
       - JUPYTERHUB_FRAME_ORIGIN=${JUPYTERHUB_FRAME_ORIGIN:-https://snnbuilder.riken.jp}
       - JUPYTER_GRANT_SUDO=no
 
@@ -33,6 +37,13 @@ services:
     build:
       context: ./workflow_frontend
       dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_JUPYTER_BASE_URL: /jupyter
+        VITE_MCP_BASE_URL: /mcp
+        VITE_KEYCLOAK_URL: /auth
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-neuroworkflow}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-neuroworkflow-app}
     command: ["nginx", "-g", "daemon off;"]
     ports: !override
       - "${BIND_HOST:-127.0.0.1}:5173:80"

@@ -58,12 +58,13 @@ c.DockerSpawner.notebook_dir = "/home/jovyan"
 c.DockerSpawner.default_url = "/lab"
 
 # JupyterLab CSP settings for iframe embedding
-_frame_origin = os.environ.get("JUPYTERHUB_FRAME_ORIGIN", "*")
+_frame_origin = os.environ.get("JUPYTERHUB_FRAME_ORIGIN", "http://localhost:5173")
 c.DockerSpawner.args = [
     f"--ServerApp.tornado_settings={{'headers':{{'Content-Security-Policy':\"frame-ancestors {_frame_origin}\"}}}}",
-    f"--ServerApp.allow_origin='{_frame_origin}'",
-    "--ServerApp.disable_check_xsrf=True",
+    f"--ServerApp.allow_origin={_frame_origin}",
 ]
+if os.environ.get("JUPYTERHUB_DISABLE_XSRF", "false").lower() == "true":
+    c.DockerSpawner.args.append("--ServerApp.disable_check_xsrf=True")
 
 _allowed_users = {
     user.strip()
@@ -113,9 +114,14 @@ c.JupyterHub.extra_handlers = [
 ]
 
 # Cookie settings for iframe embedding
+_cookie_secure = os.environ.get("JUPYTERHUB_COOKIE_SECURE", "false").lower() == "true"
+_cookie_samesite = os.environ.get(
+    "JUPYTERHUB_COOKIE_SAMESITE",
+    "None" if _cookie_secure else "Lax",
+)
 c.JupyterHub.cookie_options = {
-    "SameSite": "None",
-    "Secure": os.environ.get("JUPYTERHUB_COOKIE_SECURE", "false").lower() == "true",
+    "SameSite": _cookie_samesite,
+    "Secure": _cookie_secure,
 }
 
 # =============== SERVICE TOKEN FOR BACKEND ===============

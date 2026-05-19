@@ -6,6 +6,8 @@ This is the **intended** way to run the full stack: everything (DB, Django API, 
 
 - **Docker** and **Docker Compose** installed
 - **Git** (repo already cloned at `neuro-workflow`)
+- Production deployments using `docker-compose.prod.yml` require Docker Compose v2.24.4+
+  because that override file uses standard Compose YAML merge tags.
 
 ## 1. Environment files
 
