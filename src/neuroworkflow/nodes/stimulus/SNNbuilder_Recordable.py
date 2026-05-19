@@ -68,7 +68,7 @@ class SNNbuilder_Recordable(Node):
             'recording_type': ParameterDefinition(
                 default_value='spike_recorder',
                 description='Type of recording device',
-                constraints={'allowed_values': ['spike_recorder']}
+                constraints={'allowed_values': ['spike_recorder', 'multimeter']}
             ),
             
             'number_of_devices': ParameterDefinition(
@@ -80,11 +80,23 @@ class SNNbuilder_Recordable(Node):
             # === SPIKE RECORDER PARAMETERS ===
             'spike_recorder_parameters': ParameterDefinition(
                 default_value={
-                    'record_to': 'memory',
+                    'record_to': 'ascii',
                     'start': 0.0,
                     'stop': 1000.0
                 },
                 description='Parameters for spike_recorder device'
+            ),
+
+            # === MULTIMETER PARAMETERS ===
+            'multimeter_parameters': ParameterDefinition(
+                default_value={
+                    'record_to': 'ascii',
+                    'start': 0.0,
+                    'stop': 1000.0,
+                    'record_from': ['V_m'],
+                    'interval': 1.0,
+                },
+                description='Parameters for multimeter device'
             ),
             
             # === TARGET IDENTIFICATION ===
@@ -290,6 +302,10 @@ class SNNbuilder_Recordable(Node):
         if recording_type == 'spike_recorder':
             spike_params = validated_params['spike_recorder_parameters']
             self._validate_spike_recorder_parameters(spike_params)
+
+        elif recording_type == 'multimeter':
+            multi_params = validated_params['multimeter_parameters']
+            self._validate_multimeter_parameters(multi_params)
         
         # Validate target identification
         target_identification = validated_params['target_identification']
@@ -323,6 +339,27 @@ class SNNbuilder_Recordable(Node):
                 for key in params.keys():
                     if key not in nest_defaults:
                         print(f"[{self.name}] Warning: Parameter '{key}' not found in NEST spike_recorder defaults")
+            except Exception as e:
+                print(f"[{self.name}] Warning: Could not validate against NEST defaults: {e}")
+        else:
+            print(f"[{self.name}] Warning: NEST not available - cannot validate against model defaults")
+
+    def _validate_multimeter_parameters(self, params: Dict[str, Any]) -> None:
+        """Validate multimeter parameters using NEST-based validation."""
+        
+        # Validate logical constraints (business logic)
+        if 'start' in params and 'stop' in params:
+            if params['stop'] <= params['start']:
+                raise ValueError("multimeter 'stop' must be greater than 'start'")
+        
+        # Check against NEST model defaults (if NEST available)
+        if NEST_AVAILABLE:
+            try:
+                nest_defaults = nest.GetDefaults('multimeter')
+                # Validate that provided parameters exist in NEST model
+                for key in params.keys():
+                    if key not in nest_defaults:
+                        print(f"[{self.name}] Warning: Parameter '{key}' not found in NEST multimeter defaults")
             except Exception as e:
                 print(f"[{self.name}] Warning: Could not validate against NEST defaults: {e}")
         else:
@@ -392,6 +429,8 @@ class SNNbuilder_Recordable(Node):
         try:
             if recording_type == 'spike_recorder':
                 devices = self._create_spike_recorders(validated_params, number_of_devices)
+            elif recording_type == 'multimeter':
+                devices = self._create_multimeters(validated_params, number_of_devices)
             else:
                 raise ValueError(f"Unsupported recording type: {recording_type}")
             
@@ -410,6 +449,15 @@ class SNNbuilder_Recordable(Node):
         
         # Create devices efficiently (single NEST call)
         devices = nest.Create('spike_recorder', count, params=spike_params)
+        
+        return devices
+        
+    def _create_multimeters(self, validated_params: Dict[str, Any], count: int):
+        """Create multimeters recorder devices."""
+        mult_params = validated_params['multimeter_parameters']
+        
+        # Create devices efficiently (single NEST call)
+        devices = nest.Create('multimeter', count, params=mult_params)
         
         return devices
     
@@ -461,7 +509,12 @@ class SNNbuilder_Recordable(Node):
         
         try:
             # Connect neurons to recording devices (neurons -> recorders)
-            nest.Connect(target_neurons, devices)
+            recording_type = validated_params["recording_type"]
+            if recording_type == 'spike_recorder':
+                nest.Connect(target_neurons, devices)
+            elif recording_type == 'multimeter':
+                 nest.Connect(devices, target_neurons)
+           
             
             connection_count = len(target_neurons) * len(devices)
             
@@ -624,6 +677,17 @@ class SNNbuilder_Recordable(Node):
                 f"recorders = nest.Create('spike_recorder', {number_of_devices}, params=spike_params)",
                 ""
             ])
+
+        if recording_type == 'multimeter':
+            mult_params = validated_params['multimeter_parameters']
+            script_lines.extend([
+                "# multimeter parameters",
+                f"mult_params = {json.dumps(mult_params, indent=4).replace('    ', '    ')}",
+                "",
+                f"# Create {number_of_devices} multimeter device(s)",
+                f"recorders = nest.Create('multimeter', {number_of_devices}, params=mult_params)",
+                ""
+            ])
         
         # Target identification
         target_identification = validated_params['target_identification']
@@ -673,7 +737,7 @@ class SNNbuilder_Recordable(Node):
             "# Create connections (efficient approach)",
             "# Recording devices: Direct connections (no synapse properties needed)",
             "nest.Connect(target_neurons, recorders)",
-            "# Note: Recording devices receive spikes directly, no synaptic transmission",
+            "# Note: Recording devices receive spikes or variables directly, no synaptic transmission",
             "",
             f"print(f'Created {number_of_devices} recording devices')",
             f"print(f'Connected {{len(target_neurons)}} target neurons')"
@@ -738,6 +802,10 @@ class SNNbuilder_Recordable(Node):
         # Add device-specific parameters
         if params['recording_type'] == 'spike_recorder':
             summary['spike_recorder_parameters'] = params['spike_recorder_parameters']
+
+                # Add device-specific parameters
+        if params['recording_type'] == 'multimeter':
+            summary['multimeter_parameters'] = params['multimeter_parameters']
         
         # Add targeting information
         if params['target_identification'] == 'define_volume_area':
