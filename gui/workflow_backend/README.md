@@ -39,16 +39,13 @@ psql> DELETE FROM django_migrations WHERE app='workflow';
 > cd workflow_backend
 > rm nodes.db
 
-2-3 Delete the django migration file
-If a migration directory has been created under the "workflow_backend/" directory, delete the files in it whose names begin with zero-padded numbers such as "0001_" or "0002_".
-
-2-4 Resetting the migration file
-> cd workflow_backend
-> docker-compose down -v
-> docker-compose up
-> docker-compose exec -it web bash
-web> python django-project/manage.py makemigrations
-web> python django-project/manage.py migrate
+2-3 Django migrations
+Migration files under django-project/app/*/migrations/ are source files and
+should be committed. Do not delete numbered migration files to reset the schema.
+If you change Django models, create migrations deliberately and review them:
+> docker-compose exec -it backend bash
+backend> python django-project/manage.py makemigrations
+backend> python django-project/manage.py migrate
 
 2-5 Build NEST simulator enabled JupyterLab user server image
 > cd workflow_backend/django-project/neuroworkflow

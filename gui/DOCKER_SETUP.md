@@ -59,6 +59,10 @@ docker compose up
 
 (Use `docker-compose` if your Docker install only provides the hyphenated command.)
 
+The backend runs committed Django migrations on startup. If you change Django
+models, run `python django-project/manage.py makemigrations` deliberately,
+review the generated migration files, and commit them with the model change.
+
 First run can take several minutes (building backend and frontend images). When you see the frontend and backend ready:
 
 - **Workflow UI**: http://localhost:5173  
