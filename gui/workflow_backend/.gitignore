@@ -2,9 +2,6 @@
 nodes.db
 django_
 
-# Django migrations (if auto-generated)
-django-project/app/*/migrations/[0-9]*.py
-
 # Project files
 django-project/codes/projects/*
 
