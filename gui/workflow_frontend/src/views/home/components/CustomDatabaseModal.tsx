@@ -32,6 +32,7 @@ import {
 } from '@chakra-ui/react';
 import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
+import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface CustomDatabase {
   id: string;
@@ -172,6 +173,7 @@ const CustomDatabaseModal: React.FC<CustomDatabaseModalProps> = ({
       const response = await fetch('/api/metadata/custom-databases/test-connection/', {
         method: 'POST',
         headers: {
+          ...await createAuthHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -262,6 +264,7 @@ const CustomDatabaseModal: React.FC<CustomDatabaseModalProps> = ({
       const response = await fetch(url, {
         method,
         headers: {
+          ...await createAuthHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -318,6 +321,7 @@ const CustomDatabaseModal: React.FC<CustomDatabaseModalProps> = ({
     try {
       const response = await fetch(`/api/metadata/custom-databases/${database.id}/`, {
         method: 'DELETE',
+        headers: await createAuthHeaders(),
       });
 
       if (!response.ok) {
