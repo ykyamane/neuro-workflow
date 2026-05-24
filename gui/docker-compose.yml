@@ -15,7 +15,7 @@ services:
 
   backend:
     build: ./workflow_backend
-    command: bash -c "python3 django-project/manage.py makemigrations && python3 django-project/manage.py migrate && python3 django-project/manage.py runserver 0.0.0.0:3000"
+    command: bash -c "python3 django-project/manage.py migrate && python3 django-project/manage.py runserver 0.0.0.0:3000"
     volumes:
       - ./workflow_backend:/django-app
       - ${NODES_DIR}:/django-app/django-project/codes/nodes
