@@ -39,6 +39,19 @@ def _visible_custom_databases(user):
     )
 
 
+def _manageable_custom_databases(user):
+    """Return records a user may inspect for management actions.
+
+    Listing and suggestion use should stay active-only, but owners need to be
+    able to update/reactivate/delete their inactive databases.
+    """
+    if not user or not user.is_authenticated:
+        return CustomDatabase.objects.none()
+    if user and user.is_staff:
+        return CustomDatabase.objects.all()
+    return CustomDatabase.objects.filter(created_by=user)
+
+
 def _can_modify_custom_database(user, database):
     if not user or not user.is_authenticated:
         return False
@@ -463,7 +476,7 @@ class CustomDatabaseDetailView(APIView):
     def get(self, request, db_id):
         """Get custom database details."""
         try:
-            database = _visible_custom_databases(request.user).get(id=db_id)
+            database = _manageable_custom_databases(request.user).get(id=db_id)
             serializer = CustomDatabaseSerializer(database)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except CustomDatabase.DoesNotExist:
@@ -481,7 +494,7 @@ class CustomDatabaseDetailView(APIView):
     def put(self, request, db_id):
         """Update custom database."""
         try:
-            database = _visible_custom_databases(request.user).get(id=db_id)
+            database = _manageable_custom_databases(request.user).get(id=db_id)
             if not _can_modify_custom_database(request.user, database):
                 return Response(
                     {"error": "You don't have permission to update this database"},
@@ -524,7 +537,7 @@ class CustomDatabaseDetailView(APIView):
     def delete(self, request, db_id):
         """Delete custom database (soft delete by setting is_active=False)."""
         try:
-            database = _visible_custom_databases(request.user).get(id=db_id)
+            database = _manageable_custom_databases(request.user).get(id=db_id)
             if not _can_modify_custom_database(request.user, database):
                 return Response(
                     {"error": "You don't have permission to delete this database"},
