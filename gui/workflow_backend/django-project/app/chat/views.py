@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.auth.authentication import KeycloakAuthentication
+from app.auth.authentication import KeycloakAuthentication, ServiceTokenAuthentication
 
 from .models import Conversation, Message
 from .serializers import (
@@ -19,6 +19,8 @@ from .serializers import (
     SendMessageSerializer,
 )
 from .services.chat_orchestrator import orchestrate_chat
+from .services.mcp_client import MCPClient, mcp_tools_to_openai_functions
+from .services.openai_client import stream_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -173,3 +175,121 @@ class ChatStreamView(APIView):
 def _format_sse(event_type: str, data: dict) -> str:
     """Format a Server-Sent Event string."""
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class NotebookLLMView(APIView):
+    """Stateless OpenAI streaming proxy for the in-notebook chat agent.
+
+    The agent loop runs inside the Jupyter kernel and keeps its own
+    conversation state, so this endpoint persists nothing: it relays one
+    ``stream_chat_completion`` pass (the kernel handles tool dispatch and
+    re-calls this endpoint with updated messages). It also keeps the OpenAI
+    key on the backend rather than exposing it inside user-accessible kernels.
+    """
+
+    authentication_classes = [ServiceTokenAuthentication, KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        messages = request.data.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return Response(
+                {"error": "'messages' must be a non-empty list"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tools = request.data.get("tools") or None
+
+        response = StreamingHttpResponse(
+            self._sync_stream(messages, tools),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+    def _sync_stream(self, messages, tools):
+        loop = asyncio.new_event_loop()
+        try:
+            agen = stream_chat_completion(messages, tools)
+            while True:
+                try:
+                    chunk = loop.run_until_complete(agen.__anext__())
+                    chunk_type = chunk.pop("type", "unknown")
+                    yield _format_sse(chunk_type, chunk)
+                except StopAsyncIteration:
+                    break
+                except Exception as e:
+                    logger.error("LLM proxy stream error: %s", e, exc_info=True)
+                    yield _format_sse("error", {"message": str(e)})
+                    break
+        finally:
+            loop.close()
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class NotebookMCPToolsView(APIView):
+    """List MCP workflow tools (OpenAI function format) for the notebook agent.
+
+    Requires a real Keycloak JWT: the same token is forwarded to the MCP server
+    so per-user workflow data is scoped correctly. The service token is not
+    accepted here because it carries no end-user identity.
+    """
+
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        token = _extract_bearer_token(request)
+
+        async def _run():
+            mcp = MCPClient(auth_token=token)
+            await mcp.initialize()
+            tools = await mcp.list_tools()
+            return mcp_tools_to_openai_functions(tools)
+
+        try:
+            tools = asyncio.run(_run())
+        except Exception as e:
+            logger.error("mcp-tools error: %s", e, exc_info=True)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY
+            )
+        return Response({"tools": tools})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class NotebookMCPCallView(APIView):
+    """Execute a single MCP workflow tool on behalf of the notebook agent."""
+
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        tool_name = request.data.get("tool_name")
+        arguments = request.data.get("arguments") or {}
+        if not tool_name:
+            return Response(
+                {"error": "'tool_name' is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(arguments, dict):
+            return Response(
+                {"error": "'arguments' must be an object"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        token = _extract_bearer_token(request)
+
+        async def _run():
+            mcp = MCPClient(auth_token=token)
+            await mcp.initialize()
+            return await mcp.call_tool(tool_name, arguments)
+
+        try:
+            result = asyncio.run(_run())
+        except Exception as e:
+            logger.error("mcp-call error: %s", e, exc_info=True)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY
+            )
+        return Response({"result": result})

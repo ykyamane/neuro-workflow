@@ -30,6 +30,13 @@ host_project_path = os.environ.get("HOST_PROJECT_PATH")
 if not host_project_path:
     raise ValueError("HOST_PROJECT_PATH environment variable is required")
 
+# Repository .claude directory (skills tracked in git) — mounted read-only so
+# the notebook chat agent can read .claude/skills/*.md. Defaults to the repo
+# root relative to host_project_path (.../gui/workflow_backend/django-project).
+host_claude_path = os.environ.get("HOST_CLAUDE_PATH") or os.path.normpath(
+    os.path.join(host_project_path, "..", "..", "..", ".claude")
+)
+
 c.DockerSpawner.volumes = {
     f"{host_project_path}/codes/nodes": {
         "bind": "/home/jovyan/codes/nodes",
@@ -43,6 +50,10 @@ c.DockerSpawner.volumes = {
         "bind": "/home/jovyan/codes/neuroworkflow",
         "mode": "rw",
     },
+    host_claude_path: {
+        "bind": "/home/jovyan/.claude",
+        "mode": "ro",
+    },
     # "jupyterhub-user-{username}": {"bind": "/home/jovyan/work", "mode": "rw"},
 }
 
@@ -51,6 +62,19 @@ c.DockerSpawner.environment = {
     "GRANT_SUDO": os.environ.get("JUPYTER_GRANT_SUDO", "yes"),
     "CHOWN_HOME": "yes",
     "JUPYTER_CONFIG_DIR": "/home/jovyan/.jupyter",
+    # Make `import neuroworkflow` (and neuroworkflow.agent) resolve from the
+    # mounted codes/ tree without per-notebook sys.path hacks.
+    "PYTHONPATH": "/home/jovyan/codes",
+    # Wiring for the in-notebook chat agent (Issue #52).
+    # NOTE: do NOT set JUPYTERHUB_API_TOKEN here — JupyterHub injects a
+    # per-server token under that name for the single-user server's own OAuth
+    # with the hub; overriding it causes "Client secret mismatch" / 401 on the
+    # token exchange and breaks spawning. We pass the shared backend service
+    # token under a distinct name instead.
+    "NEUROWORKFLOW_BACKEND_URL": os.environ.get(
+        "NEUROWORKFLOW_BACKEND_URL", "http://backend:3000"
+    ),
+    "NEUROWORKFLOW_SERVICE_TOKEN": os.environ.get("JUPYTERHUB_API_TOKEN", ""),
 }
 
 # Notebook configuration

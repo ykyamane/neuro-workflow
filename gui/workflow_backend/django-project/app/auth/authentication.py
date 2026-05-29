@@ -1,3 +1,5 @@
+import os
+
 import jwt
 import requests
 from django.contrib.auth import get_user_model
@@ -216,5 +218,34 @@ class KeycloakAuthentication(_BearerAuthentication):
                 "last_name": payload.get("family_name", ""),
             },
             email_verified=bool(payload.get("email_verified", False)),
+        )
+        return (user, token)
+
+
+# ---------------------------------------------------------------------------
+# Service-token authentication (Jupyter kernel → backend)
+# ---------------------------------------------------------------------------
+
+SERVICE_USERNAME = "notebook-service"
+
+
+class ServiceTokenAuthentication(_BearerAuthentication):
+    """Authenticate trusted internal callers via the shared JupyterHub token.
+
+    The notebook chat agent runs inside a Jupyter kernel that has the
+    ``JUPYTERHUB_API_TOKEN`` in its environment but no end-user JWT. It uses
+    that token to reach stateless backend endpoints (the LLM proxy). A constant
+    name avoids leaking the secret into the user table. This authenticates the
+    *call*; per-user MCP actions still forward the user's own Keycloak JWT.
+    """
+
+    def authenticate_credentials(self, token):
+        expected = os.environ.get("JUPYTERHUB_API_TOKEN", "")
+        if not expected or token != expected:
+            return None
+        User = get_user_model()
+        user, _ = User.objects.get_or_create(
+            username=SERVICE_USERNAME,
+            defaults={"email": "", "is_active": True},
         )
         return (user, token)
