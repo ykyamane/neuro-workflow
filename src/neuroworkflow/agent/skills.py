@@ -37,6 +37,27 @@ _MCP_PROMPT = (
     "(deleting nodes/edges).\n"
 )
 
+# Skills are authored against the repository layout, but this kernel only has
+# the codes/ tree mounted. Correct the paths so node creation lands in the
+# right place and the agent does not chase missing repo-root docs.
+_ENV_PATHS_PROMPT = (
+    "\n# Environment paths (this Jupyter kernel)\n"
+    "Your working directory is a project folder, so always use absolute paths:\n"
+    "- Node library (writable): /home/jovyan/codes/nodes/ "
+    "(categories: analysis, network, simulation, stimulus, io, optimization)\n"
+    "- Create new nodes under: /home/jovyan/codes/nodes/sandbox/\n"
+    "- Core library: /home/jovyan/codes/neuroworkflow/\n"
+    "- Workflow projects: /home/jovyan/codes/projects/\n"
+    "- Skills: /home/jovyan/.claude/skills/\n"
+    "If a skill refers to repository paths, map them to the above: "
+    "`src/neuroworkflow/nodes/` -> `/home/jovyan/codes/nodes/`, "
+    "`src/neuroworkflow/nodes/sandbox/` -> `/home/jovyan/codes/nodes/sandbox/`, "
+    "`src/neuroworkflow/` -> `/home/jovyan/codes/neuroworkflow/`.\n"
+    "Repository-root documents (e.g. NODE_CREATION_GUIDE.md, NODE_SCHEMA.md) are "
+    "NOT mounted in this kernel — do not try to read them; rely on the skill text "
+    "already provided in this prompt.\n"
+)
+
 
 def load_skills(skills_dir: str) -> list[tuple[str, str]]:
     """Return ``(name, markdown)`` for every ``*.md`` skill in ``skills_dir``."""
@@ -66,4 +87,5 @@ def build_system_prompt(skills_dir: str, *, with_mcp: bool) -> str:
         )
         for name, text in skills:
             prompt += f"\n## Skill: {name}\n{text}\n"
+    prompt += _ENV_PATHS_PROMPT
     return prompt
