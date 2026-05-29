@@ -45,6 +45,7 @@ The JupyterHub spawner wires everything into each single-user container automati
 | `PYTHONPATH` | Makes `import neuroworkflow` resolve | `/home/jovyan/codes` |
 | `NEUROWORKFLOW_USER_TOKEN` | Optional Keycloak token for workflow tools | unset |
 | `NEUROWORKFLOW_PROJECT_ID` | Optional default workflow id | unset |
+| `NEUROWORKFLOW_WORKSPACE_ROOT` | Root that `read_file`/`write_file` are confined to | `/home/jovyan/codes` |
 
 The repository's `.claude/` directory is mounted read-only at `/home/jovyan/.claude`,
 so the agent reads the git-tracked skills.
@@ -133,8 +134,9 @@ fetch("/api/workflow/", {
 **Notebook-native (always available, run in your kernel):**
 
 - `run_code` — execute Python in the live kernel (shared namespace); returns stdout/result.
-- `read_file` / `write_file` — read and write text files in the workspace
-  (under `/home/jovyan/codes`).
+- `read_file` / `write_file` — read and write text files in the workspace.
+  These are confined to `NEUROWORKFLOW_WORKSPACE_ROOT` (default `/home/jovyan/codes`);
+  paths outside it are rejected.
 
 **Workflow tools via MCP (require a user token):** `add_node`, `get_flow`, `list_nodes`,
 `add_edge`, `update_node_parameter`, `generate_code_batch`, `get_workflow_facts`,

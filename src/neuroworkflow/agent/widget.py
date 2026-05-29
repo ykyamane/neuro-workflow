@@ -39,8 +39,9 @@ def ChatPanel(*, user_token=None, project_id=None):
                     print(delta, end="")
 
             def on_tool(name, args):
+                preview = ", ".join(f"{k}={v!r}"[:60] for k, v in args.items())
                 with log:
-                    print(f"\n  ⚙ {name}({', '.join(args)})")
+                    print(f"\n  ⚙ {name}({preview})")
 
             agent.run(message, on_text=on_text, on_tool=on_tool)
             with log:

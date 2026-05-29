@@ -186,9 +186,14 @@ class NotebookLLMView(APIView):
     ``stream_chat_completion`` pass (the kernel handles tool dispatch and
     re-calls this endpoint with updated messages). It also keeps the OpenAI
     key on the backend rather than exposing it inside user-accessible kernels.
+
+    Only the shared service token is accepted (not a Keycloak JWT): this
+    endpoint exists for the kernel agent, and the browser chat uses
+    ``/api/chat/stream/``. Allowing Keycloak here would let any logged-in user
+    spend the backend OpenAI key directly.
     """
 
-    authentication_classes = [ServiceTokenAuthentication, KeycloakAuthentication]
+    authentication_classes = [ServiceTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

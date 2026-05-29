@@ -230,13 +230,16 @@ SERVICE_USERNAME = "notebook-service"
 
 
 class ServiceTokenAuthentication(_BearerAuthentication):
-    """Authenticate trusted internal callers via the shared JupyterHub token.
+    """Authenticate trusted internal callers via the shared service token.
 
-    The notebook chat agent runs inside a Jupyter kernel that has the
-    ``JUPYTERHUB_API_TOKEN`` in its environment but no end-user JWT. It uses
-    that token to reach stateless backend endpoints (the LLM proxy). A constant
-    name avoids leaking the secret into the user table. This authenticates the
-    *call*; per-user MCP actions still forward the user's own Keycloak JWT.
+    The notebook chat agent runs inside a Jupyter kernel with no end-user JWT.
+    The spawner injects the shared token as ``NEUROWORKFLOW_SERVICE_TOKEN`` (a
+    distinct name, because the kernel's own ``JUPYTERHUB_API_TOKEN`` is the
+    per-server hub token); the kernel sends that value as the bearer token to
+    reach stateless backend endpoints (the LLM proxy). The backend validates it
+    against its own ``JUPYTERHUB_API_TOKEN``. A constant username avoids leaking
+    the secret into the user table. This authenticates the *call*; per-user MCP
+    actions still forward the user's own Keycloak JWT.
     """
 
     def authenticate_credentials(self, token):

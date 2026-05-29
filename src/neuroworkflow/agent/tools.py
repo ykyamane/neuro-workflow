@@ -9,6 +9,21 @@ import os
 
 _MAX_RESULT_CHARS = 8000
 
+# read_file/write_file are LLM-driven, so confine them to the workspace to
+# avoid accidentally exposing or clobbering files outside it. (run_code can
+# still reach anything the kernel can — this guard is for the file tools.)
+_WORKSPACE_ROOT = os.path.realpath(
+    os.environ.get("NEUROWORKFLOW_WORKSPACE_ROOT", "/home/jovyan/codes")
+)
+
+
+def _resolve_in_workspace(path: str) -> str:
+    """Resolve ``path`` to an absolute path, rejecting anything outside the root."""
+    resolved = os.path.realpath(path)
+    if resolved != _WORKSPACE_ROOT and not resolved.startswith(_WORKSPACE_ROOT + os.sep):
+        raise ValueError(f"path is outside the workspace ({_WORKSPACE_ROOT}): {path}")
+    return resolved
+
 NOTEBOOK_TOOLS = [
     {
         "type": "function",
@@ -89,17 +104,19 @@ def _run_code(code: str, ipython) -> str:
 
 
 def _read_file(path: str) -> str:
-    with open(path, encoding="utf-8") as f:
+    resolved = _resolve_in_workspace(path)
+    with open(resolved, encoding="utf-8") as f:
         return _truncate(f.read())
 
 
 def _write_file(path: str, content: str) -> str:
-    directory = os.path.dirname(path)
+    resolved = _resolve_in_workspace(path)
+    directory = os.path.dirname(resolved)
     if directory:
         os.makedirs(directory, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(resolved, "w", encoding="utf-8") as f:
         f.write(content)
-    return f"Wrote {len(content)} chars to {path}"
+    return f"Wrote {len(content)} chars to {resolved}"
 
 
 def dispatch(name: str, args: dict, ipython) -> str:
