@@ -115,7 +115,7 @@ Available PortTypes: `ANY`, `INT`, `FLOAT`, `STR`, `BOOL`, `LIST`, `DICT`, `OBJE
 
 - **Parameter constraints** (`min`/`max` or `allowed_values`) — add when the scientific meaning implies a valid range or a fixed set of options. Leave out if the range is open-ended or unknown.
 - **Optimizable parameters** (`optimizable=True`, `optimization_range`) — add for parameters a researcher would tune or fit to data.
-- **Objective parameters** (`is_objective=True`, `objective_range`) — add for output metrics that serve as optimization targets (e.g. mean firing rate, error).
+- **Objective parameters** (`is_objective=True`, `objective_range`) — add for output metrics that serve as optimization targets (e.g. mean firing rate, error). **These fields belong only on `ParameterDefinition`, never on `PortDefinition` — placing them on a port raises `TypeError` at class definition time.**
 - **Optional inputs** (`optional=True`) — always infer this from the code, do not ask. If the method uses the input unconditionally, the port is required (default). If the method signature has `= None` for that parameter, or the body guards it with `if input is None:`, mark the port `optional=True`. The rule: used unconditionally → required; guarded or defaulted to None → optional.
 
 If the user provides existing code or a GitHub repo, extract as much of the optional metadata as possible from the implementation rather than asking for it.
@@ -283,6 +283,45 @@ def step_two(self, intermediate) -> Dict[str, Any]:  # name matches → wired au
 
 Use instance variables (`self._x`) only for truly internal bookkeeping, not for passing data between steps.
 
+### Re-exporting a parameter as an output port
+
+A node can expose one of its own parameter values as an output port by including the parameter's key in the method's return dict. This lets downstream nodes receive the value automatically without the user having to configure it twice. Useful when multiple nodes in a chain need the same dict (e.g. `neuron_params`):
+
+```python
+outputs={
+    "neuron_params": PortDefinition(
+        type=PortType.DICT,
+        description="Neuron parameter dict passed through for downstream nodes.",
+    ),
+},
+
+def configure_network(self, ...) -> Dict[str, Any]:
+    neuron_params = self._parameters["neuron_params"]
+    # ... do work ...
+    return {
+        "population": population,
+        "neuron_params": neuron_params,   # re-export parameter as output
+    }
+```
+
+### NEST kernel reset
+
+NEST is a global stateful kernel. **Never call `nest.ResetKernel()` at module import or in `__init__`** — it silently destroys kernel state if the node is imported or instantiated mid-workflow, which is especially problematic in Jupyter notebooks.
+
+Place it inside a process step method. If the node design calls for it, consider exposing reset behaviour as a boolean parameter so the user can control whether the kernel is reset when the node runs — useful when chaining multiple NEST nodes in one session:
+
+```python
+"reset_kernel": ParameterDefinition(
+    default_value=True,
+    description="If True, call nest.ResetKernel() at the start of this step. Set to False when chaining multiple NEST nodes in one session.",
+),
+
+def build_network(self, ...) -> Dict[str, Any]:
+    if self._parameters["reset_kernel"]:
+        nest.ResetKernel()
+    # ... rest of setup ...
+```
+
 ---
 
 ## Step 4 — Register the node
@@ -326,6 +365,8 @@ Before finishing, verify every item:
   - Repo mode: `from neuroworkflow.nodes.sandbox.<NodeName> import <NodeName>; n = <NodeName>("test"); print(n.get_info())`
   - Standalone mode: `import sys; sys.path.insert(0, '<output_dir>'); from <NodeName> import <NodeName>; n = <NodeName>("test"); print(n.get_info())`
 - [ ] If configurable node pattern was used: verify all supported `model_type` values can be instantiated
+- [ ] `is_objective` / `objective_range` are only on `ParameterDefinition`, never on `PortDefinition`
+- [ ] NEST nodes: `nest.ResetKernel()` is inside a process step method, not at import or `__init__`
 
 ---
 
