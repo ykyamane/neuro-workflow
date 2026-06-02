@@ -184,6 +184,8 @@ Good port description:
 - [ ] `description` is one clear scientific sentence
 - [ ] All parameters have `description` and `default_value`
 - [ ] Scientifically tunable parameters have `optimizable=True` and `optimization_range`
+- [ ] `is_objective` / `objective_range` are only on `ParameterDefinition`, never on `PortDefinition`
 - [ ] All port descriptions are specific enough for an agent to understand the data
+- [ ] NEST nodes: `nest.ResetKernel()` is inside a process step method, not at import or `__init__`
 - [ ] Node is placed in the correct `src/neuroworkflow/nodes/<stage>/` folder
 - [ ] Import added to the stage `__init__.py`
