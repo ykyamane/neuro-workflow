@@ -2,7 +2,31 @@
 
 Guide the user through creating a new node following the NODE_CREATION_GUIDE.md conventions, then generate the file.
 
-Before starting, read `NODE_CREATION_GUIDE.md` to apply the current stage list and semantic guides. If the node will have multiple methods or is structurally complex, also browse `src/neuroworkflow/nodes/` for a comparable existing node to use as a reference.
+## Environment Detection (do this first, before anything else)
+
+Determine the output path using this priority order:
+
+1. **User-specified folder** — if the user has indicated a folder (e.g. `my_nodes/`, `./nodes/`, or any path), always use it. The user's choice overrides everything.
+2. **Repo sandbox** — if `src/neuroworkflow/nodes/sandbox/` exists relative to the current directory and the user has not specified a folder, use it as the default output.
+3. **`./nodes/`** — fallback if neither of the above applies. Create the folder if it does not exist.
+
+Similarly, determine the source code path:
+- Use the folder the user indicates as their existing source code.
+- If none indicated and repo structure exists, browse `src/neuroworkflow/nodes/` for reference.
+- Otherwise skip browsing existing nodes.
+
+Read `NODE_CREATION_GUIDE.md` from:
+- The repo root if repo structure is detected.
+- The current directory if present in standalone mode.
+- Skip stage guidance if not found anywhere.
+
+Ask the user for the output folder and source code folder **together with the Step 1 questions** (not as a separate message) if they have not already been specified.
+
+**Always report the full absolute path of every file created at the end of the skill.**
+
+---
+
+Before starting, read `NODE_CREATION_GUIDE.md` to apply the current stage list and semantic guides. If the node will have multiple methods or is structurally complex, also browse the existing nodes folder for a comparable existing node to use as a reference.
 
 ---
 
@@ -24,7 +48,7 @@ This means nodes must be designed not just to work today, but to be **connectabl
 
 ## Step 0 — Audit existing nodes first
 
-Before writing anything new, search `src/neuroworkflow/nodes/` to understand what already exists.
+Before writing anything new, search the existing nodes folder (determined in Environment Detection above) to understand what already exists.
 
 Ask yourself:
 
@@ -139,8 +163,8 @@ If no existing stage fits, confirm the new stage name with the user before proce
 - A neuroscientist would describe it as a distinct step in the modeling process
 
 Then:
-1. Add the new stage entry to `NODE_CREATION_GUIDE.md` following the existing format (name, role, typical in/out, parameters, examples)
-2. Create `src/neuroworkflow/nodes/<new_stage>/__init__.py`
+1. Add the new stage entry to `NODE_CREATION_GUIDE.md` following the existing format (name, role, typical in/out, parameters, examples) — only if in repo mode and the file is present.
+2. In repo mode: create `src/neuroworkflow/nodes/<new_stage>/__init__.py`
 3. Inform the user the new stage has been registered
 
 ---
@@ -149,17 +173,17 @@ Then:
 
 ### Where to place it
 
-**New nodes always go to sandbox first:**
+Use the output path determined in Environment Detection:
+- **User-specified folder**: `<user_folder>/<NodeName>.py`
+- **Repo mode default**: `src/neuroworkflow/nodes/sandbox/<NodeName>.py`
+- **Standalone fallback**: `./nodes/<NodeName>.py`
+
+In repo mode, the sandbox is a staging area. Once tested end-to-end, the node can be promoted to its final stage folder:
 ```
-src/neuroworkflow/nodes/sandbox/<NodeName>.py
+src/neuroworkflow/nodes/<stage>/<NodeName>.py`
 ```
 
-The sandbox is a staging area for nodes under development or not yet validated in a real workflow. Once the node has been tested end-to-end (smoke test + workflow execution), it can be promoted to its final stage folder:
-```
-src/neuroworkflow/nodes/<stage>/<NodeName>.py
-```
-
-Only place directly into a stage folder if the node is a straightforward extension of a well-understood existing node.
+In standalone mode, the output folder itself is the staging area — promotion to the repo happens separately when the user uploads the node via the GUI.
 
 ### File structure
 
@@ -263,10 +287,18 @@ Use instance variables (`self._x`) only for truly internal bookkeeping, not for 
 
 ## Step 4 — Register the node
 
-No import registration needed. The `__init__.py` files in stage/sandbox folders are just package markers (empty or a docstring). Import the node directly from its module:
+No import registration needed. Import the node directly from its module:
 
+**Repo mode:**
 ```python
 from neuroworkflow.nodes.sandbox.<NodeName> import <NodeName>
+```
+
+**Standalone mode:**
+```python
+import sys
+sys.path.insert(0, '<output_dir>')
+from <NodeName> import <NodeName>
 ```
 
 ---
@@ -288,9 +320,11 @@ Before finishing, verify every item:
 - [ ] All port descriptions are specific enough for an agent to understand the data
 - [ ] Every method's return dict keys exactly match the corresponding output port names in `NODE_DEFINITION` (mismatch silently leaves ports as `None`)
 - [ ] `type` field is globally unique across all nodes (check existing nodes — do not reuse a type string)
-- [ ] Node is in `sandbox/` (or the correct stage folder if already validated)
-- [ ] Import added to the corresponding `__init__.py`
-- [ ] Smoke test: `from neuroworkflow.nodes.sandbox.<NodeName> import <NodeName>; n = <NodeName>("test"); print(n.get_info())`
+- [ ] Node is in the correct output folder (user-specified, repo sandbox, or `./nodes/`)
+- [ ] In repo mode: `__init__.py` exists in the output folder
+- [ ] Smoke test passes:
+  - Repo mode: `from neuroworkflow.nodes.sandbox.<NodeName> import <NodeName>; n = <NodeName>("test"); print(n.get_info())`
+  - Standalone mode: `import sys; sys.path.insert(0, '<output_dir>'); from <NodeName> import <NodeName>; n = <NodeName>("test"); print(n.get_info())`
 - [ ] If configurable node pattern was used: verify all supported `model_type` values can be instantiated
 
 ---
@@ -298,9 +332,10 @@ Before finishing, verify every item:
 ## Step 6 — Tell the user
 
 Report:
-- File path created
+- **Full absolute path of every file created** — always, regardless of mode
 - Checklist status
-- Whether sandbox or stage folder was used, and what validation is needed before promotion
+- Which mode was used (repo / standalone) and which output folder
+- What validation is needed before promotion to the repo or GUI
 
 Note: syncing nodes to the GUI (`gui/workflow_backend/django-project/codes/nodes/`) is a separate production step done after the node is validated and promoted — it is outside the scope of this skill.
 
@@ -340,7 +375,7 @@ workflow.execute()
 ```
 
 **Key rules for workflow files:**
-- Place in `src/neuroworkflow/nodes/sandbox/` while under development, or in `examples/` once validated.
+- Place in the output folder (determined by Environment Detection) while under development, or in `examples/` once validated (repo mode only).
 - One `WorkflowBuilder` per topology. Re-execute the same `workflow` object after reconfiguring nodes — do not rebuild for parameter-only changes.
 - Use descriptive node instance names (passed to the constructor) since these are used as keys in `connect()`.
 - Build paths to data files with a try/except to handle both script and Jupyter notebook execution. Use the **same relative path in both branches** — `__file__` and `os.getcwd()` resolve to the same directory when the notebook CWD matches the script location:
