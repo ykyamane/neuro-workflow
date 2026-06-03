@@ -433,6 +433,9 @@ wf = WorkflowBuilder("WorkflowName")
 wf.add_node(node_a)
 wf.add_node(node_b)
 wf.connect("NodeA", "output_port", "NodeB", "input_port")
+
+# Set context BEFORE build() — build() reads self.context, it does not accept context as an argument
+wf.context["results_path"] = os.path.join(os.getcwd(), "results")
 workflow = wf.build()
 
 # 4. Execute (reconfigure nodes between runs to vary parameters)
