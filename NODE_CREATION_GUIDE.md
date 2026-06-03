@@ -178,18 +178,24 @@ Good port description:
 
 ## Output File Convention
 
-Nodes that write files to disk (plots, CSVs, HDF5, spike recordings, etc.) must read the output directory from the workflow context, not hardcode a path:
+Nodes that write files to disk (plots, CSVs, HDF5, spike recordings, simulator output directories) must follow this pattern:
 
 ```python
 import os
 
 def my_method(self, ...) -> Dict[str, Any]:
-    results_path = self._context.get("results_path", "results/")
-    os.makedirs(results_path, exist_ok=True)
-    output_file = os.path.join(results_path, "my_output.csv")
-    # ... write to output_file ...
-    return {"output_file": output_file}
+    # 1. Context first, node parameter as fallback
+    data_path = self._context.get("results_path", self._parameters["data_path"])
+
+    # 2. Create the directory BEFORE any simulator initialization
+    os.makedirs(data_path, exist_ok=True)
+
+    # 3. Pass the path to the simulator after initialization
+    #    (some simulators require absolute paths — check their docs)
+    simulator.setup(output_path=data_path)
 ```
+
+**Why this order matters:** The output directory must exist before the simulator tries to write to it. Reading from context first allows a single `results_path` set at the workflow level to propagate automatically to all nodes, without each node needing to independently configure the same path.
 
 `WorkflowBuilder` defaults `results_path` to `"results/"` (relative to the working directory where `wf.build()` is called), and creates that folder automatically at build time. Users can set `results_path` to any path in the workflow context — the node always reads from context, so it adapts automatically. Nodes that only pass data in memory do not need to follow this convention.
 

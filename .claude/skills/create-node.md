@@ -306,18 +306,26 @@ def configure_network(self, ...) -> Dict[str, Any]:
 
 ### Writing output files — use `results_path` from context
 
-When a node writes files to disk (plots, CSVs, HDF5, spike recordings, etc.), it should read the output directory from the workflow context rather than hardcoding a path:
+When a node writes files to disk (plots, CSVs, HDF5, spike recordings, simulator output directories), follow this pattern:
 
 ```python
 import os
 
 def my_method(self, ...) -> Dict[str, Any]:
-    results_path = self._context.get("results_path", "results/")
-    os.makedirs(results_path, exist_ok=True)
-    output_file = os.path.join(results_path, "my_output.csv")
-    # ... write to output_file ...
-    return {"output_file": output_file}
+    # 1. Context first, node parameter as fallback
+    data_path = self._context.get("results_path", self._parameters["data_path"])
+
+    # 2. Create the directory BEFORE any simulator initialization
+    os.makedirs(data_path, exist_ok=True)
+
+    # 3. Pass the path to the simulator after initialization
+    #    (some simulators require absolute paths — check their docs)
+    simulator.setup(output_path=data_path)
+    ...
+    return {"output_file": os.path.join(data_path, "my_output.csv")}
 ```
+
+**Why this order matters:** The output directory must exist before the simulator tries to write to it. Reading from context first allows a single `results_path` set at the workflow level to propagate automatically to all nodes, without each node needing to independently configure the same path.
 
 `self._context` is populated from `WorkflowBuilder.context`. The `results_path` key defaults to `"results/"`, but users can set it to any path they want in the workflow context — the node always reads from context, so it adapts automatically. Nodes that only pass data in memory (no file I/O) do not need to read `results_path`.
 
