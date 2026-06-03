@@ -176,6 +176,25 @@ Good port description:
 
 ---
 
+## Output File Convention
+
+Nodes that write files to disk (plots, CSVs, HDF5, spike recordings, etc.) must read the output directory from the workflow context, not hardcode a path:
+
+```python
+import os
+
+def my_method(self, ...) -> Dict[str, Any]:
+    results_path = self._context.get("results_path", "results/")
+    os.makedirs(results_path, exist_ok=True)
+    output_file = os.path.join(results_path, "my_output.csv")
+    # ... write to output_file ...
+    return {"output_file": output_file}
+```
+
+`WorkflowBuilder` defaults `results_path` to `"results/"` (relative to the working directory where `wf.build()` is called), and creates that folder automatically at build time. Users can set `results_path` to any path in the workflow context — the node always reads from context, so it adapts automatically. Nodes that only pass data in memory do not need to follow this convention.
+
+---
+
 ## Checklist Before Committing a Node
 
 - [ ] `stage` field is set and matches the stage list
@@ -187,5 +206,6 @@ Good port description:
 - [ ] `is_objective` / `objective_range` are only on `ParameterDefinition`, never on `PortDefinition`
 - [ ] All port descriptions are specific enough for an agent to understand the data
 - [ ] NEST nodes: `nest.ResetKernel()` is inside a process step method, not at import or `__init__`
+- [ ] Nodes that write files use `self._context.get("results_path", "results/")` as the output directory
 - [ ] Node is placed in the correct `src/neuroworkflow/nodes/<stage>/` folder
 - [ ] Import added to the stage `__init__.py`

@@ -304,6 +304,25 @@ def configure_network(self, ...) -> Dict[str, Any]:
     }
 ```
 
+### Writing output files — use `results_path` from context
+
+When a node writes files to disk (plots, CSVs, HDF5, spike recordings, etc.), it should read the output directory from the workflow context rather than hardcoding a path:
+
+```python
+import os
+
+def my_method(self, ...) -> Dict[str, Any]:
+    results_path = self._context.get("results_path", "results/")
+    os.makedirs(results_path, exist_ok=True)
+    output_file = os.path.join(results_path, "my_output.csv")
+    # ... write to output_file ...
+    return {"output_file": output_file}
+```
+
+`self._context` is populated from `WorkflowBuilder.context`. The `results_path` key defaults to `"results/"`, but users can set it to any path they want in the workflow context — the node always reads from context, so it adapts automatically. Nodes that only pass data in memory (no file I/O) do not need to read `results_path`.
+
+---
+
 ### NEST kernel reset
 
 NEST is a global stateful kernel. **Never call `nest.ResetKernel()` at module import or in `__init__`** — it silently destroys kernel state if the node is imported or instantiated mid-workflow, which is especially problematic in Jupyter notebooks.
@@ -367,6 +386,7 @@ Before finishing, verify every item:
 - [ ] If configurable node pattern was used: verify all supported `model_type` values can be instantiated
 - [ ] `is_objective` / `objective_range` are only on `ParameterDefinition`, never on `PortDefinition`
 - [ ] NEST nodes: `nest.ResetKernel()` is inside a process step method, not at import or `__init__`
+- [ ] Nodes that write files use `self._context.get("results_path", "results/")` as the output directory (not a hardcoded path)
 
 ---
 
