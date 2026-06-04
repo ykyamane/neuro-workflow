@@ -157,6 +157,9 @@ const BCV_HTML = `
       <button class="bcv-btn-dim">Dim others</button>
       <button class="bcv-btn-reset-cam">Reset camera</button>
     </div>
+    <div class="bcv-row">
+      <button class="bcv-btn-copy-chat">&#128203; Copy state for Chat</button>
+    </div>
   </div>
 
   <div class="bcv-info">Left-drag &middot; Scroll &middot; Right-drag to pan<br>Click region to focus</div>
@@ -207,6 +210,7 @@ export function initBrainViewer(container, dataUrl) {
   const btnHalos       = q('bcv-btn-halos');
   const btnDim         = q('bcv-btn-dim');
   const btnResetCam    = q('bcv-btn-reset-cam');
+  const btnCopyChat    = q('bcv-btn-copy-chat');
   const btnTracts      = q('bcv-btn-tracts');
   const tractRow       = q('bcv-tract-row');
 
@@ -877,6 +881,8 @@ export function initBrainViewer(container, dataUrl) {
       ctl.target.copy(tgtHome);
       ctl.update();
     });
+
+    btnCopyChat.addEventListener('click', copyStateForChat);
   }
 
   // ── animation loop ────────────────────────────────────────────────────────────
@@ -910,6 +916,153 @@ export function initBrainViewer(container, dataUrl) {
     }
     container.innerHTML = '';
     container.classList.remove('bcv-root');
+  }
+
+  // ── state snapshot (for the Jupyter Chat assistant) ────────────────────────────
+  // Serialise everything the user currently sees — selection, thresholds, toggles,
+  // BOLD playback — into a structured object the LLM can read. Reuses the same
+  // visible-connection maths as buildConnections()/updateSelectionPanel().
+  function buildStateSnapshot() {
+    const r2 = v => Math.round(v * 100) / 100;
+
+    const total = D.connections.length;
+    const nShow = Math.ceil(total * (1 - threshold / 100));
+    let visible = D.connections.slice(0, nShow);
+    if (selectedRegion >= 0)
+      visible = visible.filter(([i, j]) => i === selectedRegion || j === selectedRegion);
+    const nVisible = visible.length;
+
+    let selected = null;
+    if (selectedRegion >= 0) {
+      const r = D.regions[selectedRegion];
+      // D.connections is sorted by weight desc, so the first matches are strongest.
+      const top = D.connections
+        .filter(([i, j]) => i === selectedRegion || j === selectedRegion)
+        .slice(0, 5)
+        .map(([i, j, w]) => ({
+          region: D.regions[i === selectedRegion ? j : i].name,
+          weight: w,
+        }));
+      selected = {
+        index: selectedRegion,
+        name: r.name,
+        hemisphere: r.hemi === 'L' ? 'left' : 'right',
+        area_mm2: r.area,
+        visible_connections: nVisible,
+        strongest_connections: top,
+      };
+    }
+
+    let bold = null;
+    if (boldActive && D.bold) {
+      const { time, data } = D.bold;
+      const nT  = data.length;
+      const ti  = Math.min(Math.floor(boldT), nT - 1);
+      const ti2 = Math.min(ti + 1, nT - 1);
+      const tf  = boldT - Math.floor(boldT);
+      const tDisp = time[ti] + (time[ti2] - time[ti]) * tf;
+      bold = {
+        playing: boldPlaying,
+        frame: ti,
+        n_frames: nT,
+        time_ms: Math.round(tDisp),
+        time_range_ms: [time[0], time[nT - 1]],
+        speed: boldSpeed,
+      };
+    }
+
+    const stimulated = (D.meta.stimulated_regions || []).map(i => D.regions[i].name);
+
+    return {
+      dataset: {
+        n_regions:     D.meta.n_regions,
+        n_connections: D.meta.n_connections,
+        weight_min_nz: D.meta.weight_min_nz,
+        weight_max:    D.meta.weight_max,
+        area_min:      D.meta.area_min,
+        area_max:      D.meta.area_max,
+      },
+      selected,
+      display: {
+        threshold_percentile: threshold,
+        showing_top_percent:  100 - threshold,
+        visible_connections:  nVisible,
+        total_connections:    total,
+        hemisphere_colors:    showHemi,
+        area_scaled_spheres:  showArea,
+        brain_mesh:           showMesh,
+        fiber_tracts:         showTracts && !!D.tracts,
+        stimulated_halos:     showHalos,
+        dim_non_selected:     dimNonSelected,
+        sphere_scale:         sphereScale,
+        line_width_scale:     lineScale,
+      },
+      bold,
+      stimulated_regions: stimulated,
+      camera: {
+        position: [r2(cam.position.x), r2(cam.position.y), r2(cam.position.z)],
+        target:   [r2(ctl.target.x),   r2(ctl.target.y),   r2(ctl.target.z)],
+      },
+    };
+  }
+
+  function formatStateSnapshot(s) {
+    const L = [];
+    L.push('# Brain Connectivity Viewer — current state');
+    L.push('');
+    L.push(`Dataset: ${s.dataset.n_regions} regions, ${s.dataset.n_connections} connections (marmoset brain connectome).`);
+    L.push('');
+
+    if (s.selected) {
+      const sel = s.selected;
+      L.push(`## Selected region: ${sel.name}`);
+      L.push(`- Hemisphere: ${sel.hemisphere}`);
+      L.push(`- Surface area: ${sel.area_mm2} mm²`);
+      L.push(`- Visible connections touching it: ${sel.visible_connections}`);
+      if (sel.strongest_connections.length) {
+        L.push('- Strongest connections:');
+        sel.strongest_connections.forEach(c => L.push(`  - ${c.region} (weight ${c.weight})`));
+      }
+    } else {
+      L.push('## Selection: none (whole network shown)');
+    }
+    L.push('');
+
+    const d = s.display;
+    L.push('## Display');
+    L.push(`- Connection threshold: showing top ${d.showing_top_percent}% strongest (${d.visible_connections} of ${d.total_connections} connections visible)`);
+    L.push(`- Hemisphere colours: ${d.hemisphere_colors ? 'on' : 'off'} · area-scaled spheres: ${d.area_scaled_spheres ? 'on' : 'off'}`);
+    L.push(`- Brain mesh: ${d.brain_mesh ? 'on' : 'off'} · fiber tracts: ${d.fiber_tracts ? 'on' : 'off'} · stimulated halos: ${d.stimulated_halos ? 'on' : 'off'} · dim non-selected: ${d.dim_non_selected ? 'on' : 'off'}`);
+    L.push('');
+
+    if (s.bold) {
+      const b = s.bold;
+      L.push('## BOLD activity');
+      L.push(`- ${b.playing ? 'Playing' : 'Paused'} at frame ${b.frame + 1}/${b.n_frames} (t = ${b.time_ms} ms; range ${b.time_range_ms[0]}–${b.time_range_ms[1]} ms) · speed ${b.speed}×`);
+      L.push('');
+    }
+
+    if (s.stimulated_regions.length) {
+      L.push(`## Stimulated regions: ${s.stimulated_regions.join(', ')}`);
+      L.push('');
+    }
+
+    L.push('```json');
+    L.push(JSON.stringify(s, null, 2));
+    L.push('```');
+    return L.join('\n');
+  }
+
+  function copyStateForChat() {
+    const text = formatStateSnapshot(buildStateSnapshot());
+    const done = () => { show('Copied — paste into Chat'); setTimeout(() => show(''), 2200); };
+    const fallback = () =>
+      window.prompt('Copy the viewer state below, then paste it into Chat:', text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else {
+      fallback();
+    }
   }
 
   init();
