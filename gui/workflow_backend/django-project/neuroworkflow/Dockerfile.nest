@@ -133,6 +133,18 @@ RUN . /root/.env/bin/activate && \
 	HDF5_DIR=${HDF5_DIR} pip install --no-cache-dir --no-binary=h5py --force-reinstall "h5py>=3.13" && \
 	find /root/.cache -type f -delete
 
+# --- In-notebook Claude agent (Node.js + Claude Code CLI + claude-agent-sdk) ---
+# claude-agent-sdk spawns the `claude` CLI (no bundled CLI in the pip wheel), so
+# a Node.js runtime and the CLI must be present. Kept at the end so the expensive
+# source-built layers above (NEST/TVB/HDF5/MRtrix3) stay cached on rebuild.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+	&& apt-get install -y --no-install-recommends nodejs \
+	&& npm install -g @anthropic-ai/claude-code \
+	&& rm -rf /var/lib/apt/lists/*
+RUN . /root/.env/bin/activate && \
+	pip install --no-cache-dir claude-agent-sdk nest_asyncio && \
+	find /root/.cache -type f -delete
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -1,19 +1,111 @@
-"""The in-kernel agent loop.
+"""The in-kernel agent, backed by the Claude Agent SDK.
 
-Mirrors the backend ``orchestrate_chat`` structure (stream a completion, run any
-tool calls, repeat) but runs synchronously in the kernel so notebook-native
-tools execute against the live namespace. LLM streaming and MCP tools go
-through the backend via ``BackendClient``.
+The agent loop and its tools run inside the Jupyter kernel so notebook-native
+tools (``run_code``, file edits) act on the user's live workspace. The Claude
+Agent SDK drives the ``claude`` CLI; the CLI reaches Anthropic through the
+backend proxy (``ANTHROPIC_BASE_URL``) so the API key stays on the backend.
+
+``run()`` is synchronous (the magics/widget call it from a kernel cell), so it
+drives the async SDK on a private event loop in a worker thread, isolated from
+the kernel's own running loop.
 """
 
-import json
+import asyncio
+import threading
 
-from . import tools as nb_tools
 from .client import BackendClient
 from .config import AgentConfig
+from .sdk_tools import build_servers, mcp_display_name
 from .skills import build_system_prompt
 
-MAX_LOOPS = 10
+MAX_TURNS = 30
+
+_DESTRUCTIVE_BASH = (
+    "rm -rf", "rm -fr", "mkfs", "dd if=", "shutdown", "reboot", "git push",
+)
+
+
+def _run_in_thread(coro_factory):
+    """Run an async coroutine on a dedicated loop in a worker thread.
+
+    The Jupyter kernel already owns a running asyncio loop, and the Claude Agent
+    SDK spawns a subprocess and drives it with anyio task groups. Re-entering the
+    kernel's loop (e.g. via nest_asyncio) corrupts the kernel's own tasks
+    ("Task was destroyed but it is pending"). Instead we give the SDK a private
+    loop on its own thread and block the caller until it finishes.
+    """
+    box: dict = {}
+
+    def worker():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            box["value"] = loop.run_until_complete(coro_factory())
+        except BaseException as e:  # propagate to the calling thread
+            box["error"] = e
+        finally:
+            # Close the SDK's async generators before tearing down the loop so a
+            # pending query() athrow isn't orphaned ("Task was destroyed").
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in box:
+        raise box["error"]
+    return box.get("value", "")
+
+
+def _make_can_use_tool(workspace_root: str):
+    import os
+
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    root = os.path.realpath(workspace_root)
+
+    async def can_use_tool(tool_name, tool_input, context):
+        if tool_name.startswith("mcp__"):
+            return PermissionResultAllow()
+        if tool_name in ("Read", "Glob", "Grep", "TodoWrite", "NotebookRead"):
+            return PermissionResultAllow()
+        if tool_name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+            path = (
+                tool_input.get("file_path")
+                or tool_input.get("path")
+                or tool_input.get("notebook_path")
+                or ""
+            )
+            candidate = path if os.path.isabs(path) else os.path.join(root, path)
+            resolved = os.path.realpath(candidate)
+            if resolved == root or resolved.startswith(root + os.sep):
+                return PermissionResultAllow()
+            return PermissionResultDeny(
+                message=f"Write blocked: path outside workspace ({root}): {path!r}"
+            )
+        if tool_name == "Bash":
+            command = (tool_input.get("command") or "").lower()
+            if any(token in command for token in _DESTRUCTIVE_BASH):
+                return PermissionResultDeny(
+                    message="Bash blocked: potentially destructive command"
+                )
+            return PermissionResultAllow()
+        return PermissionResultAllow()
+
+    return can_use_tool
+
+
+async def _prompt_stream(user_message: str):
+    # can_use_tool requires streaming-mode input (an async iterable, not a str).
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": user_message},
+        "parent_tool_use_id": None,
+    }
 
 
 class Agent:
@@ -21,18 +113,13 @@ class Agent:
         self._config = config
         self._client = BackendClient(config)
         self._ipython = ipython
-        self._mcp_tools = self._client.list_mcp_tools()
-        self._mcp_names = {
-            t.get("function", {}).get("name") for t in self._mcp_tools
-        }
-        system_prompt = build_system_prompt(
-            config.skills_dir, with_mcp=bool(self._mcp_tools)
+        self._session_id: str | None = None
+        self._servers, self._allowed = build_servers(
+            self._client, config, self._get_ipython
         )
-        self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
-
-    @property
-    def _tools(self) -> list[dict]:
-        return nb_tools.NOTEBOOK_TOOLS + self._mcp_tools
+        self._append_prompt = build_system_prompt(
+            config.skills_dir, with_mcp=config.has_mcp
+        )
 
     def _get_ipython(self):
         if self._ipython is not None:
@@ -45,78 +132,72 @@ class Agent:
         """Run one user turn to completion; return the final assistant text.
 
         ``on_text(delta)`` is called for streamed text; ``on_tool(name, args)``
-        before each tool runs.
+        before each tool runs. Conversation context carries across calls via the
+        SDK session (``resume``).
         """
-        self.messages.append({"role": "user", "content": user_message})
+        return _run_in_thread(
+            lambda: self._arun(user_message, on_text, on_tool)
+        )
+
+    async def _arun(self, user_message, on_text, on_tool) -> str:
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ResultMessage,
+            StreamEvent,
+            TextBlock,
+            ToolUseBlock,
+            query,
+        )
+
+        options = ClaudeAgentOptions(
+            system_prompt={
+                "type": "preset",
+                "preset": "claude_code",
+                "append": self._append_prompt,
+            },
+            mcp_servers=self._servers,
+            allowed_tools=self._allowed,
+            can_use_tool=_make_can_use_tool(self._config.workspace_root),
+            permission_mode="default",
+            cwd=self._config.workspace_root,
+            setting_sources=[],
+            model=self._config.anthropic_model,
+            max_turns=MAX_TURNS,
+            include_partial_messages=True,
+            resume=self._session_id,
+            env=self._config.cli_env(),
+        )
+
         final_text = ""
+        saw_text_stream = False
 
-        for _ in range(MAX_LOOPS):
-            text, tool_calls = self._stream_turn(on_text)
-
-            assistant_msg: dict = {"role": "assistant", "content": text or None}
-            if tool_calls:
-                assistant_msg["tool_calls"] = [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {"name": tc["name"], "arguments": tc["args"]},
-                    }
-                    for tc in tool_calls
-                ]
-            self.messages.append(assistant_msg)
-
-            if not tool_calls:
-                final_text = text
-                break
-
-            for tc in tool_calls:
-                result = self._run_tool(tc, on_tool)
-                self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "name": tc["name"],
-                        "content": result,
-                    }
-                )
+        async for message in query(
+            prompt=_prompt_stream(user_message), options=options
+        ):
+            if isinstance(message, StreamEvent):
+                event = message.event or {}
+                if event.get("type") == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if delta.get("type") == "text_delta" and delta.get("text"):
+                        saw_text_stream = True
+                        if on_text:
+                            on_text(delta["text"])
+            elif isinstance(message, AssistantMessage):
+                if message.session_id:
+                    self._session_id = message.session_id
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        final_text += block.text
+                        if not saw_text_stream and on_text and block.text:
+                            on_text(block.text)
+                    elif isinstance(block, ToolUseBlock) and on_tool:
+                        on_tool(mcp_display_name(block.name), block.input)
+            elif isinstance(message, ResultMessage):
+                if message.session_id:
+                    self._session_id = message.session_id
+                # Do NOT break here: let query()'s async generator finish on its
+                # own. Breaking early triggers a messy aclose() inside the SDK
+                # ("aclose(): asynchronous generator is already running").
 
         return final_text
-
-    def _stream_turn(self, on_text):
-        """Consume one streamed completion; return (text, [tool_call,...])."""
-        text = ""
-        tool_calls: dict[int, dict] = {}
-        for event_type, data in self._client.stream_llm(self.messages, self._tools):
-            if event_type == "content_delta":
-                delta = data.get("content", "")
-                text += delta
-                if on_text and delta:
-                    on_text(delta)
-            elif event_type == "tool_call_delta":
-                idx = data.get("index", 0)
-                tc = tool_calls.setdefault(idx, {"id": None, "name": "", "args": ""})
-                if data.get("id"):
-                    tc["id"] = data["id"]
-                if data.get("function_name"):
-                    tc["name"] = data["function_name"]
-                tc["args"] += data.get("arguments_delta", "")
-            elif event_type == "error":
-                raise RuntimeError(data.get("message", "LLM error"))
-            elif event_type in ("done", "tool_calls_complete"):
-                break
-        ordered = [tool_calls[i] for i in sorted(tool_calls) if tool_calls[i]["id"]]
-        return text, ordered
-
-    def _run_tool(self, tc: dict, on_tool) -> str:
-        name = tc["name"]
-        try:
-            args = json.loads(tc["args"]) if tc["args"] else {}
-        except json.JSONDecodeError:
-            return f"[error] invalid JSON arguments for {name}: {tc['args']!r}"
-        if on_tool:
-            on_tool(name, args)
-        if name in nb_tools.NOTEBOOK_TOOL_NAMES:
-            return nb_tools.dispatch(name, args, self._get_ipython())
-        if name in self._mcp_names:
-            return self._client.call_mcp_tool(name, args)
-        return f"[error] unknown tool: {name}"

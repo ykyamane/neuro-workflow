@@ -1,81 +1,19 @@
-"""Notebook-native tools the agent can call inside the live kernel.
+"""Live-kernel Python execution for the Claude agent's ``run_code`` tool.
 
-These must run in the kernel (not the backend) so they share the user's
-namespace and filesystem. MCP workflow tools are handled separately via the
-backend proxy.
+``run_code`` executes against the notebook's live namespace dict so variables
+persist across calls. It runs inside the agent's worker thread (the Claude Agent
+SDK runs there, isolated from the kernel's own event loop), so we ``exec`` the
+code rather than calling ``ipython.run_cell`` — run_cell would clash with the
+worker thread's running event loop. Captured stdout/stderr is echoed back to the
+notebook cell *and* returned to the model.
 """
 
-import os
+import ast
+import contextlib
+import io
+import sys
 
 _MAX_RESULT_CHARS = 8000
-
-# read_file/write_file are LLM-driven, so confine them to the workspace to
-# avoid accidentally exposing or clobbering files outside it. (run_code can
-# still reach anything the kernel can — this guard is for the file tools.)
-_WORKSPACE_ROOT = os.path.realpath(
-    os.environ.get("NEUROWORKFLOW_WORKSPACE_ROOT", "/home/jovyan/codes")
-)
-
-
-def _resolve_in_workspace(path: str) -> str:
-    """Resolve ``path`` to an absolute path, rejecting anything outside the root."""
-    resolved = os.path.realpath(path)
-    if resolved != _WORKSPACE_ROOT and not resolved.startswith(_WORKSPACE_ROOT + os.sep):
-        raise ValueError(f"path is outside the workspace ({_WORKSPACE_ROOT}): {path}")
-    return resolved
-
-NOTEBOOK_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "run_code",
-            "description": (
-                "Execute Python code in the user's live Jupyter kernel. The code "
-                "shares the notebook's namespace, so variables persist across "
-                "calls. Returns captured stdout/stderr and the last expression "
-                "result. Output is also shown to the user."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {"type": "string", "description": "Python code to run."}
-                },
-                "required": ["code"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read a UTF-8 text file from the workspace and return its contents.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Absolute or relative file path."}
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Write (overwrite) a UTF-8 text file in the workspace.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Absolute or relative file path."},
-                    "content": {"type": "string", "description": "Full file contents to write."},
-                },
-                "required": ["path", "content"],
-            },
-        },
-    },
-]
-
-NOTEBOOK_TOOL_NAMES = {t["function"]["name"] for t in NOTEBOOK_TOOLS}
 
 
 def _truncate(text: str) -> str:
@@ -84,50 +22,44 @@ def _truncate(text: str) -> str:
     return text
 
 
-def _run_code(code: str, ipython) -> str:
-    from IPython.utils.capture import capture_output
+def run_code(code: str, namespace: dict) -> str:
+    """Execute ``code`` against ``namespace``; return captured output/result."""
+    out, err = io.StringIO(), io.StringIO()
+    result_repr = None
+    error_text = None
+    try:
+        parsed = ast.parse(code)
+        last_expr = None
+        if parsed.body and isinstance(parsed.body[-1], ast.Expr):
+            last_expr = parsed.body.pop()
+        module = ast.Module(body=parsed.body, type_ignores=[])
+        ast.fix_missing_locations(module)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            exec(compile(module, "<chat>", "exec"), namespace)
+            if last_expr is not None:
+                expr = ast.Expression(last_expr.value)
+                ast.fix_missing_locations(expr)
+                value = eval(compile(expr, "<chat>", "eval"), namespace)
+                if value is not None:
+                    result_repr = repr(value)
+    except Exception as e:  # surface execution errors back to the model
+        error_text = f"{type(e).__name__}: {e}"
 
-    with capture_output(display=True) as cap:
-        result = ipython.run_cell(code)
-    cap.show()  # surface the output to the user as well
+    stdout_text = out.getvalue()
+    stderr_text = err.getvalue()
+    # Echo to the user's cell as well (the model gets the text in the return).
+    if stdout_text:
+        sys.stdout.write(stdout_text)
+    if stderr_text:
+        sys.stdout.write(stderr_text)
 
     parts = []
-    if cap.stdout:
-        parts.append(cap.stdout.rstrip())
-    if cap.stderr:
-        parts.append("[stderr]\n" + cap.stderr.rstrip())
-    if result.error_in_exec is not None:
-        parts.append(f"[error] {type(result.error_in_exec).__name__}: {result.error_in_exec}")
-    elif result.result is not None:
-        parts.append("[result] " + repr(result.result))
+    if stdout_text:
+        parts.append(stdout_text.rstrip())
+    if stderr_text:
+        parts.append("[stderr]\n" + stderr_text.rstrip())
+    if error_text:
+        parts.append("[error] " + error_text)
+    elif result_repr is not None:
+        parts.append("[result] " + result_repr)
     return _truncate("\n".join(parts)) if parts else "(no output)"
-
-
-def _read_file(path: str) -> str:
-    resolved = _resolve_in_workspace(path)
-    with open(resolved, encoding="utf-8") as f:
-        return _truncate(f.read())
-
-
-def _write_file(path: str, content: str) -> str:
-    resolved = _resolve_in_workspace(path)
-    directory = os.path.dirname(resolved)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    with open(resolved, "w", encoding="utf-8") as f:
-        f.write(content)
-    return f"Wrote {len(content)} chars to {resolved}"
-
-
-def dispatch(name: str, args: dict, ipython) -> str:
-    """Run a notebook-native tool and return a text result for the model."""
-    try:
-        if name == "run_code":
-            return _run_code(args["code"], ipython)
-        if name == "read_file":
-            return _read_file(args["path"])
-        if name == "write_file":
-            return _write_file(args["path"], args["content"])
-        return f"[error] unknown notebook tool: {name}"
-    except Exception as e:  # surface tool failures back to the model
-        return f"[error] {type(e).__name__}: {e}"

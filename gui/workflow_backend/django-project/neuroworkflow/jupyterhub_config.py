@@ -75,6 +75,15 @@ c.DockerSpawner.environment = {
         "NEUROWORKFLOW_BACKEND_URL", "http://backend:3000"
     ),
     "NEUROWORKFLOW_SERVICE_TOKEN": os.environ.get("JUPYTERHUB_API_TOKEN", ""),
+    # The in-kernel Claude agent reaches Anthropic through the backend proxy, so
+    # the real key never enters the kernel. The agent sends the service token as
+    # its ANTHROPIC_API_KEY; the backend swaps in the real key.
+    "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL")
+    or (
+        os.environ.get("NEUROWORKFLOW_BACKEND_URL", "http://backend:3000").rstrip("/")
+        + "/api/chat/anthropic"
+    ),
+    "ANTHROPIC_MODEL": os.environ.get("ANTHROPIC_MODEL", ""),
 }
 
 # Notebook configuration

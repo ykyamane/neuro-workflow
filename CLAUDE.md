@@ -119,7 +119,7 @@ isort --profile black src/
 
 Three `.env` files are needed for the web application:
 
-1. **`gui/.env`** — Docker Compose level (NODES_DIR, OPENAI_API_KEY, JUPYTERHUB_API_TOKEN)
+1. **`gui/.env`** — Docker Compose level (NODES_DIR, OPENAI_API_KEY, ANTHROPIC_API_KEY, JUPYTERHUB_API_TOKEN)
 2. **`gui/workflow_backend/.env`** — Django (DB_*, KEYCLOAK_*, DJANGO_SECRET_KEY, paths)
 3. **`gui/workflow_frontend/.env`** — Vite (VITE_API_BASE_URL, VITE_KEYCLOAK_*)
 
@@ -131,7 +131,8 @@ Template: `gui/workflow_backend/env.template`
 - Core library code in `src/neuroworkflow/core/` is also synced to `gui/workflow_backend/django-project/codes/neuroworkflow/core/`.
 - Workflow execution uses JupyterHub's kernel WebSocket API — code is generated from the node graph and sent to a Jupyter kernel for execution.
 - Authentication is handled by Keycloak (OIDC). The frontend uses `keycloak-js` (`onLoad: "login-required"`); the backend verifies access tokens via the realm's JWKS endpoint in `app/auth/authentication.py:KeycloakAuthentication`.
-- The chat feature uses OpenAI API with Function Calling and MCP integration.
+- The **browser chat** feature uses the OpenAI API with Function Calling and MCP integration.
+- The **in-notebook chat agent** (`src/neuroworkflow/agent/`, synced to `codes/neuroworkflow/agent/`) uses the **Claude Agent SDK** running in the Jupyter kernel. It reaches Anthropic through the backend `/api/chat/anthropic` proxy (`ANTHROPIC_BASE_URL`), so the API key stays on the backend; workflow tools still go through the MCP proxies with the user's Keycloak token. The `claude` CLI + `claude-agent-sdk` are bundled in the nest kernel image (`Dockerfile.nest`). See `docs/NOTEBOOK_CHAT_AGENT.md`.
 
 ## Code Style
 

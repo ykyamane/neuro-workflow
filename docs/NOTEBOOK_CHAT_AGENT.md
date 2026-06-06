@@ -8,22 +8,24 @@ and uses them as guidance (for example, the node-creation skill).
 ## How it works
 
 ```
-Jupyter kernel                         Django backend                 OpenAI / MCP
-──────────────                         ──────────────                 ────────────
-neuroworkflow.agent
-  ├─ agent loop      ── POST /api/chat/llm/        ──▶ stream_chat_completion ──▶ OpenAI
-  ├─ run_code/…      (runs locally in the kernel)
-  └─ workflow tools  ── POST /api/chat/mcp-call/   ──▶ MCPClient ──▶ MCP server ──▶ workflow API
-                     ── GET  /api/chat/mcp-tools/
+Jupyter kernel                              Django backend              Anthropic / MCP
+──────────────                              ──────────────              ───────────────
+neuroworkflow.agent (Claude Agent SDK)
+  ├─ agent loop + run_code/Read/Write/Edit  (run locally in the kernel)
+  ├─ model calls    ── ANTHROPIC_BASE_URL ──▶ /api/chat/anthropic ──▶ Anthropic API
+  └─ workflow tools ── POST /api/chat/mcp-call/ ──▶ MCPClient ──▶ MCP server ──▶ workflow API
+                    ── GET  /api/chat/mcp-tools/
 ```
 
-- The **agent loop runs in the kernel**, so notebook-native tools (run code, read/write
-  files) act directly on your live workspace.
-- The **OpenAI key and the MCP workflow tools stay on the backend**; the kernel reaches
-  them over HTTP. The kernel cannot reach the MCP server directly (different Docker
-  network), so all model and workflow calls are proxied through the backend.
-- **LLM calls** authenticate with a shared service token (injected automatically).
-  **Workflow tools** require your own Keycloak token so per-user data is scoped correctly.
+- The **agent loop runs in the kernel** (the Claude Agent SDK drives the `claude` CLI),
+  so notebook-native tools (run_code, file edits) act directly on your live workspace.
+- The **Anthropic key and the MCP workflow tools stay on the backend**; the kernel
+  reaches them over HTTP. The kernel cannot reach the MCP server or Anthropic directly,
+  so both are proxied through the backend.
+- **Model calls** go through the backend Anthropic proxy: the kernel sets
+  `ANTHROPIC_BASE_URL` to the backend and presents the shared **service token** as its
+  API key; the backend validates it and swaps in the real Anthropic key. **Workflow
+  tools** require your own Keycloak token so per-user data is scoped correctly.
 
 ## Prerequisites
 
@@ -31,21 +33,37 @@ Run the Docker stack as usual:
 
 ```bash
 cd gui
-docker-compose build      # rebuild the nest image (adds httpx + ipywidgets)
-docker-compose up
+docker-compose build && docker-compose up
 ```
+
+The single-user **kernel** image (`nest-jupyterlab:latest`) is built **separately** — it is
+*not* built by `docker-compose` (that only builds the JupyterHub *hub* image). After
+changing `Dockerfile.nest` (e.g. this migration adds Node.js + the Claude Code CLI +
+`claude-agent-sdk`), rebuild it and re-spawn your container:
+
+```bash
+cd gui/workflow_backend/django-project/neuroworkflow
+./build-nest-image.sh        # docker build -t nest-jupyterlab -f Dockerfile.nest .
+docker rm -f jupyter-user1   # drop the old single-user container, then reopen Jupyter
+```
+
+Set `ANTHROPIC_API_KEY` in `gui/.env` (alongside `OPENAI_API_KEY`). This is the **real**
+key; it stays on the backend and powers the `/api/chat/anthropic` proxy. The kernel never
+receives it.
 
 The JupyterHub spawner wires everything into each single-user container automatically:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `NEUROWORKFLOW_BACKEND_URL` | Backend base URL the kernel calls | `http://backend:3000` |
-| `NEUROWORKFLOW_SERVICE_TOKEN` | Shared token for the LLM proxy | (the hub's `JUPYTERHUB_API_TOKEN`) |
+| `NEUROWORKFLOW_SERVICE_TOKEN` | Shared token for the backend proxies (incl. the Anthropic proxy) | (the hub's `JUPYTERHUB_API_TOKEN`) |
+| `ANTHROPIC_BASE_URL` | Backend Anthropic proxy the `claude` CLI calls | `<backend>/api/chat/anthropic` |
+| `ANTHROPIC_MODEL` | Optional model override (empty = CLI default) | unset |
 | `NEUROWORKFLOW_SKILLS_DIR` | Where `.claude` skills are read from | `/home/jovyan/.claude/skills` |
 | `PYTHONPATH` | Makes `import neuroworkflow` resolve | `/home/jovyan/codes` |
 | `NEUROWORKFLOW_USER_TOKEN` | Optional Keycloak token for workflow tools | unset |
 | `NEUROWORKFLOW_PROJECT_ID` | Optional default workflow id | unset |
-| `NEUROWORKFLOW_WORKSPACE_ROOT` | Root that `read_file`/`write_file` are confined to | `/home/jovyan/codes` |
+| `NEUROWORKFLOW_WORKSPACE_ROOT` | Root that file edits (Write/Edit) are confined to | `/home/jovyan/codes` |
 
 The repository's `.claude/` directory is mounted read-only at `/home/jovyan/.claude`,
 so the agent reads the git-tracked skills.
@@ -131,12 +149,15 @@ fetch("/api/workflow/", {
 
 ## Tools the agent can use
 
-**Notebook-native (always available, run in your kernel):**
+**In the kernel (always available):**
 
 - `run_code` — execute Python in the live kernel (shared namespace); returns stdout/result.
-- `read_file` / `write_file` — read and write text files in the workspace.
-  These are confined to `NEUROWORKFLOW_WORKSPACE_ROOT` (default `/home/jovyan/codes`);
-  paths outside it are rejected.
+  Runs in-process so variables persist and output displays inline.
+- `Read` / `Write` / `Edit` — read and edit files (Claude Agent SDK built-ins). Writes are
+  confined to `NEUROWORKFLOW_WORKSPACE_ROOT` (default `/home/jovyan/codes`); paths outside
+  it are rejected.
+- `Bash` — run shell commands (obviously destructive commands are blocked); use `run_code`
+  for Python, not Bash.
 
 **Workflow tools via MCP (require a user token):** `add_node`, `get_flow`, `list_nodes`,
 `add_edge`, `update_node_parameter`, `generate_code_batch`, `get_workflow_facts`,
@@ -154,7 +175,7 @@ Currently this is `create-node.md` (the node-creation guide). You can verify it 
 ```python
 from neuroworkflow.agent import reset_agent, get_agent
 reset_agent()
-print("Skill: create-node.md" in get_agent().messages[0]["content"])   # -> True
+print("Skill: create-node.md" in get_agent()._append_prompt)   # -> True
 ```
 
 To add a skill, commit a new `*.md` under `.claude/skills/`; it is picked up on the next
@@ -187,9 +208,9 @@ reset_agent()                                       # clear history / re-read co
   where only `/home/jovyan/codes/` is mounted. For node creation, the writable directory is
   `/home/jovyan/codes/nodes/`, and repo-root docs are not present in the kernel. The agent
   still follows the skill's guidance, but file paths from the skill text may need adjusting.
-- **Auth scope.** The LLM proxy uses a shared service token (acceptable for a trusted
-  lab/hackathon). Per-user identity applies only to the workflow (MCP) tools via your
-  Keycloak token.
+- **Auth scope.** The Anthropic proxy uses a shared service token and a single shared
+  Anthropic key (acceptable for a trusted lab/hackathon). Per-user identity applies only
+  to the workflow (MCP) tools via your Keycloak token.
 
 ## Maintenance
 

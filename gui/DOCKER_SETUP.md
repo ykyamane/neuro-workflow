@@ -15,7 +15,7 @@ Three `.env` files are used. They **already exist** in this repo with values set
 
 | File | Purpose |
 |------|---------|
-| `gui/.env` | `NODES_DIR`, `HOST_PROJECT_PATH` (paths on your machine) |
+| `gui/.env` | `NODES_DIR`, `HOST_PROJECT_PATH` (paths), plus chat keys: `OPENAI_API_KEY` (browser chat), `ANTHROPIC_API_KEY` (notebook Claude agent), `JUPYTERHUB_API_TOKEN` |
 | `gui/workflow_backend/.env` | DB, Keycloak, Django secret, paths, optional `OPENAI_API_KEY` |
 | `gui/workflow_frontend/.env` | `VITE_API_BASE_URL`, Keycloak, paths |
 
@@ -46,6 +46,8 @@ docker build --platform linux/amd64 -t nest-jupyterlab -f Dockerfile.nest .
 ```
 
 You can skip this and still run the Workflow UI; JupyterHub will fail to spawn servers until this image exists.
+
+> This image also bundles the in-notebook Claude agent dependencies (Node.js + the `claude` CLI + `claude-agent-sdk`). The notebook chat agent additionally needs `ANTHROPIC_API_KEY` set in `gui/.env`. See `docs/NOTEBOOK_CHAT_AGENT.md`.
 
 ## 4. Build and start all services
 

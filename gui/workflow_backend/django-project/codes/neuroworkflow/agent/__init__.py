@@ -10,8 +10,8 @@ or a persistent panel::
     from neuroworkflow.agent import ChatPanel
     ChatPanel(user_token="<your Keycloak token>")   # token enables workflow tools
 
-The agent loop runs in the kernel; the OpenAI key and MCP tools stay on the
-backend, reached over HTTP.
+The agent loop runs in the kernel (Claude Agent SDK); the Anthropic key and MCP
+tools stay on the backend, reached over HTTP.
 """
 
 from .config import get_config
