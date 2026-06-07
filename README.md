@@ -44,7 +44,7 @@ Get a first impression of Neuro-Workflow in action:
 
 <br><br>
 
-🎥 **Video demonstrations:**
+🎥 **Model Examples:**
 
 <a href="https://youtu.be/HvcTYz3RIM8" target="_blank">Basal Ganglia Model of the Macaque on Neuro-Workflow using NEST</a>
 <br><small>Credits: Carlos Enrique Gutierrez</small>
@@ -59,7 +59,28 @@ Get a first impression of Neuro-Workflow in action:
 <a href="https://youtu.be/hC4NUOuR3OI?si=VwYyRLDbtXGk6RiF" target="_blank">First View of Neuro-Workflow</a>
 <br><small>Credits: Carlos Enrique Gutierrez</small>
 
+<br><br>
+
+📖 **Tutorials:**
+
+<a href="https://youtu.be/9KRuuHBY9Zo?si=7opJIwBy4zeNtjce" target="_blank">Creating Nodes and Porting Your Model into Neuro-Workflow</a>
+<br><small>Learn how to systematize your code, model, or pipeline as a unified, AI-ready workflow</small>
+<br><small>Credits: Carlos Enrique Gutierrez</small>
+
 </div>
+
+Commands referenced in the tutorial:
+
+```bash
+# Install Neuro-Workflow
+pip install git+https://github.com/oist/neuro-workflow.git
+
+# Download the create-node skill for Claude Code
+curl -o .claude/skills/create-node/SKILL.md https://raw.githubusercontent.com/oist/neuro-workflow/main/.claude/skills/create-node/SKILL.md
+
+# Download the node creation guide
+curl -o NODE_CREATION_GUIDE.md https://raw.githubusercontent.com/oist/neuro-workflow/main/NODE_CREATION_GUIDE.md
+```
 
 ---
 
