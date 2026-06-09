@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.auth.authentication import KeycloakAuthentication, ServiceTokenAuthentication
+from app.auth.authentication import KeycloakAuthentication
 
 from .models import Conversation, Message
 from .serializers import (
@@ -23,7 +23,6 @@ from .serializers import (
 )
 from .services.chat_orchestrator import orchestrate_chat
 from .services.mcp_client import MCPClient, mcp_tools_to_openai_functions
-from .services.openai_client import stream_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -178,61 +177,6 @@ class ChatStreamView(APIView):
 def _format_sse(event_type: str, data: dict) -> str:
     """Format a Server-Sent Event string."""
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class NotebookLLMView(APIView):
-    """Stateless OpenAI streaming proxy for the in-notebook chat agent.
-
-    The agent loop runs inside the Jupyter kernel and keeps its own
-    conversation state, so this endpoint persists nothing: it relays one
-    ``stream_chat_completion`` pass (the kernel handles tool dispatch and
-    re-calls this endpoint with updated messages). It also keeps the OpenAI
-    key on the backend rather than exposing it inside user-accessible kernels.
-
-    Only the shared service token is accepted (not a Keycloak JWT): this
-    endpoint exists for the kernel agent, and the browser chat uses
-    ``/api/chat/stream/``. Allowing Keycloak here would let any logged-in user
-    spend the backend OpenAI key directly.
-    """
-
-    authentication_classes = [ServiceTokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        messages = request.data.get("messages")
-        if not isinstance(messages, list) or not messages:
-            return Response(
-                {"error": "'messages' must be a non-empty list"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        tools = request.data.get("tools") or None
-
-        response = StreamingHttpResponse(
-            self._sync_stream(messages, tools),
-            content_type="text/event-stream",
-        )
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"
-        return response
-
-    def _sync_stream(self, messages, tools):
-        loop = asyncio.new_event_loop()
-        try:
-            agen = stream_chat_completion(messages, tools)
-            while True:
-                try:
-                    chunk = loop.run_until_complete(agen.__anext__())
-                    chunk_type = chunk.pop("type", "unknown")
-                    yield _format_sse(chunk_type, chunk)
-                except StopAsyncIteration:
-                    break
-                except Exception as e:
-                    logger.error("LLM proxy stream error: %s", e, exc_info=True)
-                    yield _format_sse("error", {"message": str(e)})
-                    break
-        finally:
-            loop.close()
 
 
 @method_decorator(csrf_exempt, name="dispatch")
