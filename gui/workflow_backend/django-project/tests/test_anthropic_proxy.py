@@ -16,7 +16,7 @@ class _FakeUpstream:
     status_code = 200
     headers = {"content-type": "text/event-stream"}
 
-    def iter_raw(self):
+    def iter_bytes(self):
         yield b"event: message_start\ndata: {}\n\n"
 
     def close(self):
