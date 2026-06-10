@@ -7,6 +7,8 @@ Claude Agent SDK reaches Anthropic via the backend's ``/api/chat/anthropic``
 proxy, configured through ``ANTHROPIC_BASE_URL``.)
 """
 
+from __future__ import annotations
+
 from .config import AgentConfig
 
 

@@ -10,6 +10,8 @@ drives the async SDK on a private event loop in a worker thread, isolated from
 the kernel's own running loop.
 """
 
+from __future__ import annotations
+
 import asyncio
 import threading
 

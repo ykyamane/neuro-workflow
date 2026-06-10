@@ -14,6 +14,8 @@ The agent loop runs in the kernel (Claude Agent SDK); the Anthropic key and MCP
 tools stay on the backend, reached over HTTP.
 """
 
+from __future__ import annotations
+
 from .config import get_config
 from .loop import Agent
 

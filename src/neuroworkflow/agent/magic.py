@@ -1,5 +1,7 @@
 """``%chat`` / ``%%chat`` magics for talking to the agent inline."""
 
+from __future__ import annotations
+
 import sys
 
 

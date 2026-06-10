@@ -5,6 +5,8 @@ Issue #52 requires the notebook agent to use the skills committed to the repo
 skill machinery — we read the markdown and inject it as guidance, as agreed.
 """
 
+from __future__ import annotations
+
 import glob
 import logging
 import os

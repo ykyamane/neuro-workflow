@@ -11,6 +11,8 @@ the shared service token as its API key, so the real Anthropic key never lives
 in the user-accessible kernel.
 """
 
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 

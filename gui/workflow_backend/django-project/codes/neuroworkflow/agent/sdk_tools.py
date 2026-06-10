@@ -14,12 +14,15 @@ File editing (Read/Write/Edit) uses the SDK's built-in tools.
 """
 
 import asyncio
+import logging
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from . import tools as nb_tools
 from .client import BackendClient
 from .config import AgentConfig
+
+logger = logging.getLogger(__name__)
 
 _MCP_PREFIXES = ("mcp__notebook__", "mcp__workflow__")
 
@@ -74,7 +77,11 @@ def build_servers(client: BackendClient, config: AgentConfig, get_ipython):
                         fn.get("parameters") or {"type": "object", "properties": {}},
                     )
                 )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Workflow MCP tools disabled — could not list backend MCP tools: %s",
+                exc,
+            )
             workflow_tools = []
         if workflow_tools:
             servers["workflow"] = create_sdk_mcp_server("workflow", tools=workflow_tools)

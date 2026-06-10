@@ -6,7 +6,7 @@ There are two distinct things the user may mean by "the brain state":
 
 1. **Live view state** — what is on screen right now (selected region, threshold, BOLD frame, toggles). The user delivers this by clicking **"📋 Copy state for Chat"** in the viewer and pasting the snapshot. Trust the pasted Markdown and its embedded ` ```json ``` ` block directly — no file read needed. Summarise or answer from it.
 
-2. **Underlying data** — the full connectome the viewer draws. This lives on disk and you read it with `run_code` / `read_file`. Use it for questions the snapshot can't answer (e.g. "which regions does X connect to most strongly?", "top BOLD regions at t=…").
+2. **Underlying data** — the full connectome the viewer draws. This lives on disk and you read it with `run_code` / the built-in `Read` tool. Use it for questions the snapshot can't answer (e.g. "which regions does X connect to most strongly?", "top BOLD regions at t=…").
 
 ## Where the data lives
 
