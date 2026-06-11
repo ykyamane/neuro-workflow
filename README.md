@@ -205,5 +205,3 @@ Neuro-Workflow is currently under preparation for publication. If you use it in 
 ## License
 
 This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for research and non-commercial use. See the LICENSE file for details.
-
-Commercial use is prohibited. For commercial use a separate license is required. Please contact [carlos.gutierrez@oist.jp](mailto:carlos.gutierrez@oist.jp) for inquiries.
