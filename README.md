@@ -1,6 +1,6 @@
 # Neuro-Workflow
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20NC-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Brain/MINDS 2.0](https://img.shields.io/badge/Supported%20by-Brain%2FMINDS%202.0-green)](https://brainminds.jp/)
 
@@ -204,6 +204,6 @@ Neuro-Workflow is currently under preparation for publication. If you use it in 
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) - see the LICENSE file for details.
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for research and non-commercial use. See the LICENSE file for details.
 
 Commercial use is prohibited. For commercial use a separate license is required. Please contact [carlos.gutierrez@oist.jp](mailto:carlos.gutierrez@oist.jp) for inquiries.
