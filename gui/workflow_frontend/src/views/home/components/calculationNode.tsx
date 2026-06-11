@@ -41,7 +41,7 @@ export const CalculationNode = ({
   const outputEntries = schema.outputs ? Object.entries(schema.outputs) : [];
 
   // Use the tab system context
-  const { addJupyterTab } = useTabContext();
+  const { addJupyterTab, addViewerTab } = useTabContext();
 
   // Combine all fields (inputs first, outputs second)
   const allFields = [
@@ -145,9 +145,12 @@ export const CalculationNode = ({
       const configuredOutputDir = data.schema?.parameters?.output_dir?.default_value;
       const viewerOutputDir = normalizeViewerOutputDir(configuredOutputDir);
       const dataPath = `/api/viewer/${projectFolder}/${viewerOutputDir}/connectivity_data.json`;
-      const viewerUrl = `/brain-viewer.html?data=${encodeURIComponent(dataPath)}`;
+      // Cache-buster so re-opening an existing viewer tab forces the iframe to reload fresh data
+      const viewerUrl = `/brain-viewer.html?data=${encodeURIComponent(dataPath)}&reload=${Date.now()}`;
 
-      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
+      const tabId = `viewer-${projectId}-${viewerOutputDir}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const tabTitle = `${project?.name || 'Brain'} Viewer`;
+      addViewerTab(tabId, tabTitle, viewerUrl);
     } catch (error) {
       console.error('Error opening brain viewer:', error);
       toast({

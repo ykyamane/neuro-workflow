@@ -13,7 +13,7 @@ import UserProfileView from '../../views/user/userProfileView';
 
 export interface Tab {
   id: string;
-  type: 'workflow' | 'jupyter';
+  type: 'workflow' | 'jupyter' | 'viewer';
   title: string;
   projectId?: string;
   url?: string;
@@ -24,6 +24,7 @@ interface TabContextType {
   tabs: Tab[];
   activeTabId: string;
   addJupyterTab: (projectId: string, projectName: string, url: string) => void;
+  addViewerTab: (tabId: string, title: string, url: string) => void;
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
 }
@@ -76,6 +77,32 @@ export const TabManager: React.FC = () => {
     setActiveTabId(newTabId);
   }, [tabs]);
 
+  const addViewerTab = useCallback((tabId: string, title: string, url: string) => {
+    setTabs(prevTabs => {
+      const exists = prevTabs.some(tab => tab.id === tabId);
+
+      if (exists) {
+        // Reload the existing viewer tab with the latest data (url carries a cache-buster)
+        return prevTabs.map(tab =>
+          tab.id === tabId
+            ? { ...tab, url, isActive: true }
+            : { ...tab, isActive: false }
+        );
+      }
+
+      const newTab: Tab = {
+        id: tabId,
+        type: 'viewer',
+        title,
+        url,
+        isActive: true,
+      };
+      const updatedTabs = prevTabs.map(tab => ({ ...tab, isActive: false }));
+      return [...updatedTabs, newTab];
+    });
+    setActiveTabId(tabId);
+  }, []);
+
   const closeTab = useCallback((tabId: string) => {
     if (tabId === 'workflow') return; // Workflow tab cannot be closed
     
@@ -107,6 +134,7 @@ export const TabManager: React.FC = () => {
     tabs,
     activeTabId,
     addJupyterTab,
+    addViewerTab,
     closeTab,
     switchTab,
   };
@@ -172,6 +200,33 @@ export const TabManager: React.FC = () => {
                       backgroundColor: 'white',
                     }}
                     title={tab.title}
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
+                  />
+                </Box>
+              );
+            }
+
+            if (tab.type === 'viewer' && tab.url) {
+              return (
+                <Box
+                  key={tab.id}
+                  position="absolute"
+                  top={0}
+                  left={0}
+                  right={0}
+                  bottom={0}
+                  display={tab.id === activeTabId ? "block" : "none"}
+                >
+                  <iframe
+                    src={tab.url}
+                    width="100%"
+                    height="100%"
+                    style={{
+                      border: 'none',
+                      backgroundColor: 'white',
+                    }}
+                    title={tab.title}
+                    allow="clipboard-write"
                     sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
                   />
                 </Box>
