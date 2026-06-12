@@ -14,7 +14,6 @@ import { FiCode, FiEye } from "react-icons/fi";
 import { useTabContext } from '../../../components/tabs/TabManager';
 import { JUPYTER_BASE_URL } from '../../../config/urls';
 import { generateHandleId } from '@/utils/handleId';
-import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface NodeCallbacks {
   onJupyter?: (nodeId: string) => void;
@@ -80,11 +79,6 @@ export const CalculationNode = ({
     addJupyterTab(projectId, filename, jupyterUrl);
   };
 
-  const normalizeProjectFolderName = (projectName: string) => {
-    const trimmed = projectName.replace(/\s/g, '').toLowerCase();
-    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  };
-
   const normalizeViewerOutputDir = (rawOutputDir?: unknown) => {
     const fallback = 'results/viewer';
 
@@ -116,7 +110,7 @@ export const CalculationNode = ({
     data.label === 'MarmosetBrainViewer'
   );
 
-  const handleOpenBrainViewer = async () => {
+  const handleOpenBrainViewer = () => {
     const projectId = localStorage.getItem('projectId');
     if (!projectId) {
       toast({
@@ -129,38 +123,15 @@ export const CalculationNode = ({
       return;
     }
 
-    try {
-      const headers = await createAuthHeaders();
-      const response = await fetch(`/api/workflow/${projectId}/`, {
-        credentials: 'include',
-        headers,
-      });
+    const configuredOutputDir = data.schema?.parameters?.output_dir?.default_value;
+    const viewerOutputDir = normalizeViewerOutputDir(configuredOutputDir);
+    // The backend resolves the project folder (stable UUID vs legacy name) by id
+    const dataPath = `/api/viewer/${projectId}/${viewerOutputDir}/connectivity_data.json`;
+    // Cache-buster so re-opening an existing viewer tab forces the iframe to reload fresh data
+    const viewerUrl = `/brain-viewer.html?data=${encodeURIComponent(dataPath)}&reload=${Date.now()}`;
 
-      if (!response.ok) {
-        throw new Error(`Failed to load project metadata (${response.status})`);
-      }
-
-      const project = await response.json();
-      const projectFolder = normalizeProjectFolderName(project?.name || projectId);
-      const configuredOutputDir = data.schema?.parameters?.output_dir?.default_value;
-      const viewerOutputDir = normalizeViewerOutputDir(configuredOutputDir);
-      const dataPath = `/api/viewer/${projectFolder}/${viewerOutputDir}/connectivity_data.json`;
-      // Cache-buster so re-opening an existing viewer tab forces the iframe to reload fresh data
-      const viewerUrl = `/brain-viewer.html?data=${encodeURIComponent(dataPath)}&reload=${Date.now()}`;
-
-      const tabId = `viewer-${projectId}-${viewerOutputDir}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-      const tabTitle = `${project?.name || 'Brain'} Viewer`;
-      addViewerTab(tabId, tabTitle, viewerUrl);
-    } catch (error) {
-      console.error('Error opening brain viewer:', error);
-      toast({
-        title: "Viewer Error",
-        description: error instanceof Error ? error.message : "Failed to open brain viewer",
-        status: "error",
-        duration: 3500,
-        isClosable: true,
-      });
-    }
+    const tabId = `viewer-${projectId}-${viewerOutputDir}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+    addViewerTab(tabId, 'Brain Viewer', viewerUrl);
   };
 
   return (

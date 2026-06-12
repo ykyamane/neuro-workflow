@@ -10,6 +10,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.views.static import serve as static_file_serve
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -1037,6 +1038,26 @@ class FlowNodeInstanceNameUpdateView(APIView):
                 {"error": f"InstanceName update failed: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+# ---------------------------------------------------------------------------
+# Viewer file serving
+# ---------------------------------------------------------------------------
+
+@csrf_exempt
+def viewer_file(request, project_id, subpath):
+    """Serve a file from a project's directory, looked up by project id.
+
+    Resolves the stable (UUID) or legacy (name) directory via
+    existing_project_dir(), so callers only need the project id and don't have
+    to guess the on-disk folder name. Kept unauthenticated like the previous
+    static /api/viewer/ route so the in-app brain-viewer iframe (which carries
+    no bearer token) can fetch its data. django.views.static.serve safely joins
+    subpath and rejects directory traversal.
+    """
+    project = get_object_or_404(FlowProject, id=project_id)
+    project_dir = existing_project_dir(project)
+    return static_file_serve(request, subpath, document_root=str(project_dir))
 
 
 # ---------------------------------------------------------------------------
