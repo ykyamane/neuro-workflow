@@ -725,7 +725,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               {param.description && (
                 <HStack align="start">
                   <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
-                  <Text fontSize="sm" color={textColor}>
+                  <Text fontSize="sm" color={textColor} whiteSpace="pre-wrap">
                     {param.description}
                   </Text>
                 </HStack>
@@ -1089,7 +1089,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               {method.description && (
                 <HStack align="start">
                   <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
-                  <Text fontSize="sm" color={textColor}>
+                  <Text fontSize="sm" color={textColor} whiteSpace="pre-wrap">
                     {method.description}
                   </Text>
                 </HStack>
