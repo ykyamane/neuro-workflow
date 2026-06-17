@@ -380,6 +380,8 @@ class PythonNodeAnalyzer:
                 port_info["description"] = self._extract_string_value(keyword.value)
             elif keyword.arg == "optional":
                 port_info["optional"] = self._extract_bool_value(keyword.value)
+            elif keyword.arg == "fan_in":
+                port_info["fan_in"] = self._extract_bool_value(keyword.value)
 
         return port_info
 
@@ -585,6 +587,8 @@ class PythonNodeAnalyzer:
                     port_info["description"] = self._extract_string_value(value)
                 elif key_name == "optional":
                     port_info["optional"] = self._extract_bool_value(value)
+                elif key_name == "fan_in":
+                    port_info["fan_in"] = self._extract_bool_value(value)
         return port_info
 
     def _extract_parameter_definition_dict(self, node: ast.Dict) -> Dict[str, Any]:

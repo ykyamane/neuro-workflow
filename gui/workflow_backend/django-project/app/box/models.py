@@ -148,6 +148,8 @@ class PythonFile(models.Model):
                     schema["inputs"][input_name]["constraints"] = input_info[
                         "constraints"
                     ]
+                if "fan_in" in input_info:
+                    schema["inputs"][input_name]["fan_in"] = input_info["fan_in"]
 
         # Convert outputs
         if "outputs" in class_info:
@@ -161,6 +163,8 @@ class PythonFile(models.Model):
                     "port_direction": "output",
                     "optional": output_info.get("optional", False),
                 }
+                if "fan_in" in output_info:
+                    schema["outputs"][output_name]["fan_in"] = output_info["fan_in"]
 
         # Convert parameters
         if "parameters" in class_info:
