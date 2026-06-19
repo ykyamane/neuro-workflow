@@ -78,6 +78,11 @@ You drive **steps 1–2** locally with your agent. Steps **3–4** happen in the
   Tweak a parameter or a connection and re-run to get a feel for the structure.
 - **What you get:** a working workflow you have run end-to-end locally, with validated outputs — the proof
   that your nodes are correct and uploadable.
+- **If your nodes need NEST/TVB and you can't install the simulator locally:** that's fine — local
+  running is **optional**. The agent can still write the node files from your code, but you won't be able
+  to *execute* them or run `check_node.py` on them locally (importing the node imports the simulator).
+  In that case, do the real run **on the server (Step 4)**, where NEST and TVB are preinstalled. Pure
+  Python / NumPy nodes (like `hello_node`) always run locally with no extra setup.
 
 ### Step 3 — Upload & reproduce in the GUI
 - **What you do:** log in to the NeuroWorkflow web app and **upload each node `.py` file** under its

@@ -44,6 +44,9 @@ pip install jupyterlab matplotlib
 > **Simulators (NEST/TVB) are NOT installed by the line above.** If your code needs them, install them
 > separately and ideally via conda (NEST rarely installs cleanly through pip). Ask an organizer if your
 > install fails — do not burn time fighting it. A pure-Python / NumPy / Brian2 example always works.
+> **Local execution of NEST/TVB nodes is optional:** the authoritative run happens in the GUI on the
+> server, where NEST and TVB are preinstalled. If you can't install them locally, build the nodes anyway
+> and run them on the server.
 
 ## C. Verify the install and make the working folders
 
