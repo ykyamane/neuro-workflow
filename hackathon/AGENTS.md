@@ -29,7 +29,7 @@ own code.
 1. **Local node building** — convert the participant's Python into NeuroWorkflow node classes. ← you
 2. **Local workflow & testing** — wire nodes into a workflow, run it in a Jupyter notebook, validate outputs. ← you
 3. **Upload & reproduce in the GUI** — participant uploads node `.py` files, rebuilds the graph (drag-drop or in-app AI agent).
-4. **Run on the server** — execute on the HPC backend, collect results.
+4. **Run on the server** — execute on the application server, collect results.
 
 A node that works in step 2 is the deliverable that makes steps 3–4 possible. **Optimize for a clean,
 uploadable, well-described node.**

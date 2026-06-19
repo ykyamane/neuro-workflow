@@ -27,7 +27,7 @@ The 5-minute example in `examples/hello_node/` shows both, with no simulator nee
 | **Register** | Send your name, affiliation, and email. We create your NeuroWorkflow account in advance. |
 | **Bring your code** | Any Python you have — a model, preprocessing, analysis, or simulation. **Unstructured is fine** — that is the starting point. |
 | **AI agent** | Bring your own **Claude Code** (preferred) or **Codex** subscription. If you don't have one, OpenAI API keys are provided — install **Codex** in that case. |
-| **Laptop** | Python 3 + pip. If your code needs **NEST / TVB** (or another simulator), pre-install it (conda recommended for NEST). |
+| **Laptop** | Python 3 + pip. If your code needs **NEST / TVB** (or another simulator), install it locally if you can (conda recommended for NEST) so you can test. The organizers will make sure the simulators your run needs are available on the server — ask if your local install fails. |
 
 ---
 
@@ -87,8 +87,11 @@ You drive **steps 1–2** locally with your agent. Steps **3–4** happen in the
 - **What you get:** your workflow recreated visually in the platform, ready to run.
 
 ### Step 4 — Run on the server
-- **What you do:** generate the workflow code in the GUI and execute it on the compute backend.
-- **What you get:** results from a full run on shared compute, collected in the app.
+- **What you do:** generate the workflow code in the GUI and run it.
+- **What you get:** results collected in the app.
+- **For this hackathon:** workflows run **directly on the application server**, so please keep example
+  runs **lightweight** (short simulations, modest network sizes). A dedicated HPC compute backend is not
+  used in this round.
 
 ---
 
