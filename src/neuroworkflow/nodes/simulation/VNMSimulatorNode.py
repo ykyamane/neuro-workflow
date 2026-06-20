@@ -11,8 +11,7 @@ import numpy as np
 import h5py
 import hdf5storage
 import nibabel as nib
-#import vneumodpy as vnm
-from neuroworkflow.utils import vneumodpy as vnm
+import vneumodpy as vnm
 
 from neuroworkflow.core.node import Node
 from neuroworkflow.core.schema import NodeDefinitionSchema, PortDefinition, ParameterDefinition, MethodDefinition

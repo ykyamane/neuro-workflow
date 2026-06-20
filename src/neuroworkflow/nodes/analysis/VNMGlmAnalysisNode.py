@@ -6,8 +6,7 @@ import os
 import h5py
 import numpy as np
 import nibabel as nib
-#import vneumodpy as vnm
-from neuroworkflow.utils import vneumodpy as vnm
+import vneumodpy as vnm
 
 
 from typing import Dict, Any, Optional
