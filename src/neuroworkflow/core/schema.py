@@ -72,6 +72,7 @@ class PortDefinition:
     type: Union[PortType, Type] = PortType.ANY
     description: str = ""
     optional: bool = False
+    fan_in: bool = False
     
     def is_io_port(self) -> bool:
         """Check if this is an I/O port (Snakemake boundary)."""

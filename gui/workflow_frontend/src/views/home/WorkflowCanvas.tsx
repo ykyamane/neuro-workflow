@@ -478,6 +478,30 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         return;
       }
 
+      // Block duplicate connections unless the target port has fan_in=true
+      if (targetPortName && params.target) {
+        const targetNode = sharedNodes.find((n) => n.id === params.target);
+        const targetPortSchema = targetNode?.data?.schema?.inputs?.[targetPortName];
+        const isFanIn = targetPortSchema?.fan_in === true;
+
+        if (!isFanIn) {
+          const existingEdges = useFlowStore.getState().sharedEdges;
+          const duplicate = existingEdges.some(
+            (e) => e.target === params.target && e.targetHandle === params.targetHandle
+          );
+          if (duplicate) {
+            toast({
+              title: "Connection Not Allowed",
+              description: `Port "${targetPortName}" only accepts one connection.`,
+              status: "warning",
+              duration: 4000,
+              isClosable: true,
+            });
+            return;
+          }
+        }
+      }
+
       // Create a connection if the types match
       const edgeId = generateEdgeId(
         params.source ?? '',
