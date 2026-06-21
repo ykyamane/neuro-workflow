@@ -9,8 +9,7 @@ import json
 import numpy as np
 import h5py
 import hdf5storage
-#import vneumodpy as vnm
-from neuroworkflow.utils import vneumodpy as vnm
+import vneumodpy as vnm
 
 from typing import Dict, Any, List, Tuple
 from neuroworkflow.core.node import Node
