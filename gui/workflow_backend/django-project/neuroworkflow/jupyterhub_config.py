@@ -57,10 +57,22 @@ c.DockerSpawner.environment = {
 c.DockerSpawner.notebook_dir = "/home/jovyan"
 c.DockerSpawner.default_url = "/lab"
 
-# JupyterLab CSP settings for iframe embedding
-_frame_origin = os.environ.get("JUPYTERHUB_FRAME_ORIGIN", "http://localhost:5173")
+# JupyterLab CSP settings for iframe embedding. JUPYTERHUB_FRAME_ORIGIN may list
+# several space/comma-separated origins; CSP frame-ancestors accepts a list, so
+# the Jupyter iframe can be embedded from more than one public hostname.
+_frame_origins = [
+    o.strip()
+    for o in os.environ.get("JUPYTERHUB_FRAME_ORIGIN", "http://localhost:5173")
+    .replace(",", " ")
+    .split()
+    if o.strip()
+]
+_frame_ancestors = " ".join(_frame_origins) or "http://localhost:5173"
+# Access-Control-Allow-Origin accepts a single value. Jupyter is reached through
+# the same-origin nginx /jupyter proxy, so the primary origin is sufficient.
+_frame_origin = _frame_origins[0] if _frame_origins else "http://localhost:5173"
 c.DockerSpawner.args = [
-    f"--ServerApp.tornado_settings={{'headers':{{'Content-Security-Policy':\"frame-ancestors {_frame_origin}\"}}}}",
+    f"--ServerApp.tornado_settings={{'headers':{{'Content-Security-Policy':\"frame-ancestors {_frame_ancestors}\"}}}}",
     f"--ServerApp.allow_origin={_frame_origin}",
 ]
 if os.environ.get("JUPYTERHUB_DISABLE_XSRF", "false").lower() == "true":
@@ -100,7 +112,7 @@ c.DockerSpawner.http_timeout = 120
 # Allow embedding in iframes by removing X-Frame-Options restrictions
 c.JupyterHub.tornado_settings = {
     "headers": {
-        "Content-Security-Policy": f"frame-ancestors {_frame_origin}",
+        "Content-Security-Policy": f"frame-ancestors {_frame_ancestors}",
         "Access-Control-Allow-Origin": _frame_origin,
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-CSRFToken",

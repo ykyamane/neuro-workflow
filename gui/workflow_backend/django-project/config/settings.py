@@ -10,6 +10,7 @@ from .config import (
     KEYCLOAK_REALM,
     KEYCLOAK_CLIENT_ID,
     KEYCLOAK_ISSUER,
+    KEYCLOAK_ISSUERS,
     SECRET_KEY,
 )
 
@@ -24,8 +25,12 @@ SECRET_KEY = SECRET_KEY
 DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() in ("1", "true", "yes")
 
 _extra_hosts = [h.strip() for h in os.getenv("ALLOWED_HOSTS_EXTRA", "").split(",") if h.strip()]
+# Internal Docker service name used for service-to-service calls (e.g. the MCP
+# server reaches Django via http://backend:3000). This host is not externally
+# routable, so it is always allowed; per-user JWT auth is still enforced.
+_internal_hosts = ["backend"]
 if os.getenv("ALLOWED_HOSTS_ALL", "").lower() in ("0", "false", "no"):
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1"] + _extra_hosts
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"] + _internal_hosts + _extra_hosts
 else:
     ALLOWED_HOSTS = ["*"]
 
@@ -136,6 +141,7 @@ KEYCLOAK_URL = KEYCLOAK_URL
 KEYCLOAK_REALM = KEYCLOAK_REALM
 KEYCLOAK_CLIENT_ID = KEYCLOAK_CLIENT_ID
 KEYCLOAK_ISSUER = KEYCLOAK_ISSUER
+KEYCLOAK_ISSUERS = KEYCLOAK_ISSUERS
 
 # ==============================================================================
 # CORS CONFIGURATION
