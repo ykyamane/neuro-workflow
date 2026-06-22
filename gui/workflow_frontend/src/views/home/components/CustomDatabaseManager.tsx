@@ -41,8 +41,19 @@ interface CustomDatabase {
   updated_at: string;
 }
 
+interface BuiltinDatabase {
+  source: string;
+  name: string;
+  description?: string;
+  base_url?: string;
+  requires_api_key?: boolean;
+  is_active: boolean;
+  is_builtin: boolean;
+}
+
 const CustomDatabaseManager: React.FC = () => {
   const [databases, setDatabases] = useState<CustomDatabase[]>([]);
+  const [builtins, setBuiltins] = useState<BuiltinDatabase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDatabase, setSelectedDatabase] = useState<CustomDatabase | null>(null);
@@ -79,8 +90,27 @@ const CustomDatabaseManager: React.FC = () => {
     }
   };
 
+  const fetchBuiltins = async () => {
+    try {
+      const response = await fetch('/api/metadata/builtin-databases/', {
+        headers: await createAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setBuiltins(Array.isArray(data) ? data : []);
+    } catch (err) {
+      // Non-fatal: built-in sources are informational only.
+      console.warn('Failed to fetch built-in databases', err);
+    }
+  };
+
   useEffect(() => {
     fetchDatabases();
+    fetchBuiltins();
   }, []);
 
   const handleAdd = () => {
@@ -145,7 +175,60 @@ const CustomDatabaseManager: React.FC = () => {
 
   return (
     <Box p={4}>
-      <VStack spacing={4} align="stretch">
+      <VStack spacing={6} align="stretch">
+        {builtins.length > 0 && (
+          <Box>
+            <Text fontSize="xl" fontWeight="bold" mb={1}>
+              Built-in sources
+            </Text>
+            <Text fontSize="sm" color="gray.500" mb={3}>
+              These neuroscience databases are always available for parameter
+              suggestions. They are managed by NeuroWorkflow and cannot be edited
+              or removed.
+            </Text>
+            <TableContainer>
+              <Table variant="simple" size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>Name</Th>
+                    <Th>Base URL</Th>
+                    <Th>Status</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {builtins.map((db) => (
+                    <Tr key={db.source}>
+                      <Td>
+                        <VStack align="start" spacing={0}>
+                          <HStack spacing={2}>
+                            <Text fontWeight="medium">{db.name}</Text>
+                            <Badge colorScheme="purple">Built-in</Badge>
+                          </HStack>
+                          {db.description && (
+                            <Text fontSize="sm" color="gray.500">
+                              {db.description}
+                            </Text>
+                          )}
+                        </VStack>
+                      </Td>
+                      <Td>
+                        <Text fontSize="sm" fontFamily="mono">
+                          {db.base_url}
+                        </Text>
+                      </Td>
+                      <Td>
+                        <Badge colorScheme={db.is_active ? 'green' : 'gray'}>
+                          {db.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
         <HStack justify="space-between">
           <Text fontSize="xl" fontWeight="bold">
             Custom Databases

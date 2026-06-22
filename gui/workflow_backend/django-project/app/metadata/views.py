@@ -359,6 +359,79 @@ class SpeciesSpecificParametersView(APIView):
             )
 
 
+# Built-in database sources that the parameter metadata service always
+# initializes (see neuroworkflow.utils.parameter_metadata_service). They are
+# configured in code rather than stored as CustomDatabase records, so the UI
+# shows them as read-only entries alongside user-added databases.
+BUILTIN_DATABASE_SOURCES = [
+    {
+        "source": "allen_brain",
+        "name": "Allen Brain Atlas",
+        "description": "Cell Types Database (electrophysiology & morphology) via allensdk.",
+        "base_url": "https://api.brain-map.org/api/v2",
+        "requires_api_key": False,
+    },
+    {
+        "source": "neuromorpho",
+        "name": "NeuroMorpho.org",
+        "description": "Digitally reconstructed neuron morphologies.",
+        "base_url": "https://neuromorpho.org/api",
+        "requires_api_key": False,
+    },
+    {
+        "source": "pubmed",
+        "name": "PubMed / NCBI",
+        "description": "Parameter values extracted from research abstracts (NCBI E-utilities).",
+        "base_url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+        "requires_api_key": False,
+    },
+    {
+        "source": "neuroml_db",
+        "name": "NeuroML-DB",
+        "description": "Curated NeuroML model database.",
+        "base_url": "https://neuroml-db.org/api",
+        "requires_api_key": False,
+    },
+]
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class BuiltinDatabaseListView(APIView):
+    """List the built-in, always-on database sources used for parameter
+    suggestions.
+
+    These are managed in code (not the CustomDatabase table), so they are
+    returned as read-only entries. Local RAG is included only when a base URL
+    is configured, mirroring get_metadata_service_instance().
+
+    GET /api/metadata/builtin-databases/
+    """
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sources = [
+            dict(source, is_active=True, is_builtin=True)
+            for source in BUILTIN_DATABASE_SOURCES
+        ]
+
+        # Local RAG is only registered when a base URL is configured.
+        local_rag_url = os.getenv("LOCAL_RAG_BASE_URL", "").strip()
+        if local_rag_url:
+            local_rag_enabled = os.getenv("LOCAL_RAG_ENABLED", "true").lower() in ("true", "1", "yes")
+            sources.append({
+                "source": "local_rag",
+                "name": os.getenv("LOCAL_RAG_SOURCE_NAME", "Local RAG").strip() or "Local RAG",
+                "description": "Local semantic search over your own documents (RAG).",
+                "base_url": local_rag_url,
+                "requires_api_key": False,
+                "is_active": local_rag_enabled,
+                "is_builtin": True,
+            })
+
+        return Response(sources, status=status.HTTP_200_OK)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class CustomDatabaseListView(APIView):
     """
