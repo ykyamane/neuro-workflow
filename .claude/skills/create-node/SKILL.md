@@ -1,3 +1,8 @@
+---
+name: create-node
+description: Create a new NeuroWorkflow node (NEST / TVB / Brian2 / custom computation) following the NODE_CREATION_GUIDE.md conventions, then generate the file. Use when the user wants to build or add a workflow node.
+---
+
 # Create NeuroWorkflow Node
 
 Guide the user through creating a new node following the NODE_CREATION_GUIDE.md conventions, then generate the file.
