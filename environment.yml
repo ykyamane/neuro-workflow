@@ -1,0 +1,26 @@
+# Hackathon environment for the BMTK/NEST point-neuron notebooks.
+#
+#   mamba env create -f environment.yml   # or: conda env create -f environment.yml
+#   conda activate neuroworkflow-hackathon
+#
+# NEST is not pip-installable here, so it (and the ABI-linked h5py/numpy) come
+# from conda-forge; neuroworkflow + bmtk come from pip. See HACKATHON_SETUP.md.
+name: neuroworkflow-hackathon
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  # ABI-linked native stack from conda-forge (h5py here avoids the HDF5
+  # wheel-vs-system conflict that Dockerfile.nest had to hand-patch):
+  - nest-simulator>=3.8,<3.11
+  - h5py>=3.10
+  - numpy>=1.24            # conda resolves the nest/h5py-compatible numpy 2.x
+  - matplotlib-base>=3.6   # -base avoids pulling Qt we don't need
+  # notebook execution / smoke-test tooling:
+  - jupyterlab
+  - nbconvert
+  - ipykernel
+  - pip:
+      - "bmtk>=1.1.0"
+      - "-e .[pointnet]"   # editable install of neuroworkflow + its pip extra
