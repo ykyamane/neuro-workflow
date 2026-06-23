@@ -21,6 +21,7 @@ dependencies:
   - jupyterlab
   - nbconvert
   - ipykernel
-  - pip:
-      - "bmtk>=1.1.0"
-      - "-e .[pointnet]"   # editable install of neuroworkflow + its pip extra
+  # neuroworkflow[pointnet] (which pulls bmtk) is installed with pip by
+  # setup_hackathon.sh, or the documented `pip install -e ".[pointnet]"` step.
+  # Kept out of this file so `conda env create -f environment.yml` has no
+  # implicit repo-root dependency and there is no redundant double-install.
