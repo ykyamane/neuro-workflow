@@ -7,6 +7,7 @@ export interface InputField {
   default_value?: any;
   constraints?: any;
   optional?: boolean;
+  fan_in?: boolean;
 }
 
 export interface OutputField {
