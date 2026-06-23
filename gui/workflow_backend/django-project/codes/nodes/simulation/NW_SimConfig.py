@@ -1,5 +1,16 @@
 from typing import Dict, Any
 
+import pandas as pd
+
+# BMTK 1.1.4 reads SONATA node-type tables via pandas. Under pandas >= 3.0 the
+# default string dtype became StringDtype(na_value=nan), which BMTK then hands to
+# np.empty() (sonata/group.py) and which NumPy cannot interpret as a dtype:
+#   "Cannot interpret '<StringDtype(...)>' as a data type"
+# Disabling the new string inference keeps those columns as object dtype, exactly
+# as pre-3.0. set_option is process-global, so setting it once at import — before
+# any BMTK SONATA read in workflow.execute() — covers the whole run.
+pd.set_option("future.infer_string", False)
+
 from neuroworkflow.core.node import Node
 from neuroworkflow.core.schema import (
     NodeDefinitionSchema, PortDefinition, ParameterDefinition, MethodDefinition,
