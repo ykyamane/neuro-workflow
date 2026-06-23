@@ -4,9 +4,9 @@
 >
 > ```bash
 > # Claude Code:
-> bash examples/hackathon_202607/setup_claude.sh
+> bash quick_setup/setup_claude.sh
 > # Codex:
-> bash examples/hackathon_202607/setup_codex.sh
+> bash quick_setup/setup_codex.sh
 > ```
 >
 > Each script is idempotent and does everything below automatically: creates the venv, installs a
