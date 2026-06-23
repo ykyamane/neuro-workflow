@@ -220,10 +220,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         };
         console.log('Request body for sidebar node:', JSON.stringify(requestBody, null, 2));
 
+        const authHeaders = await createAuthHeaders();
         response = await fetch(endpoint, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            ...authHeaders,
           },
           body: JSON.stringify(requestBody),
         });
