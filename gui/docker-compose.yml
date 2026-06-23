@@ -34,7 +34,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - MCP_SERVER_URL=http://mcp:8001
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-dev-token-change-in-production}
-      - JUPYTERHUB_API_URL=http://jupyterhub:8000
+      - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
       - JUPYTER_EXECUTION_USER=${JUPYTER_EXECUTION_USER:-user1}
     depends_on:
       - db
@@ -55,6 +55,7 @@ services:
       # Optional model override for the in-kernel Claude agent (empty = CLI default).
       # The spawner forwards this into each single-user container.
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - ./workflow_backend/django-project/neuroworkflow/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
@@ -74,10 +75,11 @@ services:
     env_file:
       - ./workflow_frontend/.env
     depends_on:
-      - backend 
+      - backend
     restart: unless-stopped
     networks:
       - workflow
+      - jupyterhub-network
 
   mcp:
     build: ./mcp_server

@@ -23,7 +23,16 @@ Copy from the corresponding `env.template` in each folder and set:
 
 - **gui/.env**: `NODES_DIR` = path to `gui/workflow_backend/django-project/codes/nodes` on your host; `HOST_PROJECT_PATH` = path to `gui/workflow_backend/django-project`.
 - **workflow_backend/.env**: Set `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` to match the Keycloak service in `docker-compose.yml`; set `HOST_PROJECT_PATH` and other `*_PATH` to your repo’s `gui/workflow_backend/django-project` (and subdirs).
-- **workflow_frontend/.env**: `VITE_API_BASE_URL="http://localhost:3000/api"`; set `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID` to point at the same Keycloak realm and client.
+- **workflow_frontend/.env**: use relative service prefixes for app traffic:
+  `VITE_API_BASE_URL=/api`, `VITE_JUPYTER_BASE_URL=/jupyter`, and
+  `VITE_MCP_BASE_URL=/mcp`. For local development, set
+  `VITE_KEYCLOAK_URL=http://localhost:8080/auth` so browser redirects use the
+  host-reachable Keycloak URL. Production builds override this value to `/auth`
+  behind nginx.
+
+The `.env` files are gitignored, so pulling a branch that changes an
+`env.template` does not update an existing local `.env`. Compare your local
+files with the templates after pulling configuration changes.
 
 ## 2. Create directory for nodes mount (if missing)
 
@@ -69,10 +78,35 @@ First run can take several minutes (building backend and frontend images). When 
 
 - **Workflow UI**: http://localhost:5173  
 - **Django API**: http://localhost:3000  
-- **JupyterHub** (if image built): http://localhost:8000  
+- **JupyterHub** (if image built): http://localhost:8000/jupyter/
 - **MCP proxy**: http://localhost:8001  
 
-## 5. Stop
+## 5. Routing smoke checks
+
+Run these checks after changing the frontend service URLs, Keycloak settings,
+or JupyterHub base path:
+
+1. Open http://localhost:5173 and log in with Keycloak.
+2. Confirm Keycloak browser requests use `http://localhost:8080/auth` in local
+   development, not the internal Docker hostname.
+3. Confirm app requests use the frontend origin with relative prefixes:
+   `/api`, `/jupyter`, and `/mcp`.
+4. Open the user profile page. It should render identity fields from the token
+   and the account-management link should open Keycloak.
+5. Open the custom database manager and test list/create/edit/test/delete
+   operations while authenticated.
+6. Click the Jupyter button from a workflow node and confirm JupyterLab opens
+   the expected project/file under `/jupyter/` without a 404.
+
+For the RIKEN production overlay, also confirm that published service ports are
+bound to localhost, as required by the server firewall policy:
+
+```bash
+cd gui
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+```
+
+## 6. Stop
 
 In the same terminal where you ran `docker compose up`, press **Ctrl+C**. To remove containers and volumes:
 

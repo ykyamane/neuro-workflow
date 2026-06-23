@@ -22,6 +22,7 @@ import {
 } from '@chakra-ui/react';
 import { AddIcon, EditIcon, DeleteIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons';
 import CustomDatabaseModal from './CustomDatabaseModal';
+import { createAuthHeaders } from '../../../api/authHeaders';
 
 interface CustomDatabase {
   id: string;
@@ -53,7 +54,9 @@ const CustomDatabaseManager: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/metadata/custom-databases/');
+      const response = await fetch('/api/metadata/custom-databases/', {
+        headers: await createAuthHeaders(),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -98,6 +101,7 @@ const CustomDatabaseManager: React.FC = () => {
     try {
       const response = await fetch(`/api/metadata/custom-databases/${database.id}/`, {
         method: 'DELETE',
+        headers: await createAuthHeaders(),
       });
 
       if (!response.ok) {

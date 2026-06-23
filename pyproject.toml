@@ -10,10 +10,10 @@ readme = "README.md"
 authors = [
     {name = "NeuroWorkflow Team", email = "info@neuroworkflow.org"}
 ]
-license = {text = "AGPL-3.0-or-later"}
+license = {text = "PolyForm-Noncommercial-1.0.0"}
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",

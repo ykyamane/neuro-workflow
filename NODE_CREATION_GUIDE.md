@@ -176,6 +176,31 @@ Good port description:
 
 ---
 
+## Output File Convention
+
+Nodes that write files to disk (plots, CSVs, HDF5, spike recordings, simulator output directories) must follow this pattern:
+
+```python
+import os
+
+def my_method(self, ...) -> Dict[str, Any]:
+    # 1. Context first, node parameter as fallback
+    data_path = self._context.get("results_path", self._parameters["data_path"])
+
+    # 2. Create the directory BEFORE any simulator initialization
+    os.makedirs(data_path, exist_ok=True)
+
+    # 3. Pass the path to the simulator after initialization
+    #    (some simulators require absolute paths — check their docs)
+    simulator.setup(output_path=data_path)
+```
+
+**Why this order matters:** The output directory must exist before the simulator tries to write to it. Reading from context first allows a single `results_path` set at the workflow level to propagate automatically to all nodes, without each node needing to independently configure the same path.
+
+`WorkflowBuilder` defaults `results_path` to `"results/"` (relative to the working directory where `wf.build()` is called), and creates that folder automatically at build time. Users can set `results_path` to any path in the workflow context — the node always reads from context, so it adapts automatically. Nodes that only pass data in memory do not need to follow this convention.
+
+---
+
 ## Checklist Before Committing a Node
 
 - [ ] `stage` field is set and matches the stage list
@@ -184,6 +209,9 @@ Good port description:
 - [ ] `description` is one clear scientific sentence
 - [ ] All parameters have `description` and `default_value`
 - [ ] Scientifically tunable parameters have `optimizable=True` and `optimization_range`
+- [ ] `is_objective` / `objective_range` are only on `ParameterDefinition`, never on `PortDefinition`
 - [ ] All port descriptions are specific enough for an agent to understand the data
+- [ ] NEST nodes: `nest.ResetKernel()` is inside a process step method, not at import or `__init__`
+- [ ] Nodes that write files use `self._context.get("results_path", "results/")` as the output directory
 - [ ] Node is placed in the correct `src/neuroworkflow/nodes/<stage>/` folder
 - [ ] Import added to the stage `__init__.py`

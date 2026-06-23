@@ -3,6 +3,12 @@ from django.contrib.auth.models import User
 import uuid
 
 
+def _default_workflow_context():
+    return {
+        "results_path": "results/",
+    }
+
+
 class FlowProject(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
@@ -15,7 +21,7 @@ class FlowProject(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
-    workflow_context = models.JSONField(default=dict, blank=True)
+    workflow_context = models.JSONField(default=_default_workflow_context, blank=True)
     owner = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="flow_projects"
     )

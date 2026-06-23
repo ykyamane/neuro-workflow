@@ -3,13 +3,50 @@ import api from "@/api/$api";
 import { getApiConfig } from "./config";
 import { createAuthHeaders } from "./authHeaders";
 
+const createTimeoutFetch = (timeoutMs: number): typeof fetch => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const upstreamSignal = init?.signal;
+    let didTimeout = false;
+
+    const timeoutId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, timeoutMs);
+
+    const abortFromUpstream = () => controller.abort();
+    if (upstreamSignal) {
+      if (upstreamSignal.aborted) {
+        controller.abort();
+      } else {
+        upstreamSignal.addEventListener("abort", abortFromUpstream, { once: true });
+      }
+    }
+
+    try {
+      return await fetch(input, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (didTimeout) {
+        throw new Error(`Request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+    }
+  };
+};
+
 // Creating an API client
 const createApiClient = async () => {
   const config = getApiConfig();
   const headers = await createAuthHeaders();
 
   return api(
-    aspida(fetch, {
+    aspida(createTimeoutFetch(config.timeout), {
       baseURL: config.baseURL,
       headers,
     })

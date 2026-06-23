@@ -7,6 +7,7 @@ a fluent interface for creating workflows.
 """
 
 from typing import Dict, List, Set, Optional, Any
+import os
 import time
 from neuroworkflow.core.node import Node
 
@@ -526,10 +527,13 @@ class WorkflowBuilder:
         
     def build(self) -> Workflow:
         """Build the workflow.
-        
+
         Returns:
             The built workflow
         """
+        results_path = self.context.get("results_path")
+        if results_path:
+            os.makedirs(results_path, exist_ok=True)
         return Workflow(self.name, self.nodes, self.connections, context=self.context)
     
     def execute_workflow(self) -> bool:

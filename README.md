@@ -1,6 +1,6 @@
 # Neuro-Workflow
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20NC-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Brain/MINDS 2.0](https://img.shields.io/badge/Supported%20by-Brain%2FMINDS%202.0-green)](https://brainminds.jp/)
 
@@ -44,7 +44,7 @@ Get a first impression of Neuro-Workflow in action:
 
 <br><br>
 
-🎥 **Video demonstrations:**
+🎥 **Model Examples:**
 
 <a href="https://youtu.be/HvcTYz3RIM8" target="_blank">Basal Ganglia Model of the Macaque on Neuro-Workflow using NEST</a>
 <br><small>Credits: Carlos Enrique Gutierrez</small>
@@ -59,7 +59,28 @@ Get a first impression of Neuro-Workflow in action:
 <a href="https://youtu.be/hC4NUOuR3OI?si=VwYyRLDbtXGk6RiF" target="_blank">First View of Neuro-Workflow</a>
 <br><small>Credits: Carlos Enrique Gutierrez</small>
 
+<br><br>
+
+📖 **Tutorials:**
+
+<a href="https://youtu.be/9KRuuHBY9Zo?si=7opJIwBy4zeNtjce" target="_blank">Creating Nodes and Porting Your Model into Neuro-Workflow</a>
+<br><small>Learn how to systematize your code, model, or pipeline as a unified, AI-ready workflow</small>
+<br><small>Credits: Carlos Enrique Gutierrez</small>
+
 </div>
+
+Commands referenced in the tutorial:
+
+```bash
+# Install Neuro-Workflow
+pip install git+https://github.com/oist/neuro-workflow.git
+
+# Download the create-node skill for Claude Code
+curl -o .claude/skills/create-node/SKILL.md https://raw.githubusercontent.com/oist/neuro-workflow/main/.claude/skills/create-node/SKILL.md
+
+# Download the node creation guide
+curl -o NODE_CREATION_GUIDE.md https://raw.githubusercontent.com/oist/neuro-workflow/main/NODE_CREATION_GUIDE.md
+```
 
 ---
 
@@ -183,4 +204,4 @@ Neuro-Workflow is currently under preparation for publication. If you use it in 
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) - see the LICENSE file for details.
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for research and non-commercial use. See the LICENSE file for details.

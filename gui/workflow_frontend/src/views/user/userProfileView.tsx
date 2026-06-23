@@ -1,8 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import {
-  Alert,
-  AlertDescription,
-  AlertIcon,
   Badge,
   Box,
   Button,
@@ -15,14 +12,13 @@ import {
   HStack,
   Heading,
   SimpleGrid,
-  Spinner,
   Stack,
   Tag,
   Text,
   VStack,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { ExternalLinkIcon, RepeatIcon } from '@chakra-ui/icons';
+import { ExternalLinkIcon } from '@chakra-ui/icons';
 import type { KeycloakProfile, KeycloakTokenParsed } from 'keycloak-js';
 import { getAccountConsoleUrl, getKeycloak } from '../../auth/keycloak';
 
@@ -59,35 +55,23 @@ const SectionCard: React.FC<{ title: string; children: React.ReactNode }> = ({
 };
 
 const UserProfileView: React.FC = () => {
-  const [profile, setProfile] = useState<KeycloakProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const pageBg = useColorModeValue('#f7f7f8', 'gray.900');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const kc = getKeycloak();
-      const result = await kc.loadUserProfile();
-      setProfile(result);
-    } catch (e) {
-      console.error('Failed to load Keycloak user profile:', e);
-      setError('Failed to load user profile from Keycloak.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const kc = getKeycloak();
   const tokenParsed = kc.tokenParsed as KeycloakTokenParsed | undefined;
 
-  const attributes = (profile?.attributes ?? {}) as Record<string, string[]>;
-  const attributeEntries = Object.entries(attributes);
+  const profile: KeycloakProfile | null = tokenParsed ? {
+    id: tokenParsed.sub,
+    username: tokenParsed.preferred_username,
+    email: tokenParsed.email as string | undefined,
+    emailVerified: tokenParsed.email_verified as boolean | undefined,
+    firstName: tokenParsed.given_name as string | undefined,
+    lastName: tokenParsed.family_name as string | undefined,
+    enabled: true,
+    attributes: {},
+  } : null;
+
+  const attributeEntries: [string, string[]][] = [];
 
   const fullName = [profile?.firstName, profile?.lastName]
     .filter(Boolean)
@@ -110,15 +94,6 @@ const UserProfileView: React.FC = () => {
           <HStack>
             <Button
               size="sm"
-              leftIcon={<RepeatIcon />}
-              variant="outline"
-              onClick={load}
-              isLoading={loading}
-            >
-              Refresh
-            </Button>
-            <Button
-              size="sm"
               colorScheme="brand"
               rightIcon={<ExternalLinkIcon />}
               as="a"
@@ -131,19 +106,7 @@ const UserProfileView: React.FC = () => {
           </HStack>
         </Flex>
 
-        {error && (
-          <Alert status="error" mb={4} borderRadius="md">
-            <AlertIcon />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {loading && !profile ? (
-          <Flex justify="center" py={20}>
-            <Spinner size="lg" />
-          </Flex>
-        ) : (
-          <VStack align="stretch" spacing={4}>
+        <VStack align="stretch" spacing={4}>
             <SectionCard title="Identity">
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 <Field label="User ID (sub)">
@@ -207,7 +170,6 @@ const UserProfileView: React.FC = () => {
               </SectionCard>
             )}
           </VStack>
-        )}
       </VStack>
     </Box>
   );
