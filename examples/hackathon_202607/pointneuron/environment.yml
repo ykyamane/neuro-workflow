@@ -11,7 +11,7 @@ name: neuroworkflow-hackathon
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.11           # 3.12 dropped the stdlib distutils that bmtk imports
   - pip
   # ABI-linked native stack from conda-forge (h5py here avoids the HDF5
   # wheel-vs-system conflict that Dockerfile.nest had to hand-patch):

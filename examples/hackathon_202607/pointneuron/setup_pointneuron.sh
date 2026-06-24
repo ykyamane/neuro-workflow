@@ -4,16 +4,17 @@
 # notebooks — WITHOUT cloning the repository.
 #
 #   Usage:   bash setup_pointneuron.sh
-#            PYTHON=python3.12 bash setup_pointneuron.sh   # force an interpreter
+#            PYTHON=python3.11 bash setup_pointneuron.sh   # force an interpreter
 #
 # Re-runnable (idempotent). Selects a NEST-compatible Python, creates a venv,
 # pip-installs neuroworkflow[pointnet,nest] (neuroworkflow + bmtk/h5py/matplotlib
 # + NEST's PyPI wheel) and jupyterlab from a pinned ref, then downloads the three
 # PointNeuron notebooks into ./notebooks.
 #
-# NEST publishes PyPI wheels only for macOS 15+ (arm64/x86_64) and Linux x86_64,
-# and only for CPython 3.9-3.13 (no 3.14 wheel yet). On unsupported platforms or
-# Python versions, use the conda path in README.md instead.
+# Requires CPython 3.9-3.11: bmtk imports the stdlib `distutils`, which was
+# removed in 3.12, and NEST has no 3.14 wheel. NEST PyPI wheels also require
+# macOS 15+ (arm64/x86_64) or Linux x86_64. On unsupported platforms/versions,
+# use the conda path in README.md instead.
 set -euo pipefail
 
 # ---- Configuration ----------------------------------------------------------
@@ -29,15 +30,16 @@ step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ok()   { printf '    \033[0;32m✓ %s\033[0m\n' "$*"; }
 trap 'printf "\n\033[1;31m✗ setup_pointneuron.sh failed (line %s). Re-run after fixing the error above.\033[0m\n" "$LINENO"' ERR
 
-# True if the given interpreter is CPython 3.9-3.13 (the NEST wheel range).
+# True if the given interpreter is CPython 3.9-3.11 (NEST wheel + distutils;
+# 3.12 removed the stdlib distutils that bmtk imports).
 py_compatible() {
-  "$1" -c 'import sys; raise SystemExit(0 if (3,9) <= sys.version_info[:2] <= (3,13) else 1)' >/dev/null 2>&1
+  "$1" -c 'import sys; raise SystemExit(0 if (3,9) <= sys.version_info[:2] <= (3,11) else 1)' >/dev/null 2>&1
 }
 
-# ---- 1. Select a NEST-compatible Python (3.9-3.13) -------------------------
-step "[1/5] Selecting a NEST-compatible Python (3.9-3.13)"
+# ---- 1. Select a compatible Python (3.9-3.11) ------------------------------
+step "[1/5] Selecting a compatible Python (3.9-3.11)"
 PYBASE=""
-for cand in "${PYTHON:-}" python3.12 python3.11 python3.13 python3.10 python3.9 python3; do
+for cand in "${PYTHON:-}" python3.11 python3.10 python3.9 python3; do
   [ -n "$cand" ] || continue
   command -v "$cand" >/dev/null 2>&1 || continue
   if py_compatible "$cand"; then PYBASE="$cand"; break; fi
@@ -45,12 +47,12 @@ done
 if [ -z "$PYBASE" ]; then
   printf '\033[1;31m'
   cat >&2 <<'MSG'
-    No CPython 3.9-3.13 found. NEST's PyPI wheels do not cover 3.14+, so pip
-    would try to build NEST from source and fail (needs GSL/OpenMP/ninja/...).
+    No CPython 3.9-3.11 found. bmtk needs the stdlib `distutils` (removed in
+    3.12) and NEST has no 3.14 wheel, so 3.12+ does not work for this stack.
     Fix one of:
       • Install a supported Python and re-run, e.g.:
-          brew install python@3.12
-          PYTHON=python3.12 bash setup_pointneuron.sh
+          brew install python@3.11
+          PYTHON=python3.11 bash setup_pointneuron.sh
       • Or use the conda path (all platforms) — see README.md (Path B).
 MSG
   printf '\033[0m'

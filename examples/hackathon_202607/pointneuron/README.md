@@ -15,7 +15,8 @@ All three use BMTK PointNet with the builtin `nest:iaf_psc_alpha` model and
 ## Path A — venv + pip, no clone (recommended)
 
 Works on **macOS 15+** (Apple Silicon / Intel) or **Linux x86_64** with
-CPython 3.9–3.13 — the platforms NEST ships PyPI wheels for.
+CPython **3.9–3.11** — the platforms NEST ships PyPI wheels for, within the
+versions that still bundle the stdlib `distutils` that bmtk needs.
 
 Download the one script and run it:
 
@@ -29,12 +30,12 @@ It creates a `.venv`, pip-installs `neuroworkflow[pointnet,nest]`
 from a pinned ref, verifies the stack imports, and downloads the three
 notebooks into `./notebooks`. It is idempotent — re-run any time.
 
-> **Python version matters.** NEST ships wheels only for CPython **3.9–3.13**
-> (no 3.14 wheel yet) — with 3.14, pip would try to build NEST from source and
-> fail. The script auto-selects a compatible interpreter from your `PATH`. If
-> your only `python3` is 3.14+, either install a supported one
-> (`brew install python@3.12`) and re-run, pass `PYTHON=python3.12 bash
-> setup_pointneuron.sh`, or use **Path B (conda)** below.
+> **Python version matters — use CPython 3.9–3.11.** bmtk imports the stdlib
+> `distutils`, which was **removed in 3.12**, and NEST has no 3.14 wheel — so
+> 3.12+ does not work for this stack. The script auto-selects a compatible
+> interpreter from your `PATH`. If your only `python3` is 3.12+, install a
+> supported one (`brew install python@3.11`) and re-run, pass
+> `PYTHON=python3.11 bash setup_pointneuron.sh`, or use **Path B (conda)** below.
 
 > **Before this PR is merged to `main`**, pin the branch:
 > ```bash
@@ -86,7 +87,7 @@ If you cloned the repo, install editable with both extras and run the notebooks
 in place:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3.11 -m venv .venv && source .venv/bin/activate   # use 3.9–3.11
 pip install -e ".[pointnet,nest]"   # venv+pip;  or use Path B's environment.yml
 cd notebooks && jupyter lab
 ```
@@ -113,6 +114,8 @@ MPLBACKEND=Agg jupyter nbconvert --to notebook --execute \
   with the production `Dockerfile.nest`, NEST 3.9).
 - **NEST PyPI wheel coverage:** macOS 15+ (arm64/x86_64) and Linux x86_64 only;
   other platforms have no wheel — use Path B.
+- **Python:** 3.9–3.11 only — bmtk imports the stdlib `distutils`, which was
+  removed in 3.12.
 - **numpy:** let the resolver pick a numpy 2.x matching the NEST/h5py builds;
   do not pin `numpy<2`.
 - The `pointnet` (and `nest`) extras live in the repo-root `pyproject.toml`;
