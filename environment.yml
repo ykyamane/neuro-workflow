@@ -3,8 +3,10 @@
 #   mamba env create -f environment.yml   # or: conda env create -f environment.yml
 #   conda activate neuroworkflow-hackathon
 #
-# NEST is not pip-installable here, so it (and the ABI-linked h5py/numpy) come
-# from conda-forge; neuroworkflow + bmtk come from pip. See HACKATHON_SETUP.md.
+# NEST, h5py and numpy come from conda-forge so this path works on all
+# platforms (incl. older macOS / Linux aarch64); neuroworkflow + bmtk come from
+# pip. For a lighter venv+pip alternative using NEST's PyPI wheels, see
+# HACKATHON_SETUP.md.
 name: neuroworkflow-hackathon
 channels:
   - conda-forge
