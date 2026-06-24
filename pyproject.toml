@@ -28,16 +28,15 @@ nest = ["nest-simulator>=3.0"]
 visualization = ["matplotlib>=3.4.0", "seaborn>=0.11.0"]
 dev = ["pytest>=6.0", "black", "isort", "mypy"]
 # BMTK PointNet (NEST) point-neuron stack used by the notebooks/NW_*_PointNeuron
-# notebooks. pandas is capped <2.3: pandas 3.0 makes StringDtype the default
-# string type, which BMTK cannot hand to numpy ("Cannot interpret StringDtype as
-# a data type"). Add the `nest` extra for NEST's PyPI wheel (macOS 15+/Linux
-# x86_64); on other platforms install NEST from conda-forge.
+# notebooks. Add the `nest` extra for NEST's PyPI wheel (macOS 15+/Linux x86_64);
+# on other platforms install NEST from conda-forge. Note: BMTK currently breaks
+# on pandas 3.0 (StringDtype), so the hackathon setup additionally pins
+# `pandas<2.3` — kept out of this published extra to avoid a permanent cap.
 # See examples/hackathon_202607/pointneuron/README.md.
 pointnet = [
     "bmtk>=1.1.0",
     "h5py>=3.10",
     "matplotlib>=3.6.0",
-    "pandas<2.3",
 ]
 
 [project.scripts]

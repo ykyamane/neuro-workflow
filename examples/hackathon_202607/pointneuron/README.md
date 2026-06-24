@@ -69,7 +69,7 @@ commercial-licensing concern.
 curl -fsSLO https://raw.githubusercontent.com/oist/neuro-workflow/main/examples/hackathon_202607/pointneuron/environment.yml
 conda env create -f environment.yml          # or: mamba env create -f environment.yml
 conda activate neuroworkflow-hackathon
-pip install "neuroworkflow[pointnet] @ git+https://github.com/oist/neuro-workflow.git"
+pip install "neuroworkflow[pointnet] @ git+https://github.com/oist/neuro-workflow.git" "pandas<2.3"
 
 # download the three notebooks:
 for nb in NW_SingleCell_PointNeuron NW_Ring_PointNeuron NW_BalancedNetwork_PointNeuron; do
@@ -88,7 +88,7 @@ in place:
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate   # use 3.9–3.11
-pip install -e ".[pointnet,nest]"   # venv+pip;  or use Path B's environment.yml
+pip install -e ".[pointnet,nest]" "pandas<2.3"   # venv+pip;  or use Path B
 cd notebooks && jupyter lab
 ```
 
@@ -118,8 +118,9 @@ MPLBACKEND=Agg jupyter nbconvert --to notebook --execute \
   removed in 3.12.
 - **numpy:** let the resolver pick a numpy 2.x matching the NEST/h5py builds;
   do not pin `numpy<2`.
-- **pandas:** capped `<2.3` (via the `pointnet` extra). pandas 3.0 defaults
-  string columns to `StringDtype`, which BMTK cannot hand to numpy
-  ("Cannot interpret StringDtype as a data type").
+- **pandas:** the setup pins `pandas<2.3` (in the install command, not the
+  published `pointnet` extra). pandas 3.0 defaults string columns to
+  `StringDtype`, which BMTK cannot hand to numpy ("Cannot interpret StringDtype
+  as a data type").
 - The `pointnet` (and `nest`) extras live in the repo-root `pyproject.toml`;
   `pip install "neuroworkflow[pointnet,nest]"` is what pulls the whole stack.

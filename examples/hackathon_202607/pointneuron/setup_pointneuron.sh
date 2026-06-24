@@ -78,10 +78,13 @@ PIPBIN="${VENV_DIR}/bin/pip"          # so this works regardless of fish/bash/zs
 # ---- 3. Dependencies (pinned, no clone) ------------------------------------
 step "[3/5] Installing neuroworkflow[pointnet,nest] + jupyterlab (pinned to ${NW_REF})"
 "$PYBIN" -m pip install --upgrade pip >/dev/null
+# pandas<2.3: BMTK breaks on pandas 3.0 (StringDtype). Pinned here, not in the
+# published `pointnet` extra, so the core library carries no permanent cap.
 "$PIPBIN" install \
   "neuroworkflow[pointnet,nest] @ git+https://github.com/oist/neuro-workflow.git@${NW_REF}" \
+  "pandas<2.3" \
   jupyterlab
-ok "neuroworkflow + bmtk + NEST wheel + jupyterlab installed"
+ok "neuroworkflow + bmtk + NEST wheel + jupyterlab installed (pandas<2.3)"
 
 # ---- 4. Verify the simulation stack imports --------------------------------
 step "[4/5] Verifying the simulation stack"
