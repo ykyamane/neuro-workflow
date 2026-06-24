@@ -118,5 +118,8 @@ MPLBACKEND=Agg jupyter nbconvert --to notebook --execute \
   removed in 3.12.
 - **numpy:** let the resolver pick a numpy 2.x matching the NEST/h5py builds;
   do not pin `numpy<2`.
+- **pandas:** capped `<2.3` (via the `pointnet` extra). pandas 3.0 defaults
+  string columns to `StringDtype`, which BMTK cannot hand to numpy
+  ("Cannot interpret StringDtype as a data type").
 - The `pointnet` (and `nest`) extras live in the repo-root `pyproject.toml`;
   `pip install "neuroworkflow[pointnet,nest]"` is what pulls the whole stack.
