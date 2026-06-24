@@ -29,6 +29,13 @@ It creates a `.venv`, pip-installs `neuroworkflow[pointnet,nest]`
 from a pinned ref, verifies the stack imports, and downloads the three
 notebooks into `./notebooks`. It is idempotent — re-run any time.
 
+> **Python version matters.** NEST ships wheels only for CPython **3.9–3.13**
+> (no 3.14 wheel yet) — with 3.14, pip would try to build NEST from source and
+> fail. The script auto-selects a compatible interpreter from your `PATH`. If
+> your only `python3` is 3.14+, either install a supported one
+> (`brew install python@3.12`) and re-run, pass `PYTHON=python3.12 bash
+> setup_pointneuron.sh`, or use **Path B (conda)** below.
+
 > **Before this PR is merged to `main`**, pin the branch:
 > ```bash
 > NW_REF=izumi/hackathon-pointneuron-setup bash setup_pointneuron.sh
