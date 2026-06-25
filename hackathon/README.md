@@ -38,9 +38,9 @@ Run the one-command script for your agent from a fresh working folder
 
 ```bash
 # Claude Code:
-bash examples/hackathon_202607/setup_claude.sh
+bash quick_setup/setup_claude.sh
 # Codex:
-bash examples/hackathon_202607/setup_codex.sh
+bash quick_setup/setup_codex.sh
 ```
 
 This creates a Python virtual environment, installs NeuroWorkflow + JupyterLab + matplotlib, makes a
