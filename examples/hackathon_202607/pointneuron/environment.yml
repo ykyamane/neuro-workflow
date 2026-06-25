@@ -1,0 +1,28 @@
+# Conda/mamba environment for the BMTK/NEST point-neuron notebooks — the
+# all-platform path (works where NEST has no PyPI wheel: older macOS, Linux
+# aarch64, etc.). See README.md.
+#
+#   conda env create -f environment.yml          # or: mamba env create -f ...
+#   conda activate neuroworkflow-hackathon
+#   pip install "neuroworkflow[pointnet] @ git+https://github.com/oist/neuro-workflow.git"
+#
+# NEST, h5py and numpy come from conda-forge; neuroworkflow + bmtk come from pip.
+name: neuroworkflow-hackathon
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11           # 3.12 dropped the stdlib distutils that bmtk imports
+  - pip
+  # ABI-linked native stack from conda-forge (h5py here avoids the HDF5
+  # wheel-vs-system conflict that Dockerfile.nest had to hand-patch):
+  - nest-simulator>=3.8,<3.11
+  - h5py>=3.10
+  - numpy>=1.24            # conda resolves the nest/h5py-compatible numpy 2.x
+  - matplotlib-base>=3.6   # -base avoids pulling Qt we don't need
+  # notebook execution / smoke-test tooling:
+  - jupyterlab
+  - nbconvert
+  - ipykernel
+  # neuroworkflow[pointnet] (which pulls bmtk) is installed with pip — see the
+  # header above. Kept out of this file so it has no repo-root dependency and
+  # there is no redundant double-install.
