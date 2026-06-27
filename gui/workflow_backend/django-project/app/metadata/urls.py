@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     ParameterSuggestionView,
     SpeciesSpecificParametersView,
+    BuiltinDatabaseListView,
     CustomDatabaseListView,
     CustomDatabaseDetailView,
     DatabaseConnectionTestView,
@@ -21,6 +22,12 @@ urlpatterns = [
         "parameters/species-specific/",
         SpeciesSpecificParametersView.as_view(),
         name="species-specific-parameters"
+    ),
+    # Built-in (always-on) database sources, read-only
+    path(
+        "builtin-databases/",
+        BuiltinDatabaseListView.as_view(),
+        name="builtin-database-list"
     ),
     # Custom database management endpoints
     path(

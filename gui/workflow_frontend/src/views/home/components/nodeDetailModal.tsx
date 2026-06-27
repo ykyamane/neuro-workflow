@@ -91,10 +91,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       };
       console.log('Request body for workflow node:', JSON.stringify(requestBody, null, 2));
 
+      const instanceAuthHeaders = await createAuthHeaders();
       response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...instanceAuthHeaders,
         },
         body: JSON.stringify(requestBody),
       });
@@ -196,10 +198,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         };
         console.log('Request body for workflow node:', JSON.stringify(requestBody, null, 2));
 
+        const paramAuthHeaders = await createAuthHeaders();
         response = await fetch(endpoint, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            ...paramAuthHeaders,
           },
           body: JSON.stringify(requestBody),
         });
@@ -216,10 +220,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
         };
         console.log('Request body for sidebar node:', JSON.stringify(requestBody, null, 2));
 
+        const authHeaders = await createAuthHeaders();
         response = await fetch(endpoint, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            ...authHeaders,
           },
           body: JSON.stringify(requestBody),
         });
@@ -608,12 +614,21 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
   };
 
   // Infer a Python-style type name from a raw (pre-conversion) JS value.
-  const getInferredType = (value: any): string => {
+  // schemaDefault is the original default_value from the node definition — used to
+  // distinguish float from int when the current value is a round number (e.g. 40.0 → 40).
+  const getInferredType = (value: any, schemaDefault?: any): string => {
     if (value === null || value === undefined) return 'None';
     if (typeof value === 'boolean') return 'bool';
     if (Array.isArray(value)) return 'list';
     if (typeof value === 'object') return 'dict';
-    if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float';
+    if (typeof value === 'number') {
+      // If the schema default was a float, treat this parameter as float regardless
+      // of whether the current value happens to be a round number.
+      if (schemaDefault !== undefined && typeof schemaDefault === 'number' && !Number.isInteger(schemaDefault)) {
+        return 'float';
+      }
+      return Number.isInteger(value) ? 'int' : 'float';
+    }
     if (typeof value === 'string') return 'str';
     return 'any';
   };
@@ -696,7 +711,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           >
             <VStack align="stretch" spacing={3}>
               <HStack justify="space-between" align="center">
-                <Text fontWeight="bold" fontSize="md" color="orange.200">"{key}"</Text>
+                <Text fontWeight="bold" fontSize="md" color="orange.400">"{key}"</Text>
                 <Tooltip label="Get AI suggestions for this parameter" hasArrow>
                   <IconButton
                     aria-label="Suggest values"
@@ -712,7 +727,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
               {param.description && (
                 <HStack align="start">
                   <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
-                  <Text fontSize="sm" color={textColor}>
+                  <Text fontSize="sm" color={textColor} whiteSpace="pre-wrap">
                     {param.description}
                   </Text>
                 </HStack>
@@ -769,7 +784,8 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
                       <HStack flex="1" spacing={1}>
                         {(() => {
                           const rawValue = getNodeParameterValue(key, 'default_value');
-                          const inferredType = getInferredType(rawValue);
+                          const schemaDefault = schema.parameters?.[key]?.default_value;
+                          const inferredType = getInferredType(rawValue, schemaDefault);
                           // Show strings with quotes so users know the type at a glance.
                           // For all other types use the existing float-aware formatter.
                           const displayStr =
@@ -1028,14 +1044,14 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
       <VStack spacing={3} align="stretch">
         {Object.entries(ports).map(([portName, portData]) => (
           <HStack key={portName} spacing={3} align="center">
-            <Text fontWeight="bold" fontSize="md" color={`${colorScheme}.200`}>
+            <Text fontWeight="bold" fontSize="md" color={`${colorScheme}.400`}>
               {portName}{portData.optional ? '' : '*'}
             </Text>
             <Text color={subtextColor}>:</Text>
             <Text
               fontWeight="semibold"
               fontSize="md"
-              color={`${renderDataTypeColor(portData.type || 'any')}.300`}
+              color={`${renderDataTypeColor(portData.type || 'any')}.400`}
             >
               type={portData.type || 'any'}<br/>
               description={portData.description || 'any'}<br/>
@@ -1070,12 +1086,12 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             boxShadow="sm"
           >
             <VStack align="stretch" spacing={3}>
-              <Text fontWeight="bold" fontSize="md" color="purple.200">"{methodName}"</Text>
+              <Text fontWeight="bold" fontSize="md" color="purple.400">"{methodName}"</Text>
 
               {method.description && (
                 <HStack align="start">
                   <Text fontSize="xs" color={subtextColor} minW="80px">description:</Text>
-                  <Text fontSize="sm" color={textColor}>
+                  <Text fontSize="sm" color={textColor} whiteSpace="pre-wrap">
                     {method.description}
                   </Text>
                 </HStack>
@@ -1134,7 +1150,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             <Box>
               {/* Inputs */}
               <Box>
-                <Text fontWeight="bold" fontSize="lg" mb={2} color="blue.300">
+                <Text fontWeight="bold" fontSize="lg" mb={2} color="blue.400">
                   ・Inputs
                 </Text>
                 <Box
@@ -1153,7 +1169,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
 
               {/* Outputs */}
               <Box marginTop={4}>
-                <Text fontWeight="bold" fontSize="lg" mb={2} color="green.300">
+                <Text fontWeight="bold" fontSize="lg" mb={2} color="green.400">
                   ・Outputs
                 </Text>
                 <Box
@@ -1172,7 +1188,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
             </Box>
             {/* Methods */}
             <Box>
-              <Text fontWeight="bold" fontSize="lg" mb={2} color="purple.300">
+              <Text fontWeight="bold" fontSize="lg" mb={2} color="purple.400">
                 ・Methods
               </Text>
               <Box
@@ -1191,7 +1207,7 @@ const NodeDetailsContent: React.FC<NodeDetailsContentProps> = ({ nodeData, onNod
           </SimpleGrid>
           {/* Parameters */}
           <Box>
-            <Text fontWeight="bold" fontSize="lg" mb={2} color="orange.300">
+            <Text fontWeight="bold" fontSize="lg" mb={2} color="orange.400">
               ・Parameters
             </Text>
             <Box

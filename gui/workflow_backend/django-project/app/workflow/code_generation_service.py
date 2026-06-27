@@ -298,6 +298,7 @@ class CodeGenerationService:
 """
 import sys
 import os
+import numpy as np
 
 # Add paths for JupyterLab environment
 sys.path.append('../../')
@@ -472,11 +473,16 @@ if __name__ == "__main__":
             # Sanitize parameter key to avoid Python keyword collisions
             safe_key = f"{key}_" if keyword.iskeyword(key) else key
             if isinstance(value, str):
+                trimmed = value.strip()
+                # Lambda expressions must be emitted bare — repr() would quote them
+                # into a string literal, making them uncallable at runtime.
+                if trimmed.startswith("lambda "):
+                    config_lines.append(f"            {safe_key}={trimmed}")
+                    continue
                 # If the string looks like a Python dict/list literal (e.g. it was
                 # saved with single quotes before frontend validation was in place),
                 # recover it with ast.literal_eval so the generated code gets a real
                 # dict/list rather than a quoted string.
-                trimmed = value.strip()
                 if trimmed.startswith(('{', '[')):
                     try:
                         parsed = ast.literal_eval(value)

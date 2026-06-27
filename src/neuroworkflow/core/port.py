@@ -57,31 +57,39 @@ class Port:
 
 class InputPort(Port):
     """Input port for a node."""
-    
-    def __init__(self, name: str, data_type: Type, description: str = "", 
-                optional: bool = False, port_type: Optional[PortType] = None):
+
+    def __init__(self, name: str, data_type: Type, description: str = "",
+                optional: bool = False, port_type: Optional[PortType] = None,
+                fan_in: bool = False):
         """Initialize an input port.
-        
+
         Args:
             name: Name of the port
             data_type: Python type for the port data
             description: Description of the port
             optional: Whether this port is optional
             port_type: PortType enum value (optional)
+            fan_in: Whether this port accepts multiple incoming connections.
+                    If True, get_value() returns a list of all connected source values.
+                    If False (default), only one connection is allowed (existing behaviour).
         """
         super().__init__(name, data_type, description, port_type)
         self.optional = optional
         self.connected_to = None
-    
+        self.fan_in = fan_in
+        self._fan_in_sources: List[Any] = []  # output ports feeding this fan-in port
+
     def get_value(self) -> Any:
         """Get the value of this port.
-        
-        If the port is connected to an output port, get the value from there.
-        Otherwise, return the local value.
-        
+
+        If fan_in=True, returns a list of values from all connected output ports.
+        Otherwise returns the single connected output port value (existing behaviour).
+
         Returns:
-            The port value
+            The port value, or a list of values when fan_in=True
         """
+        if self.fan_in:
+            return [src.value for src in self._fan_in_sources]
         if self.connected_to is not None:
             return self.connected_to.value
         return self.value

@@ -183,19 +183,33 @@ class KeycloakAuthentication(_BearerAuthentication):
         # explicit override. NOTE: KEYCLOAK_ISSUER must reference the same
         # realm as KEYCLOAK_URL/KEYCLOAK_REALM — a wrong-realm value will
         # cause all logins to fail at JWT verification. See env.template.
-        issuer = (
+        default_issuer = (
             getattr(settings, "KEYCLOAK_ISSUER", None)
             or f"{kc_url}/realms/{kc_realm}"
         )
+        # Multi-domain deployments: Keycloak stamps the token issuer with the
+        # hostname the user logged in through (e.g. snnbuilder.riken.jp AND
+        # neuro-workflow.dbrain.jp), so accept any configured public issuer.
+        # The signature (RS256 via the realm JWKS) and the client (azp/aud)
+        # checks below are what actually authenticate the token; the issuer is
+        # restricted to a known allow-list rather than verified as a single value.
+        allowed_issuers = {default_issuer}
+        for iss in (getattr(settings, "KEYCLOAK_ISSUERS", "") or "").split(","):
+            if iss.strip():
+                allowed_issuers.add(iss.strip())
+
         kc_client = getattr(settings, "KEYCLOAK_CLIENT_ID", None)
 
         decode_kwargs: dict = {
-            "issuer": issuer,
             "options": {"verify_aud": False},
         }
 
         try:
             payload = _verify_rs256(token, jwks_url, **decode_kwargs)
+            if payload.get("iss") not in allowed_issuers:
+                raise jwt.InvalidTokenError(
+                    f"Untrusted token issuer: {payload.get('iss')}"
+                )
             _verify_keycloak_client(payload, kc_client)
         except jwt.ExpiredSignatureError:
             raise exceptions.AuthenticationFailed("Token has expired.")

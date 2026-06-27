@@ -5,6 +5,12 @@ ARG NEST_VERSION=3.9
 
 ENV TZ=Asia/Tokyo DEBIAN_FRONTEND=noninteractive OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Disable HDF5 advisory file locking — the container/overlay filesystem does not
+# support it, so BMTK's build->save->re-open of SONATA .h5 files fails with
+# "unable to lock file, errno = 11". Hits networks with edges (e.g. balanced E/I);
+# a no-edge single cell slips through. Covers all HDF5 users (BMTK + TVB).
+ENV HDF5_USE_FILE_LOCKING=FALSE
+
 RUN apt-get update && apt-get install -y --no-install-recommends \ 
 	ca-certificates locales tzdata \
 	python3 python3-venv python3-pip python3-dev \
@@ -89,7 +95,7 @@ RUN python3 -m venv /root/.env && \
 	echo "source /root/.env/bin/activate" >> /root/.bashrc && \
 	cd nest-simulator && \
 	pip install --upgrade pip wheel && \
-	pip install --no-cache-dir Cython numpy boost setuptools gsl meson-python ninja && \
+	pip install --no-cache-dir Cython "numpy<2.5" boost setuptools gsl meson-python ninja && \
 	pip install -v --no-cache-dir --no-build-isolation --force-reinstall --check-build-dependencies --no-binary pygsl pygsl && \
 	pip install --no-cache-dir -r requirements.txt
 
@@ -119,8 +125,8 @@ RUN . /root/.env/bin/activate && \
 	rm -rf ${SRC_PATH}/nest-build ${SRC_PATH}/nest-simulator
 
 RUN . /root/.env/bin/activate && \
-	pip install --no-cache-dir nestml nest-desktop pandas jupyterlab notebook \
-		jupyterhub tvb-library tvb-framework statsmodels hdf5storage \
+	pip install --no-cache-dir nestml nest-desktop "pandas>=2.2,<3.0" jupyterlab notebook \
+		jupyterhub tvb-library tvb-framework statsmodels hdf5storage bmtk "numpy<2.5" \
 		httpx ipywidgets \
 		"siibra==1.0.1a15" "traitlets==5.14.3" && \
 	find /root/.cache -type f -delete
@@ -131,7 +137,7 @@ RUN . /root/.env/bin/activate && \
 # Use h5py >=3.13 (first version with HDF5 1.14.x support and Cython 3
 # compatibility) to ensure it builds in this environment.
 RUN . /root/.env/bin/activate && \
-	HDF5_DIR=${HDF5_DIR} pip install --no-cache-dir --no-binary=h5py --force-reinstall "h5py>=3.13" && \
+	HDF5_DIR=${HDF5_DIR} pip install --no-cache-dir --no-binary=h5py --force-reinstall "h5py>=3.13" "numpy<2.5" && \
 	find /root/.cache -type f -delete
 
 # --- In-notebook Claude agent (Node.js + Claude Code CLI + claude-agent-sdk) ---

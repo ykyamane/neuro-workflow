@@ -65,5 +65,9 @@ services:
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_RELATIVE_PATH=/auth
       - KC_HTTP_ENABLED=true
-      - KC_HOSTNAME=${KEYCLOAK_HOSTNAME:-snnbuilder.riken.jp}
+      # No KC_HOSTNAME: with hostname-strict=false Keycloak derives the public
+      # hostname per-request (from the proxied Host/X-Forwarded-* headers), so
+      # login works on every domain it is served on (snnbuilder.riken.jp,
+      # neuro-workflow.dbrain.jp, www.dbrain.jp). Pinning it to one host makes
+      # the login form POST cross-host from the other domains and breaks auth.
       - KC_HOSTNAME_STRICT=false

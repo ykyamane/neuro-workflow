@@ -102,7 +102,7 @@ class Node:
             if isinstance(port_def, PortDefinition):
                 port_type = port_def.type if isinstance(port_def.type, PortType) else None
                 data_type = port_def.type.to_python_type() if isinstance(port_def.type, PortType) else port_def.type
-                self.register_input(name, data_type, port_def.description, port_def.optional, port_type)
+                self.register_input(name, data_type, port_def.description, port_def.optional, port_type, port_def.fan_in)
             elif isinstance(port_def, dict):
                 data_type = port_def.get('type', object)
                 if isinstance(data_type, str):
@@ -143,8 +143,9 @@ class Node:
         """
         pass
     
-    def register_input(self, name: str, data_type: Type, description: str = "", 
-                      optional: bool = False, port_type: Optional[PortType] = None) -> InputPort:
+    def register_input(self, name: str, data_type: Type, description: str = "",
+                      optional: bool = False, port_type: Optional[PortType] = None,
+                      fan_in: bool = False) -> InputPort:
         """Register an input port with type information.
         
         Args:
@@ -157,7 +158,7 @@ class Node:
         Returns:
             The created input port
         """
-        port = InputPort(name, data_type, description, optional, port_type)
+        port = InputPort(name, data_type, description, optional, port_type, fan_in)
         self._input_ports[name] = port
         return port
     
@@ -337,7 +338,10 @@ class Node:
                            f"({target_port.data_type.__name__})")
                            
         source_port.connected_to.append(target_port)
-        target_port.connected_to = source_port
+        if target_port.fan_in:
+            target_port._fan_in_sources.append(source_port)
+        else:
+            target_port.connected_to = source_port
     
     def get_optimizable_parameters(self) -> Dict[str, Dict[str, Any]]:
         """Get all optimizable parameters with their metadata.
@@ -493,9 +497,14 @@ class Node:
         """
         # Check that all required input ports have values or connections
         for name, port in self._input_ports.items():
-            if not port.optional and port.value is None and port.connected_to is None:
-                print(f"Required input port '{name}' in node '{self.name}' has no value or connection")
-                return False
+            if port.fan_in:
+                if not port.optional and len(port._fan_in_sources) == 0:
+                    print(f"Required fan-in port '{name}' in node '{self.name}' has no connections")
+                    return False
+            else:
+                if not port.optional and port.value is None and port.connected_to is None:
+                    print(f"Required input port '{name}' in node '{self.name}' has no value or connection")
+                    return False
                 
         return True
         

@@ -50,6 +50,7 @@ export const CalculationNode = ({
       description: data.description,
       port_direction: 'input',
       optional: data.optional,
+      fan_in: data.fan_in === true,
     })),
     ...outputEntries.map(([name, data]) => ({
       name,
@@ -57,6 +58,7 @@ export const CalculationNode = ({
       description: data.description,
       port_direction: 'output',
       optional: data.optional,
+      fan_in: false,
     }))
   ];
 
@@ -343,7 +345,7 @@ export const CalculationNode = ({
                     position={Position.Left}
                     id={generateHandleId(id, field.name, 'input', field.type)}
                     style={{
-                      background: '#3182ce',
+                      background: field.fan_in ? '#dd6b20' : '#3182ce',
                       border: '2px solid #fff',
                       width: 12,
                       height: 12,
@@ -351,7 +353,7 @@ export const CalculationNode = ({
                       top: '50%',
                       transform: 'translateY(-50%)',
                       position: 'absolute',
-                      boxShadow: '0 0 0 2px #3182ce40',
+                      boxShadow: field.fan_in ? '0 0 0 2px #dd6b2040' : '0 0 0 2px #3182ce40',
                     }}
                     isConnectable={isConnectable}
                   />
@@ -394,14 +396,14 @@ export const CalculationNode = ({
               position={Position.Left}
               id={generateHandleId(id, name, 'input', data.type || 'any')}
               style={{
-                background: '#3182ce',
+                background: data.fan_in === true ? '#dd6b20' : '#3182ce',
                 border: '2px solid #fff',
                 width: 10,
                 height: 10,
                 left: -5,
                 top: `${((index + 1) / (inputEntries.length + 1)) * 100}%`,
                 position: 'absolute',
-                boxShadow: '0 0 0 2px #3182ce40',
+                boxShadow: data.fan_in === true ? '0 0 0 2px #dd6b2040' : '0 0 0 2px #3182ce40',
               }}
               isConnectable={isConnectable}
             />
