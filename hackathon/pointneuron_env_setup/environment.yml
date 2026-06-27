@@ -15,7 +15,7 @@ dependencies:
   - pip
   # ABI-linked native stack from conda-forge (h5py here avoids the HDF5
   # wheel-vs-system conflict that Dockerfile.nest had to hand-patch):
-  - nest-simulator>=3.8,<3.11
+  - nest-simulator=3.9
   - h5py>=3.10
   - numpy>=1.24            # conda resolves the nest/h5py-compatible numpy 2.x
   - matplotlib-base>=3.6   # -base avoids pulling Qt we don't need
