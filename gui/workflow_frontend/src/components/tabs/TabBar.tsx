@@ -67,7 +67,7 @@ const TabBar: React.FC = () => {
             >
               {/* tab icon */}
               <Text fontSize="sm">
-                {tab.type === 'workflow' ? '🔬' : '📊'}
+                {tab.type === 'workflow' ? '🔬' : tab.type === 'viewer' ? '🧠' : '📊'}
               </Text>
 
               {/* tab title */}
@@ -81,8 +81,8 @@ const TabBar: React.FC = () => {
                 {tab.title}
               </Text>
 
-              {/* Close button (JupyterLab tab only) */}
-              {tab.type === 'jupyter' && (
+              {/* Close button (non-workflow tabs only) */}
+              {tab.type !== 'workflow' && (
                 <Tooltip label="Close tab" fontSize="xs">
                   <IconButton
                     aria-label="Close tab"

@@ -29,6 +29,9 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      # Real Anthropic key, injected by the /api/chat/anthropic proxy for the
+      # in-kernel Claude notebook agent. The kernel never receives this value.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - MCP_SERVER_URL=http://mcp:8001
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-dev-token-change-in-production}
       - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
@@ -49,6 +52,9 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-dev-token-change-in-production}
+      # Optional model override for the in-kernel Claude agent (empty = CLI default).
+      # The spawner forwards this into each single-user container.
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
       - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:rw
