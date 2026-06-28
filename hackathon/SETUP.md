@@ -1,12 +1,13 @@
 # NeuroWorkflow Hackathon — Participant Setup
 
-> **Fastest path — use the official one-command script for your agent** (in this repo):
+> **Fastest path — use the official one-command script for your agent.** Run it from **your
+> own working folder** (keep the hackathon kit as read-only reference):
 >
 > ```bash
 > # Claude Code:
-> bash quick_setup/setup_claude.sh
+> bash /path/to/hackathon/quick_setup/setup_claude.sh
 > # Codex:
-> bash quick_setup/setup_codex.sh
+> bash /path/to/hackathon/quick_setup/setup_codex.sh
 > ```
 >
 > Each script is idempotent and does everything below automatically: creates the venv, installs a

@@ -37,11 +37,6 @@ notebooks into `./notebooks`. It is idempotent — re-run any time.
 > supported one (`brew install python@3.11`) and re-run, pass
 > `PYTHON=python3.11 bash setup_pointneuron.sh`, or use **Path B (conda)** below.
 
-> **Before this PR is merged to `main`**, pin the branch:
-> ```bash
-> NW_REF=izumi/hackathon-pointneuron-setup bash setup_pointneuron.sh
-> ```
-
 Then:
 
 ```bash

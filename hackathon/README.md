@@ -1,59 +1,43 @@
-# NeuroWorkflow Hackathon — Participant Guide
+# Theme 2 — Build NeuroWorkflow nodes from your own code
 
-Welcome! In this hackathon you will turn **your own Python code** into reusable **NeuroWorkflow nodes**
-and a **workflow**, with an AI coding agent doing most of the heavy lifting. You then run it locally,
+> Part of the **NeuroWorkflow Hackathon** kit. Start with
+> [`PARTICIPANT_GUIDE.md`](./PARTICIPANT_GUIDE.md) for the overview, the core concepts, and
+> Theme 1. **This file is the detailed step-by-step walkthrough for Theme 2.**
+
+In Theme 2 you turn **your own Python code** into reusable **NeuroWorkflow nodes** and a
+**workflow**, with an AI coding agent doing most of the heavy lifting. You then run it locally,
 upload it to the NeuroWorkflow web app, and execute it on the server.
 
-**No prior NeuroWorkflow experience is required.** The agent + the `create-node` skill guide every step.
+**No prior NeuroWorkflow experience is required.** The agent + the `create-node` skill guide
+every step.
 
 ---
 
-## What is a node / a workflow?
+## Setup
 
-- A **node** is a Python class wrapping one scientific operation (e.g. "build network", "run simulation",
-  "compute firing rates"). It declares its inputs, outputs, and parameters so it can be connected to other
-  nodes — even ones written by other teams or other simulators.
-- A **workflow** is a graph of connected nodes. Running it executes the nodes in order and passes data
-  along the connections.
-
-The 5-minute example in `examples/hello_node/` shows both, with no simulator needed.
-
----
-
-## Before you come
-
-| Item | Detail |
-|------|--------|
-| **Register** | Send your name, affiliation, and email. We create your NeuroWorkflow account in advance. |
-| **Bring your code** | Any Python you have — a model, preprocessing, analysis, or simulation. **Unstructured is fine** — that is the starting point. |
-| **AI agent** | Bring your own **Claude Code** (preferred) or **Codex** subscription. If you don't have one, OpenAI API keys are provided — install **Codex** in that case. |
-| **Laptop** | Python 3 + pip. If your code needs **NEST / TVB** (or another simulator), install it locally if you can (conda recommended for NEST) so you can test. The organizers will make sure the simulators your run needs are available on the server — ask if your local install fails. |
-
----
-
-## Setup (once, at the start)
-
-Run the one-command script for your agent from a fresh working folder
-(full details and a manual fallback are in [`SETUP.md`](./SETUP.md)):
+From your own working folder, run the one-command script for your agent — keep the hackathon
+kit as read-only reference (full details and a manual fallback are in [`SETUP.md`](./SETUP.md)):
 
 ```bash
 # Claude Code:
-bash quick_setup/setup_claude.sh
+bash /path/to/hackathon/quick_setup/setup_claude.sh
 # Codex:
-bash quick_setup/setup_codex.sh
+bash /path/to/hackathon/quick_setup/setup_codex.sh
 ```
 
-This creates a Python virtual environment, installs NeuroWorkflow + JupyterLab + matplotlib, makes a
-`source_code/` folder (drop your code here) and a `my_nodes/` folder (the agent writes here), and installs
-the `create-node` skill for your agent.
+This creates a Python virtual environment, installs NeuroWorkflow + JupyterLab + matplotlib,
+makes a `source_code/` folder (drop your code here) and a `my_nodes/` folder (the agent writes
+here), and installs the `create-node` skill for your agent.
 
-**Sanity check — get a green run first.** Before using your own code, run the tiny example so you know the
-toolchain works and you can see what a finished node looks like:
+**Sanity check — get a green run first.** Before using your own code, run the tiny
+dependency-free example (no simulator) so you know the toolchain works and you can see what a
+finished node looks like. With your venv active:
 
 ```bash
-cd hackathon/examples/hello_node
-python workflow.py        # compare the printed numbers with EXPECTED_OUTPUT.md
+python /path/to/hackathon/examples/hello_node/workflow.py   # compare with EXPECTED_OUTPUT.md
 ```
+
+(`SETUP.md` step C-2 also shows how to fetch this example straight into your working folder.)
 
 ---
 
@@ -100,22 +84,5 @@ You drive **steps 1–2** locally with your agent. Steps **3–4** happen in the
 
 ---
 
-## Support
-
-A built-in AI assistant is available inside the platform for participants who prefer not to use Claude
-Code or Codex directly. **Working locally with a coding agent is the recommended path** — it gives you
-full control over node development. If a simulator install fails or anything blocks you, ask an organizer
-rather than burning session time.
-
----
-
-## What's in this folder
-
-| File | Purpose |
-|------|---------|
-| [`README.md`](./README.md) | This guide. |
-| [`SETUP.md`](./SETUP.md) | Exact setup steps (scripts + manual fallback) for both agents. |
-| [`CLAUDE.md`](./CLAUDE.md) / [`AGENTS.md`](./AGENTS.md) | The agent's instructions (identical; Claude Code reads `CLAUDE.md`, Codex reads `AGENTS.md`). |
-| [`check_node.py`](./check_node.py) | Deterministic node validator (`ALL NODES PASSED` / failures). |
-| [`examples/hello_node/`](./examples/hello_node/) | The dependency-free 5-minute green-run example. |
-| [`examples/sample_target/`](./examples/sample_target/) | A realistic unstructured script to use as input if you didn't bring your own code. |
+For the file index, the core concepts, Theme 1, and support, see
+[`PARTICIPANT_GUIDE.md`](./PARTICIPANT_GUIDE.md).
