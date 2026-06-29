@@ -32,12 +32,15 @@ class LocalExecutor(ExecutionBackend):
         project_name: str,
         code: str,
         *,
+        run_id: Optional[str] = None,
         resource_requests: Optional[dict] = None,
     ) -> ExecutionResult:
         result = ExecutionResult(
             status=ExecutionStatus.PENDING,
             submitted_at=datetime.now(timezone.utc),
         )
+        if run_id:
+            result.run_id = run_id
         project_dir = self.code_dir / str(workflow_id)
         script_path = project_dir / "workflow.py"
 
@@ -90,7 +93,13 @@ class LocalExecutor(ExecutionBackend):
         finally:
             res.finished_at = datetime.now(timezone.utc)
 
-    def get_status(self, run_id: str) -> ExecutionResult:
+    def get_status(
+        self,
+        run_id: str,
+        *,
+        job_id: Optional[str] = None,
+        remote_dir: Optional[str] = None,
+    ) -> ExecutionResult:
         entry = _runs.get(run_id)
         if not entry:
             r = ExecutionResult(run_id=run_id, status=ExecutionStatus.FAILED)
@@ -98,7 +107,7 @@ class LocalExecutor(ExecutionBackend):
             return r
         return entry["result"]
 
-    def get_logs(self, run_id: str) -> str:
+    def get_logs(self, run_id: str, *, remote_dir: Optional[str] = None) -> str:
         entry = _runs.get(run_id)
         if not entry:
             return ""
@@ -112,7 +121,7 @@ class LocalExecutor(ExecutionBackend):
             parts.append(f"ERROR: {res.error}")
         return "\n".join(parts)
 
-    def cancel(self, run_id: str) -> bool:
+    def cancel(self, run_id: str, *, job_id: Optional[str] = None) -> bool:
         entry = _runs.get(run_id)
         if not entry:
             return False
