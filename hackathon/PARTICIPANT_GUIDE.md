@@ -39,6 +39,7 @@ reference material, and run the scripts from a separate folder of your own (exam
 | Item | Detail |
 |------|--------|
 | **Register** | Send your name, affiliation, and email. We create your NeuroWorkflow account in advance. |
+| **Hackathon pack** | **UNZIP** the zip provided by the organizers. Also available [here (Dropbox)](https://www.dropbox.com/scl/fi/6lipi9jdos6d4lpqybi3g/hackathon.zip?rlkey=jd6ulrd0ts2ag16r7whvl0vt4&st=k4sz6wvt&dl=0). |
 | **Laptop** | Python 3 + pip. Theme 1 needs **NEST** (the setup script installs it via a pip wheel on macOS 15+/Linux x86_64, Python 3.9–3.11; conda fallback otherwise). If a simulator won't install locally, you can still run on the server, where NEST/TVB are preinstalled. |
 | **Bring your code** *(Theme 2)* | Any Python you have — a model, preprocessing, analysis, or simulation. **Unstructured is fine** — that is the starting point. |
 | **AI agent** *(Theme 2)* | Bring your own **Claude Code** (preferred) or **Codex** subscription. If you don't have one, OpenAI API keys are provided — install **Codex** in that case. |
@@ -61,6 +62,10 @@ path is simply:
 bash /path/to/hackathon/pointneuron_env_setup/setup_pointneuron.sh
 ```
 
+> **If the command above fails,** check
+> [`pointneuron_env_setup/README.md`](./pointneuron_env_setup/README.md) → **## Path B — conda /
+> mamba (all platforms)**.
+
 This creates a venv, installs NeuroWorkflow + NEST + BMTK + JupyterLab, and downloads the
 three notebooks into `./notebooks`. It requires **CPython 3.9–3.11** on macOS 15+ or
 Linux x86_64. On other platforms/versions (older macOS, Linux aarch64, Windows), use the
@@ -81,7 +86,7 @@ Three example workflows are provided, built with the NW Model Builder nodes:
 
 - `NW_SingleCell_PointNeuron.ipynb` — a single point-neuron driven by a current clamp.
 - `NW_BalancedNetwork_PointNeuron.ipynb` — an excitatory/inhibitory balanced network.
-- `NW_Ring_PointNeuron.ipynb` — a ring-topology network.
+- `NW_Ring_PointNeuron.ipynb` — a ring-topology network (3 neurons).
 
 Run each notebook locally and follow the NeuroWorkflow Python API as you go. The pattern is
 the same in all three:
@@ -146,7 +151,25 @@ bash /path/to/hackathon/quick_setup/setup_codex.sh
 Each script creates a venv, installs a pinned NeuroWorkflow + JupyterLab + matplotlib, makes a
 `source_code/` folder (drop your code here) and a `my_nodes/` folder (the agent writes here),
 and installs the `create-node` skill for your agent. Full details — both agents, the manual
-fallback, and a dependency-free **green-run** sanity check — are in [`SETUP.md`](./SETUP.md).
+fallback, and a dependency-free **green-run** sanity check — are in [`SETUP.md`](./SETUP.md)
+(also: https://github.com/oist/neuro-workflow/blob/main/hackathon/SETUP.md).
+
+Then start Claude Code or Codex in this folder and prompt the agent. For example:
+
+**Claude Code:**
+
+> Use the `/create-node` skill. Look in the `source_code/` folder, find the main Python file(s),
+> analyze the code, and propose the nodes to build. Ask me to confirm the breakdown before you
+> write anything. Save the nodes AND two workflow files (`.py` and `.ipynb`) in the `my_nodes/`
+> folder. Then smoke-test each node and run the workflow so we can see the outputs.
+
+**Codex:**
+
+> Use the create-node skill (`$create-node`). Look in the `source_code/` folder, find the main
+> Python file(s), analyze the code, and propose the nodes to build. Ask me to confirm the
+> breakdown before you write anything. Save the nodes AND two workflow files (`.py` and `.ipynb`)
+> in the `my_nodes/` folder. Then smoke-test each node and run the workflow so we can see the
+> outputs.
 
 ### Step-by-step walkthrough
 

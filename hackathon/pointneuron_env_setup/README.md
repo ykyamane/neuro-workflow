@@ -71,7 +71,7 @@ for nb in NW_SingleCell_PointNeuron NW_Ring_PointNeuron NW_BalancedNetwork_Point
   curl -fsSL -O "https://raw.githubusercontent.com/oist/neuro-workflow/main/notebooks/$nb.ipynb"
 done
 
-cd notebooks && jupyter lab    # or run jupyter lab and open the .ipynb files
+jupyter lab    # open the .ipynb files
 ```
 
 ---
