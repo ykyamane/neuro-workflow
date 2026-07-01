@@ -12,6 +12,13 @@
 services:
   backend:
     command: bash -c "python3 django-project/manage.py migrate --noinput && cd django-project && gunicorn config.wsgi:application --bind 0.0.0.0:3000 --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-180}"
+    # Mount the passphrase-protected SSH key read-only for the remote Slurm
+    # backend. An admin unlocks it once per restart via:
+    #   docker exec -e SSH_AUTH_SOCK=/tmp/ssh-agent.sock -it <backend> \
+    #       ssh-add /root/.ssh/id_ed25519
+    # (Appended to the base service's volumes; the key is never written to.)
+    volumes:
+      - ${SLURM_SSH_KEY_HOST:-/root/.ssh/id_ed25519}:/root/.ssh/id_ed25519:ro
     environment:
       - MCP_SERVER_URL=http://mcp:8001
       - ALLOWED_HOSTS_ALL=false
@@ -20,6 +27,18 @@ services:
       - CSRF_TRUSTED_ORIGINS_EXTRA=${CSRF_TRUSTED_ORIGINS_EXTRA:-https://snnbuilder.riken.jp}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-false}
       - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
+      # --- Remote Slurm execution (RIKEN compute server) ---------------------
+      # Additive and OFF by default: these only take effect when a workflow run
+      # is submitted with backend=slurm. SLURM_SSH_KEY is intentionally NOT set
+      # so the executor authenticates via the ssh-agent (see entrypoint.sh).
+      - SSH_AUTH_SOCK=/tmp/ssh-agent.sock
+      - SLURM_HOST=${SLURM_HOST:-digitalbrain.brainminds.jp}
+      - SLURM_USER=${SLURM_USER:-neuro-workflow}
+      - SLURM_REMOTE_DIR=${SLURM_REMOTE_DIR:-/data/neuro-workflow/runs}
+      - SLURM_PARTITION=${SLURM_PARTITION:-ccalc}
+      - SLURM_ACCOUNT=${SLURM_ACCOUNT:-kobetsu_neuro-workflow}
+      - SLURM_REMOTE_VENV=${SLURM_REMOTE_VENV:-/data/neuro-workflow/local/venv}
+      - SLURM_PYTHON_MODULE=${SLURM_PYTHON_MODULE:-python/3.11.14}
 
   jupyterhub:
     environment:

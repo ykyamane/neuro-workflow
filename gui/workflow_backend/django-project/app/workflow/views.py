@@ -1243,11 +1243,16 @@ class WorkflowRunSubmitView(APIView):
                 workflow_id=str(workflow_id),
                 project_name=project_name,
                 code=code,
+                run_id=str(run.id),
                 resource_requests=resource_reqs,
             )
             run.status = exec_result.status.value
             if exec_result.remote_job_id:
                 run.slurm_job_id = exec_result.remote_job_id
+            if exec_result.remote_run_dir:
+                run.remote_run_dir = exec_result.remote_run_dir
+            if exec_result.error:
+                run.error_message = exec_result.error
             run.save()
         except Exception as exc:
             logger.exception("Failed to submit run %s", run.id)
@@ -1284,7 +1289,11 @@ class WorkflowRunDetailView(APIView):
         ):
             executor = _get_executor(run.backend)
             try:
-                exec_result = executor.get_status(str(run.id))
+                exec_result = executor.get_status(
+                    str(run.id),
+                    job_id=run.slurm_job_id or None,
+                    remote_dir=run.remote_run_dir or None,
+                )
                 run.status = exec_result.status.value
                 if exec_result.exit_code is not None:
                     run.exit_code = exec_result.exit_code
@@ -1345,7 +1354,7 @@ class WorkflowRunCancelView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         executor = _get_executor(run.backend)
-        cancelled = executor.cancel(str(run.id))
+        cancelled = executor.cancel(str(run.id), job_id=run.slurm_job_id or None)
         if cancelled:
             run.status = WorkflowRun.Status.CANCELLED
             run.save()

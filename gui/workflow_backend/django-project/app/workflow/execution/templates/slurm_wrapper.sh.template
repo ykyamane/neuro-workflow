@@ -1,21 +1,27 @@
 #!/bin/bash
 # ============================================================================
-# NeuroWorkflow Slurm Job Wrapper
+# NeuroWorkflow Slurm Job Wrapper (RIKEN compute server)
 #
-# This template is staged alongside the generated Python script on the
-# compute node.  The RemoteSlurmExecutor fills in the {{placeholders}}
-# before submission.
+# Staged next to the generated workflow.py and submitted with sbatch. The
+# RemoteSlurmExecutor fills in the {{placeholders}} before submission.
 #
-# Outputs:
-#   stdout.log      – captured standard output
-#   stderr.log      – captured standard error
-#   exit_code.txt   – numeric exit code of the Python script
-#   manifest.json   – job metadata written after completion
+# RIKEN constraints baked in:
+#   * No conda (institutional licensing) -- we use Environment Modules + a venv
+#     under /data/neuro-workflow/local.
+#   * OS /tmp is tiny -- TMPDIR is redirected into the per-run directory.
+#   * The job only processes data already in /data/neuro-workflow (no network
+#     downloads during execution).
+#
+# Outputs (in RUN_DIR):
+#   stdout.log / stderr.log  -- captured Python output
+#   exit_code.txt            -- numeric exit code of workflow.py
+#   manifest.json            -- job metadata written after completion
 # ============================================================================
 
 #SBATCH --job-name={{JOB_NAME}}
 #SBATCH --output={{RUN_DIR}}/slurm-%j.out
 #SBATCH --error={{RUN_DIR}}/slurm-%j.err
+#SBATCH --chdir={{RUN_DIR}}
 {{SBATCH_EXTRAS}}
 
 set -uo pipefail
@@ -25,6 +31,10 @@ SCRIPT="{{SCRIPT_NAME}}"
 
 cd "${RUN_DIR}" || exit 1
 
+# Keep heavy temp files off the tiny OS /tmp (RIKEN guidance).
+export TMPDIR="${RUN_DIR}/tmp"
+mkdir -p "${TMPDIR}"
+
 echo "=== NeuroWorkflow Job ==="
 echo "Run ID:    {{RUN_ID}}"
 echo "Project:   {{PROJECT_NAME}}"
@@ -32,21 +42,23 @@ echo "Node:      $(hostname)"
 echo "Start:     $(date -Iseconds)"
 echo "========================="
 
-# ── Environment setup ──────────────────────────────────────────────────
-# Activate a conda/venv environment if configured.
-if [ -n "${NW_CONDA_ENV:-}" ]; then
-    source "$(conda info --base)/etc/profile.d/conda.sh"
-    conda activate "${NW_CONDA_ENV}"
-elif [ -n "${NW_VENV_PATH:-}" ]; then
-    source "${NW_VENV_PATH}/bin/activate"
+# -- Environment setup (Environment Modules + venv; NO conda) ----------------
+# Load the system Python module, then activate the project venv that carries
+# neuroworkflow (and, for simulator jobs, the self-built NEST/TVB modules).
+if command -v module >/dev/null 2>&1; then
+    module load {{PYTHON_MODULE}} 2>/dev/null || true
+fi
+if [ -d "{{VENV_PATH}}" ]; then
+    # shellcheck disable=SC1091
+    source "{{VENV_PATH}}/bin/activate"
 fi
 
-# ── Execution ──────────────────────────────────────────────────────────
+# -- Execution ---------------------------------------------------------------
 python "${SCRIPT}" > stdout.log 2> stderr.log
 EXIT_CODE=$?
 echo ${EXIT_CODE} > exit_code.txt
 
-# ── Manifest ───────────────────────────────────────────────────────────
+# -- Manifest ----------------------------------------------------------------
 cat > manifest.json <<MANIFEST_EOF
 {
   "run_id": "{{RUN_ID}}",
@@ -54,7 +66,6 @@ cat > manifest.json <<MANIFEST_EOF
   "script": "${SCRIPT}",
   "exit_code": ${EXIT_CODE},
   "node": "$(hostname)",
-  "start_time": "$(date -Iseconds -r stdout.log 2>/dev/null || echo unknown)",
   "end_time": "$(date -Iseconds)",
   "slurm_job_id": "${SLURM_JOB_ID:-unknown}"
 }

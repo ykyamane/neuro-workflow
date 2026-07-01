@@ -4,9 +4,13 @@ FROM python:3.11.11-slim
 WORKDIR /app
 
 # Install required packages
+#   openssh-client + rsync: needed to submit jobs to / sync files with the
+#   RIKEN compute server over SSH (remote Slurm execution backend).
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    openssh-client \
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -29,8 +33,15 @@ RUN pip install --no-cache-dir openai allensdk requests fuzzywuzzy python-Levens
 # Copy project file
 COPY . .
 
+# Entrypoint starts an ssh-agent (for remote Slurm submission) then execs the
+# container command. The compose `command:` is preserved as arguments to it.
+RUN cp /app/entrypoint.sh /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
+
 # Port 3000 is open
 EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # run command
 CMD ["python", "django-project/manage.py", "runserver", "0.0.0.0:3000"]

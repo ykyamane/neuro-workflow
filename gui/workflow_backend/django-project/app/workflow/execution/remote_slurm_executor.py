@@ -1,4 +1,11 @@
-"""Remote execution backend — submits jobs to a Slurm cluster over SSH."""
+"""Remote execution backend - submits jobs to a Slurm cluster over SSH.
+
+Targets the RIKEN compute server (login node reachable over SSH; jobs run via
+``sbatch`` on shared storage under ``/data/neuro-workflow``). Authentication is
+handled by an ssh-agent running in the backend container (see entrypoint.sh):
+the executor does NOT pass ``-i`` unless ``SLURM_SSH_KEY`` is explicitly set, so
+a passphrase-protected key unlocked once by an admin "just works".
+"""
 
 from __future__ import annotations
 
@@ -6,6 +13,7 @@ import logging
 import os
 import re
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -16,26 +24,36 @@ from .base import ExecutionBackend, ExecutionResult, ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
+_TEMPLATE_PATH = (
+    Path(__file__).resolve().parent / "templates" / "slurm_wrapper.sh.template"
+)
+
 _SLURM_STATE_MAP = {
     "PENDING": ExecutionStatus.PENDING,
     "RUNNING": ExecutionStatus.RUNNING,
     "COMPLETING": ExecutionStatus.RUNNING,
+    "CONFIGURING": ExecutionStatus.RUNNING,
     "COMPLETED": ExecutionStatus.COMPLETED,
     "FAILED": ExecutionStatus.FAILED,
     "TIMEOUT": ExecutionStatus.FAILED,
     "CANCELLED": ExecutionStatus.CANCELLED,
     "NODE_FAIL": ExecutionStatus.FAILED,
     "OUT_OF_MEMORY": ExecutionStatus.FAILED,
+    "BOOT_FAIL": ExecutionStatus.FAILED,
+    "DEADLINE": ExecutionStatus.FAILED,
+    "PREEMPTED": ExecutionStatus.FAILED,
 }
+
+_SSH_OPTS = ["-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes"]
 
 
 def _ssh_cmd(host: str, user: str, cmd: str, key_path: Optional[str] = None) -> str:
     """Run a command on a remote host via SSH and return stdout."""
-    ssh_args = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes"]
+    ssh_args = ["ssh", *_SSH_OPTS]
     if key_path:
-        ssh_args += ["-i", key_path]
+        ssh_args += ["-i", key_path, "-o", "IdentitiesOnly=yes"]
     ssh_args += [f"{user}@{host}", cmd]
-    result = subprocess.run(ssh_args, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(ssh_args, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(
             f"SSH command failed (rc={result.returncode}): {result.stderr.strip()}"
@@ -51,40 +69,47 @@ def _rsync(
     key_path: Optional[str] = None,
     to_remote: bool = True,
 ) -> None:
-    """rsync files to/from the remote host."""
-    rsync_args = ["rsync", "-az", "--mkpath"]
+    """rsync files to/from the remote host (over the same SSH/agent auth)."""
+    ssh_e = "ssh " + " ".join(_SSH_OPTS)
     if key_path:
-        rsync_args += ["-e", f"ssh -i {key_path} -o StrictHostKeyChecking=no"]
-    else:
-        rsync_args += ["-e", "ssh -o StrictHostKeyChecking=no"]
+        ssh_e += f" -i {key_path} -o IdentitiesOnly=yes"
+    rsync_args = ["rsync", "-az", "--mkpath", "-e", ssh_e]
     if to_remote:
         rsync_args += [src, f"{user}@{host}:{dst}"]
     else:
         rsync_args += [f"{user}@{host}:{src}", dst]
-    subprocess.run(rsync_args, check=True, capture_output=True, text=True, timeout=120)
+    subprocess.run(rsync_args, check=True, capture_output=True, text=True, timeout=300)
 
 
 class RemoteSlurmExecutor(ExecutionBackend):
     """Submit workflow scripts to a Slurm cluster via SSH.
 
     Configuration is read from environment variables:
-      SLURM_HOST          – hostname or IP of the login node
-      SLURM_USER          – SSH user
-      SLURM_SSH_KEY       – path to private key (optional, uses ssh-agent otherwise)
-      SLURM_REMOTE_DIR    – remote working directory (default: ~/neuroworkflow-runs)
-      SLURM_PARTITION      – Slurm partition (optional)
-      SLURM_ACCOUNT        – Slurm account (optional)
+      SLURM_HOST          - hostname of the login node
+      SLURM_USER          - SSH user
+      SLURM_SSH_KEY       - path to private key (optional; uses ssh-agent if unset)
+      SLURM_REMOTE_DIR    - remote working dir root (shared FS, e.g. /data/neuro-workflow/runs)
+      SLURM_PARTITION     - default Slurm partition (RIKEN default: ccalc)
+      SLURM_ACCOUNT       - Slurm account (RIKEN: kobetsu_neuro-workflow)
+      SLURM_REMOTE_VENV   - venv to activate in the job (e.g. /data/neuro-workflow/local/venv)
+      SLURM_PYTHON_MODULE - Environment Module to load for Python (e.g. python/3.11.14)
     """
 
     def __init__(self):
         self.host = os.getenv("SLURM_HOST", "")
         self.user = os.getenv("SLURM_USER", "")
         self.key_path = os.getenv("SLURM_SSH_KEY") or None
-        self.remote_dir = os.getenv("SLURM_REMOTE_DIR", "~/neuroworkflow-runs")
-        self.partition = os.getenv("SLURM_PARTITION", "")
-        self.account = os.getenv("SLURM_ACCOUNT", "")
+        self.remote_dir = os.getenv("SLURM_REMOTE_DIR", "/data/neuro-workflow/runs")
+        self.partition = os.getenv("SLURM_PARTITION", "ccalc")
+        self.account = os.getenv("SLURM_ACCOUNT", "kobetsu_neuro-workflow")
+        self.remote_venv = os.getenv(
+            "SLURM_REMOTE_VENV", "/data/neuro-workflow/local/venv"
+        )
+        self.python_module = os.getenv("SLURM_PYTHON_MODULE", "python/3.11.14")
         self.local_staging = Path(settings.BASE_DIR) / "run_staging"
         self.local_staging.mkdir(parents=True, exist_ok=True)
+
+    # -- low-level helpers ---------------------------------------------------
 
     def _ssh(self, cmd: str) -> str:
         return _ssh_cmd(self.host, self.user, cmd, self.key_path)
@@ -92,10 +117,58 @@ class RemoteSlurmExecutor(ExecutionBackend):
     def _sync_to_remote(self, local: str, remote: str) -> None:
         _rsync(local, remote, self.host, self.user, self.key_path, to_remote=True)
 
-    def _sync_from_remote(self, remote: str, local: str) -> None:
-        _rsync(remote, local, self.host, self.user, self.key_path, to_remote=False)
+    def _remote_run_dir(self, run_id: str) -> str:
+        return f"{self.remote_dir}/{run_id}"
 
-    # ── Interface implementation ───────────────────────────────────────
+    def _build_sbatch_extras(self, rr: dict) -> str:
+        """Translate a resource_requests dict into #SBATCH directive lines.
+
+        Partition/account default to the RIKEN values but can be overridden
+        per-run. --gres is passed through verbatim (e.g. "gpu:L40:1" on gcalc1,
+        "gpu:H100:1" on gcalc2); ccalc needs no gres.
+        """
+        lines = []
+        partition = rr.get("partition") or self.partition
+        account = rr.get("account") or self.account
+        if partition:
+            lines.append(f"#SBATCH --partition={partition}")
+        if account:
+            lines.append(f"#SBATCH --account={account}")
+        if rr.get("nodes"):
+            lines.append(f"#SBATCH --nodes={rr['nodes']}")
+        if rr.get("ntasks"):
+            lines.append(f"#SBATCH --ntasks={rr['ntasks']}")
+        if rr.get("cpus_per_task"):
+            lines.append(f"#SBATCH --cpus-per-task={rr['cpus_per_task']}")
+        if rr.get("mem"):
+            lines.append(f"#SBATCH --mem={rr['mem']}")
+        if rr.get("time"):
+            lines.append(f"#SBATCH --time={rr['time']}")
+        if rr.get("gres"):
+            lines.append(f"#SBATCH --gres={rr['gres']}")
+        return "\n".join(lines)
+
+    def _render_sbatch(
+        self, run_id: str, project_name: str, remote_run_dir: str, rr: dict
+    ) -> str:
+        safe_job_name = "nw-" + re.sub(r"[^A-Za-z0-9_-]", "-", str(run_id))[:16]
+        template = _TEMPLATE_PATH.read_text()
+        replacements = {
+            "{{JOB_NAME}}": safe_job_name,
+            "{{RUN_DIR}}": remote_run_dir,
+            "{{SBATCH_EXTRAS}}": self._build_sbatch_extras(rr),
+            "{{RUN_ID}}": str(run_id),
+            "{{PROJECT_NAME}}": str(project_name),
+            "{{SCRIPT_NAME}}": "workflow.py",
+            "{{PYTHON_MODULE}}": self.python_module,
+            "{{VENV_PATH}}": self.remote_venv,
+        }
+        rendered = template
+        for key, value in replacements.items():
+            rendered = rendered.replace(key, value)
+        return rendered
+
+    # -- interface implementation -------------------------------------------
 
     def submit(
         self,
@@ -103,53 +176,26 @@ class RemoteSlurmExecutor(ExecutionBackend):
         project_name: str,
         code: str,
         *,
+        run_id: Optional[str] = None,
         resource_requests: Optional[dict] = None,
     ) -> ExecutionResult:
+        run_id = run_id or str(uuid.uuid4())
         result = ExecutionResult(
+            run_id=run_id,
             status=ExecutionStatus.PENDING,
             submitted_at=datetime.now(timezone.utc),
         )
-        run_id = result.run_id
-        remote_run_dir = f"{self.remote_dir}/{run_id}"
+        remote_run_dir = self._remote_run_dir(run_id)
+        result.remote_run_dir = remote_run_dir
 
         local_dir = self.local_staging / run_id
         local_dir.mkdir(parents=True, exist_ok=True)
-
-        safe_job_name = re.sub(r"[^A-Za-z0-9_-]", "-", str(workflow_id))[:20]
-        script_name = "workflow.py"
-        (local_dir / script_name).write_text(code)
-
-        rr = resource_requests or {}
-        sbatch_lines = [
-            "#!/bin/bash",
-            f"#SBATCH --job-name=nw-{safe_job_name}",
-            f"#SBATCH --output={remote_run_dir}/slurm-%j.out",
-            f"#SBATCH --error={remote_run_dir}/slurm-%j.err",
-        ]
-        if self.partition:
-            sbatch_lines.append(f"#SBATCH --partition={self.partition}")
-        if self.account:
-            sbatch_lines.append(f"#SBATCH --account={self.account}")
-        if rr.get("nodes"):
-            sbatch_lines.append(f"#SBATCH --nodes={rr['nodes']}")
-        if rr.get("ntasks"):
-            sbatch_lines.append(f"#SBATCH --ntasks={rr['ntasks']}")
-        if rr.get("cpus_per_task"):
-            sbatch_lines.append(f"#SBATCH --cpus-per-task={rr['cpus_per_task']}")
-        if rr.get("mem"):
-            sbatch_lines.append(f"#SBATCH --mem={rr['mem']}")
-        if rr.get("time"):
-            sbatch_lines.append(f"#SBATCH --time={rr['time']}")
-        if rr.get("gres"):
-            sbatch_lines.append(f"#SBATCH --gres={rr['gres']}")
-
-        sbatch_lines += [
-            "",
-            f"cd {remote_run_dir}",
-            f"python {script_name} > stdout.log 2> stderr.log",
-            "echo $? > exit_code.txt",
-        ]
-        (local_dir / "run.sbatch").write_text("\n".join(sbatch_lines) + "\n")
+        (local_dir / "workflow.py").write_text(code)
+        (local_dir / "run.sbatch").write_text(
+            self._render_sbatch(
+                run_id, project_name, remote_run_dir, resource_requests or {}
+            )
+        )
 
         try:
             self._ssh(f"mkdir -p {remote_run_dir}")
@@ -169,16 +215,23 @@ class RemoteSlurmExecutor(ExecutionBackend):
 
         return result
 
-    def get_status(self, run_id: str) -> ExecutionResult:
+    def get_status(
+        self,
+        run_id: str,
+        *,
+        job_id: Optional[str] = None,
+        remote_dir: Optional[str] = None,
+    ) -> ExecutionResult:
         result = ExecutionResult(run_id=run_id)
+        result.remote_job_id = job_id
 
-        meta = self._read_remote_meta(run_id)
-        job_id = meta.get("job_id")
         if not job_id:
             result.status = ExecutionStatus.FAILED
-            result.error = "No remote job ID found"
+            result.error = "No remote job ID recorded for this run"
             return result
-        result.remote_job_id = job_id
+
+        remote_run_dir = remote_dir or self._remote_run_dir(run_id)
+        result.remote_run_dir = remote_run_dir
 
         try:
             out = self._ssh(
@@ -191,7 +244,6 @@ class RemoteSlurmExecutor(ExecutionBackend):
             result.status = ExecutionStatus.RUNNING
 
         if result.status in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
-            remote_run_dir = f"{self.remote_dir}/{run_id}"
             try:
                 result.exit_code = int(
                     self._ssh(f"cat {remote_run_dir}/exit_code.txt").strip()
@@ -206,32 +258,25 @@ class RemoteSlurmExecutor(ExecutionBackend):
                 result.stderr = self._ssh(f"cat {remote_run_dir}/stderr.log")
             except Exception:
                 pass
+            result.finished_at = datetime.now(timezone.utc)
 
         return result
 
-    def get_logs(self, run_id: str) -> str:
-        remote_run_dir = f"{self.remote_dir}/{run_id}"
+    def get_logs(self, run_id: str, *, remote_dir: Optional[str] = None) -> str:
+        remote_run_dir = remote_dir or self._remote_run_dir(run_id)
         parts = []
-        for f in ("stdout.log", "stderr.log"):
+        for fname in ("stdout.log", "stderr.log"):
             try:
-                content = self._ssh(f"cat {remote_run_dir}/{f} 2>/dev/null || true")
+                content = self._ssh(
+                    f"cat {remote_run_dir}/{fname} 2>/dev/null || true"
+                )
                 if content:
                     parts.append(content)
             except Exception:
                 pass
-        try:
-            slurm_out = self._ssh(
-                f"cat {remote_run_dir}/slurm-*.out 2>/dev/null || true"
-            )
-            if slurm_out:
-                parts.append(slurm_out)
-        except Exception:
-            pass
         return "\n".join(parts)
 
-    def cancel(self, run_id: str) -> bool:
-        meta = self._read_remote_meta(run_id)
-        job_id = meta.get("job_id")
+    def cancel(self, run_id: str, *, job_id: Optional[str] = None) -> bool:
         if not job_id:
             return False
         try:
@@ -240,15 +285,3 @@ class RemoteSlurmExecutor(ExecutionBackend):
         except Exception as exc:
             logger.warning("scancel failed for job %s: %s", job_id, exc)
             return False
-
-    # ── Helpers ────────────────────────────────────────────────────────
-
-    def _read_remote_meta(self, run_id: str) -> dict:
-        """Read metadata from the local staging area for this run."""
-        local_dir = self.local_staging / run_id
-        meta: dict = {}
-        meta_file = local_dir / "meta.json"
-        if meta_file.exists():
-            import json
-            meta = json.loads(meta_file.read_text())
-        return meta
