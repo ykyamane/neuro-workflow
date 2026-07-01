@@ -90,7 +90,7 @@ class RemoteSlurmExecutor(ExecutionBackend):
       SLURM_SSH_KEY       - path to private key (optional; uses ssh-agent if unset)
       SLURM_REMOTE_DIR    - remote working dir root (shared FS, e.g. /data/neuro-workflow/runs)
       SLURM_PARTITION     - default Slurm partition (RIKEN default: ccalc)
-      SLURM_ACCOUNT       - Slurm account (RIKEN: neuro-workflow)
+      SLURM_ACCOUNT       - Slurm account (RIKEN: kobetsu_neuro-workflow)
       SLURM_REMOTE_VENV   - venv to activate in the job (e.g. /data/neuro-workflow/local/venv)
       SLURM_PYTHON_MODULE - Environment Module to load for Python (e.g. python/3.11.14)
     """
@@ -101,7 +101,7 @@ class RemoteSlurmExecutor(ExecutionBackend):
         self.key_path = os.getenv("SLURM_SSH_KEY") or None
         self.remote_dir = os.getenv("SLURM_REMOTE_DIR", "/data/neuro-workflow/runs")
         self.partition = os.getenv("SLURM_PARTITION", "ccalc")
-        self.account = os.getenv("SLURM_ACCOUNT", "neuro-workflow")
+        self.account = os.getenv("SLURM_ACCOUNT", "kobetsu_neuro-workflow")
         self.remote_venv = os.getenv(
             "SLURM_REMOTE_VENV", "/data/neuro-workflow/local/venv"
         )

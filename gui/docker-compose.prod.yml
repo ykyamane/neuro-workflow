@@ -36,7 +36,7 @@ services:
       - SLURM_USER=${SLURM_USER:-neuro-workflow}
       - SLURM_REMOTE_DIR=${SLURM_REMOTE_DIR:-/data/neuro-workflow/runs}
       - SLURM_PARTITION=${SLURM_PARTITION:-ccalc}
-      - SLURM_ACCOUNT=${SLURM_ACCOUNT:-neuro-workflow}
+      - SLURM_ACCOUNT=${SLURM_ACCOUNT:-kobetsu_neuro-workflow}
       - SLURM_REMOTE_VENV=${SLURM_REMOTE_VENV:-/data/neuro-workflow/local/venv}
       - SLURM_PYTHON_MODULE=${SLURM_PYTHON_MODULE:-python/3.11.14}
 

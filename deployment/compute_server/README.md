@@ -12,7 +12,8 @@ ssh-agent in the backend container holds no key until an admin unlocks it.
 - Login node: `digitalbrain.brainminds.jp`, user `neuro-workflow`. Used only for
   `ssh`/`rsync`/`sbatch`/`sacct` (login node has a 4 GB / 512-proc cap; no heavy
   or persistent processes). All compute happens inside jobs.
-- Account: `neuro-workflow`. Default partition: `ccalc` (CPU). GPU partitions:
+- Account: `kobetsu_neuro-workflow` (the login user is `neuro-workflow`, but the
+  Slurm association resolves to this account). Default partition: `ccalc` (CPU). GPU partitions:
   `gcalc1` (`--gres=gpu:L40:N`) and `gcalc2` (`--gres=gpu:H100:N`).
 - Working dir: `/data/neuro-workflow` (shared FS, unlimited pool; mounted on all
   nodes). Runs are staged under `/data/neuro-workflow/runs/<run_id>`. `$HOME` has
@@ -31,7 +32,7 @@ Defaults are set in `gui/docker-compose.prod.yml`; override in `gui/.env` if nee
 - `SLURM_USER=neuro-workflow`
 - `SLURM_REMOTE_DIR=/data/neuro-workflow/runs`
 - `SLURM_PARTITION=ccalc`
-- `SLURM_ACCOUNT=neuro-workflow`
+- `SLURM_ACCOUNT=kobetsu_neuro-workflow`
 - `SLURM_REMOTE_VENV=/data/neuro-workflow/local/venv`
 - `SLURM_PYTHON_MODULE=python/3.11.14`
 - `SLURM_SSH_KEY` is intentionally **unset** so auth uses the ssh-agent.
