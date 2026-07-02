@@ -23,7 +23,11 @@ import numpy as np
 
 def initialize_nest(sim_params):
     nest.ResetKernel()
-    nest.set_verbosity("M_WARNING")
+    try:
+        # NEST 3.8+ API; the old set_verbosity() string form is deprecated.
+        nest.verbosity = nest.VerbosityLevel.WARNING
+    except (AttributeError, TypeError):
+        nest.set_verbosity("M_WARNING")
     nest.SetKernelStatus({"overwrite_files": True})
     nest.SetKernelStatus({"local_num_threads": int(sim_params["nbcpu"])})
     # NEST does not create data_path itself; it must exist before the kernel is
