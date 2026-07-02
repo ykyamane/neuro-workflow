@@ -26,6 +26,9 @@ def initialize_nest(sim_params):
     nest.set_verbosity("M_WARNING")
     nest.SetKernelStatus({"overwrite_files": True})
     nest.SetKernelStatus({"local_num_threads": int(sim_params["nbcpu"])})
+    # NEST does not create data_path itself; it must exist before the kernel is
+    # told to write spikes there, or recording silently falls back to the CWD.
+    os.makedirs(sim_params["data_path"], exist_ok=True)
     nest.SetKernelStatus({"data_path": sim_params["data_path"]})
     if str(sim_params["dt"]) != "0.1":
         nest.SetKernelStatus({"resolution": float(sim_params["dt"])})
