@@ -67,6 +67,12 @@ Get a first impression of Neuro-Workflow in action:
 <br><small>Learn how to systematize your code, model, or pipeline as a unified, AI-ready workflow</small>
 <br><small>Credits: Carlos Enrique Gutierrez</small>
 
+<br>
+
+<a href="https://youtu.be/Sbo7z2iWthg" target="_blank">Building a Workflow in the GUI with the AI Agent</a>
+<br><small>Reproduce a Neuro-Workflow Python API workflow visually in the web app using the in-app AI agent</small>
+<br><small>Credits: Carlos Enrique Gutierrez</small>
+
 </div>
 
 Commands referenced in the tutorial:
