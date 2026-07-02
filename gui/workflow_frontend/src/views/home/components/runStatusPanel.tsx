@@ -12,12 +12,20 @@ import {
   IconButton,
   Tooltip,
 } from "@chakra-ui/react";
-import { FiChevronDown, FiChevronUp, FiXCircle, FiRefreshCw } from "react-icons/fi";
+import {
+  FiChevronDown,
+  FiChevronUp,
+  FiXCircle,
+  FiRefreshCw,
+  FiDownload,
+} from "react-icons/fi";
 import {
   WorkflowRunRecord,
+  ArtifactFile,
   getWorkflowRunStatus,
   cancelWorkflowRun,
   listWorkflowRuns,
+  downloadArtifact,
 } from "../../../api/workflowRunApi";
 
 interface RunStatusPanelProps {
@@ -98,6 +106,10 @@ const RunStatusPanel: React.FC<RunStatusPanelProps> = ({
       // ignore
     }
   };
+
+  const artifactFiles: ArtifactFile[] =
+    (selectedRun?.artifacts as { files?: ArtifactFile[] } | undefined)?.files ??
+    [];
 
   if (runs.length === 0 && !latestRunId) return null;
 
@@ -223,6 +235,52 @@ const RunStatusPanel: React.FC<RunStatusPanelProps> = ({
               <Text fontSize="xs" color="red.500" mt={1}>
                 {selectedRun.error_message}
               </Text>
+            )}
+            {artifactFiles.length > 0 && (
+              <Box mt={2}>
+                <Text fontSize="xs" fontWeight="bold" mb={1}>
+                  Results ({artifactFiles.length})
+                </Text>
+                <VStack
+                  align="stretch"
+                  spacing={0}
+                  maxH="160px"
+                  overflowY="auto"
+                  border="1px solid"
+                  borderColor={borderColor}
+                  borderRadius="sm"
+                >
+                  {artifactFiles.map((f) => (
+                    <HStack
+                      key={f.path}
+                      justify="space-between"
+                      px={2}
+                      py={1}
+                      _hover={{ bg: useColorModeValue("gray.50", "gray.700") }}
+                    >
+                      <Text
+                        fontSize="xs"
+                        fontFamily="mono"
+                        isTruncated
+                        title={f.path}
+                      >
+                        {f.path}
+                      </Text>
+                      <Tooltip label={`Download (${f.size} bytes)`}>
+                        <IconButton
+                          aria-label={`Download ${f.path}`}
+                          icon={<FiDownload />}
+                          size="xs"
+                          variant="ghost"
+                          onClick={() =>
+                            downloadArtifact(workflowId, selectedRun.id, f.path)
+                          }
+                        />
+                      </Tooltip>
+                    </HStack>
+                  ))}
+                </VStack>
+              </Box>
             )}
             {!TERMINAL_STATUSES.has(selectedRun.status) && (
               <Button

@@ -135,6 +135,41 @@ export const listWorkflowRuns = async (
   return res.json();
 };
 
+export interface ArtifactFile {
+  path: string;
+  size: number;
+}
+
+/**
+ * Download a single result artifact fetched back from a remote run.
+ *
+ * Auth is Bearer-token based, so a plain link can't be used — we fetch the
+ * file with the auth headers, then trigger a browser download from the blob.
+ */
+export const downloadArtifact = async (
+  workflowId: string,
+  runId: string,
+  path: string
+): Promise<void> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(
+    `${API_PREFIX}/workflow/${workflowId}/runs/${runId}/artifacts/?path=${encodeURIComponent(
+      path
+    )}`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = path.split("/").pop() || "artifact";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
 export const cancelWorkflowRun = async (
   workflowId: string,
   runId: string

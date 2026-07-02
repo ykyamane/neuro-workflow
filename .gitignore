@@ -59,3 +59,7 @@ temp/
 
 # Sandbox nodes (local experimentation only)
 src/neuroworkflow/nodes/sandbox/
+
+# Remote (Slurm) execution runtime dirs: staged job inputs + fetched results
+gui/workflow_backend/django-project/run_staging/
+gui/workflow_backend/django-project/run_results/

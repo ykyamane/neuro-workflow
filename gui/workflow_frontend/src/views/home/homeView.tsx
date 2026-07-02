@@ -46,6 +46,8 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import NodeDetailsContent from './components/nodeDetailModal';
 import { DeleteConfirmDialog } from './components/deleteConfirmDialog';
 import RunStatusPanel from './components/runStatusPanel';
+import ClusterRunModal from './components/ClusterRunModal';
+import { submitWorkflowRun } from '../../api/workflowRunApi';
 import { useTabContext } from '../../components/tabs/TabManager';
 import { useFlowStore, PROJECT_ID_KEY } from '../../stores/flowStore';
 import { convertToStrIncFloat } from '../../utils/typeConversion';
@@ -62,6 +64,9 @@ const HomeView = () => {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState<boolean>(false);
+  const [latestRunId, setLatestRunId] = useState<string | undefined>(undefined);
+  const [isClusterModalOpen, setIsClusterModalOpen] = useState<boolean>(false);
+  const [isSubmittingCluster, setIsSubmittingCluster] = useState<boolean>(false);
 
   // Autosave related status
   const [isConnected, setIsConnected] = useState<boolean>(true);
@@ -940,7 +945,7 @@ const HomeView = () => {
         duration: 2000,
         isClosable: true,
       });
-      return;
+      return false;
     }
 
     if (!reactFlowInstance.current) {
@@ -951,7 +956,7 @@ const HomeView = () => {
         duration: 2000,
         isClosable: true,
       });
-      return;
+      return false;
     }
 
     const currentSharedNodes = useFlowStore.getState().sharedNodes;
@@ -963,7 +968,7 @@ const HomeView = () => {
         duration: 3000,
         isClosable: true,
       });
-      return;
+      return false;
     }
 
     // CRITICAL: Save all nodes to database before generating code
@@ -1003,7 +1008,7 @@ const HomeView = () => {
         duration: 5000,
         isClosable: true,
       });
-      return;
+      return false;
     }
 
     // Wait a bit for all saves to complete
@@ -1064,6 +1069,7 @@ const HomeView = () => {
         isClosable: true,
       });
 
+      return true;
     } catch (error) {
       // Close loading toast (on error)
       toast.close(loadingToast);
@@ -1076,10 +1082,53 @@ const HomeView = () => {
         duration: 5000,
         isClosable: true,
       });
+      return false;
     } finally {
       setIsGeneratingCode(false);
     }
   }, [selectedProject, reactFlowInstance, createNodeAPI, updateNodeAPI, toast]);
+
+  // Regenerate code and submit the workflow as a Slurm batch job on the
+  // RIKEN compute cluster. Progress is surfaced by the RunStatusPanel.
+  const handleRunOnClusterSubmit = useCallback(
+    async (resourceRequests: Record<string, unknown>) => {
+      if (!selectedProject) return;
+      setIsSubmittingCluster(true);
+      try {
+        const generated = await handleGenerateCode();
+        if (!generated) {
+          return;
+        }
+        // Give the backend a moment to flush the generated script to disk.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const run = await submitWorkflowRun(
+          selectedProject,
+          "slurm",
+          resourceRequests
+        );
+        setLatestRunId(run.id);
+        setIsClusterModalOpen(false);
+        toast({
+          title: "Job submitted to compute cluster",
+          description: `Run ${run.id.slice(0, 8)} (${run.status}). Track progress in the Runs panel.`,
+          status: "success",
+          duration: 5000,
+          isClosable: true,
+        });
+      } catch (error) {
+        toast({
+          title: "Cluster submission failed",
+          description: error instanceof Error ? error.message : "Unknown error",
+          status: "error",
+          duration: 6000,
+          isClosable: true,
+        });
+      } finally {
+        setIsSubmittingCluster(false);
+      }
+    },
+    [selectedProject, handleGenerateCode, toast]
+  );
 
   // Clean up
   useEffect(() => {
@@ -1238,6 +1287,7 @@ const HomeView = () => {
           handleOpenJupyter={handleOpenJupyter}
           handleGenerateCode={handleGenerateCode}
           handleExportFlowJSON={handleExportFlowJSON}
+          onRunOnCluster={() => setIsClusterModalOpen(true)}
         />
           
         {/* ReactFlow: Needs to be wrapped in ReactFlowProvider */}
@@ -1278,8 +1328,16 @@ const HomeView = () => {
         
         {/* Async run status panel */}
         {selectedProject && (
-          <RunStatusPanel workflowId={selectedProject} />
+          <RunStatusPanel workflowId={selectedProject} latestRunId={latestRunId} />
         )}
+
+        {/* Run-on-compute-cluster (Slurm) resource dialog */}
+        <ClusterRunModal
+          isOpen={isClusterModalOpen}
+          onClose={() => setIsClusterModalOpen(false)}
+          onSubmit={handleRunOnClusterSubmit}
+          isSubmitting={isSubmittingCluster}
+        />
 
         {/* Node menu */}
         {nodeMenuPosition && (

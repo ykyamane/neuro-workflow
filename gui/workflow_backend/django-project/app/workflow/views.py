@@ -3,10 +3,17 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import (
+    FileResponse,
+    Http404,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -1303,6 +1310,8 @@ class WorkflowRunDetailView(APIView):
                     run.stderr = exec_result.stderr
                 if exec_result.error:
                     run.error_message = exec_result.error
+                if exec_result.artifacts:
+                    run.artifacts = exec_result.artifacts
                 if exec_result.started_at:
                     run.started_at = exec_result.started_at
                 if exec_result.finished_at:
@@ -1359,3 +1368,46 @@ class WorkflowRunCancelView(APIView):
             run.status = WorkflowRun.Status.CANCELLED
             run.save()
         return Response(WorkflowRunSerializer(run).data)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class WorkflowRunArtifactView(APIView):
+    """Download a single result artifact fetched back from a remote run.
+
+    Files live under ``BASE_DIR/run_results/<run_id>/`` (populated by the
+    executor when a run completes). The relative file path is passed as the
+    ``path`` query parameter and is validated against directory traversal.
+    """
+
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, workflow_id, run_id):
+        get_accessible_project(request, workflow_id, write=False)
+        run = get_object_or_404(
+            WorkflowRun.objects.filter(
+                Q(user=request.user) | Q(workflow__owner=request.user)
+            ),
+            id=run_id,
+            workflow_id=workflow_id,
+        )
+
+        rel = request.query_params.get("path", "").strip()
+        if not rel:
+            return Response(
+                {"error": "Missing 'path' query parameter"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        base = (Path(settings.BASE_DIR) / "run_results" / str(run.id)).resolve()
+        target = (base / rel).resolve()
+        if base != target and base not in target.parents:
+            return Response(
+                {"error": "Invalid path"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if not target.is_file():
+            raise Http404("Artifact not found")
+
+        return FileResponse(
+            open(target, "rb"), as_attachment=True, filename=target.name
+        )
