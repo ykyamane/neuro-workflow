@@ -21,7 +21,7 @@ from typing import Optional
 
 from django.conf import settings
 
-from app.workflow.path_utils import batch_run_dir
+from app.workflow.path_utils import batch_run_dir, projects_root
 
 from .base import ExecutionBackend, ExecutionResult, ExecutionStatus
 
@@ -228,17 +228,28 @@ class RemoteSlurmExecutor(ExecutionBackend):
         result.remote_run_dir = remote_run_dir
 
         local_dir = batch_run_dir(workflow_id, run_id, create=True)
-        (local_dir / "workflow.py").write_text(code)
-        (local_dir / "run.sbatch").write_text(
-            self._render_sbatch(
-                run_id, project_name, remote_run_dir, resource_requests or {}
-            )
-        )
 
-        # Stage the node implementation package alongside the workflow so the
-        # generated script (which does ``from nodes.<cat>.<Node> import ...``)
-        # can import it on the compute node. When ``python workflow.py`` runs in
-        # the run dir, sys.path[0] is that dir, so ``<run_dir>/nodes`` resolves.
+        # Stage the project's own local files first (e.g. a project-local
+        # ``microcircuit/`` package or data files) so imports and relative
+        # paths that work in Jupyter -- where the project dir is the CWD --
+        # also resolve on the compute node. Exclude ``batch/`` (this staging
+        # tree itself) and ``results/`` (stale local outputs); the generated
+        # workflow.py/run.sbatch are written afterwards so they always win.
+        project_dir = projects_root() / str(workflow_id)
+        if project_dir.is_dir():
+            shutil.copytree(
+                project_dir,
+                local_dir,
+                ignore=shutil.ignore_patterns(
+                    "batch", "results", "__pycache__", "*.pyc", ".ipynb_checkpoints"
+                ),
+                dirs_exist_ok=True,
+            )
+
+        # Stage the shared node implementation package so the generated script
+        # (which does ``from nodes.<cat>.<Node> import ...``) can import it on
+        # the compute node. When ``python workflow.py`` runs in the run dir,
+        # sys.path[0] is that dir, so ``<run_dir>/nodes`` resolves.
         nodes_src = Path(settings.MEDIA_ROOT)
         if nodes_src.is_dir():
             shutil.copytree(
@@ -247,6 +258,15 @@ class RemoteSlurmExecutor(ExecutionBackend):
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
                 dirs_exist_ok=True,
             )
+
+        # Written last so the freshly generated code and sbatch are authoritative
+        # (they override any stale copies picked up from the project dir).
+        (local_dir / "workflow.py").write_text(code)
+        (local_dir / "run.sbatch").write_text(
+            self._render_sbatch(
+                run_id, project_name, remote_run_dir, resource_requests or {}
+            )
+        )
 
         try:
             self._ssh(f"mkdir -p {remote_run_dir}")
