@@ -163,11 +163,26 @@ export const downloadArtifact = async (
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = path.split("/").pop() || "artifact";
+  // Prefix with the short run id so files from different runs (which share
+  // names like spike_rasters.png) don't collide in the browser's downloads.
+  const base = path.split("/").pop() || "artifact";
+  a.download = `${runId.slice(0, 8)}_${base}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+};
+
+export const deleteWorkflowRun = async (
+  workflowId: string,
+  runId: string
+): Promise<void> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(
+    `${API_PREFIX}/workflow/${workflowId}/runs/${runId}/`,
+    { method: "DELETE", headers }
+  );
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
 };
 
 export const cancelWorkflowRun = async (

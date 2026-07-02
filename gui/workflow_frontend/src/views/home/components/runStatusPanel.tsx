@@ -18,6 +18,7 @@ import {
   FiXCircle,
   FiRefreshCw,
   FiDownload,
+  FiTrash2,
 } from "react-icons/fi";
 import {
   WorkflowRunRecord,
@@ -26,6 +27,7 @@ import {
   cancelWorkflowRun,
   listWorkflowRuns,
   downloadArtifact,
+  deleteWorkflowRun,
 } from "../../../api/workflowRunApi";
 
 interface RunStatusPanelProps {
@@ -101,6 +103,24 @@ const RunStatusPanel: React.FC<RunStatusPanelProps> = ({
     try {
       const updated = await cancelWorkflowRun(workflowId, selectedRun.id);
       setSelectedRun(updated);
+      loadRuns();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDelete = async (run: WorkflowRunRecord) => {
+    if (
+      !window.confirm(
+        `Delete run ${run.id.slice(0, 8)}? This permanently removes its logs ` +
+          `and results from the server and cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteWorkflowRun(workflowId, run.id);
+      if (selectedRun?.id === run.id) setSelectedRun(null);
       loadRuns();
     } catch {
       // ignore
@@ -183,12 +203,27 @@ const RunStatusPanel: React.FC<RunStatusPanelProps> = ({
                 <Text fontSize="xs" fontFamily="mono">
                   {run.id.slice(0, 8)}
                 </Text>
-                <Badge
-                  size="sm"
-                  colorScheme={STATUS_COLORS[run.status] || "gray"}
-                >
-                  {run.status}
-                </Badge>
+                <HStack spacing={1}>
+                  <Badge
+                    size="sm"
+                    colorScheme={STATUS_COLORS[run.status] || "gray"}
+                  >
+                    {run.status}
+                  </Badge>
+                  <Tooltip label="Delete run (logs + results)">
+                    <IconButton
+                      aria-label={`Delete run ${run.id.slice(0, 8)}`}
+                      icon={<FiTrash2 />}
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="red"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(run);
+                      }}
+                    />
+                  </Tooltip>
+                </HStack>
               </HStack>
               <Text fontSize="xs" color="gray.500">
                 {run.backend} &middot;{" "}

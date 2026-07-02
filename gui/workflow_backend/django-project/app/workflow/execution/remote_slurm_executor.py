@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import uuid
@@ -368,3 +369,18 @@ class RemoteSlurmExecutor(ExecutionBackend):
         except Exception as exc:
             logger.warning("scancel failed for job %s: %s", job_id, exc)
             return False
+
+    def cleanup(self, run_id: str, *, remote_dir: Optional[str] = None) -> None:
+        """Delete the run's working directory on the compute server.
+
+        Guarded so we only ever ``rm -rf`` a path directly under the configured
+        runs root (``SLURM_REMOTE_DIR``), never the root itself or anything
+        outside it.
+        """
+        remote_run_dir = (remote_dir or self._remote_run_dir(run_id)).rstrip("/")
+        root = self.remote_dir.rstrip("/")
+        if not remote_run_dir.startswith(root + "/") or remote_run_dir == root:
+            raise ValueError(
+                f"Refusing to delete remote dir outside runs root: {remote_run_dir}"
+            )
+        self._ssh(f"rm -rf {shlex.quote(remote_run_dir)}")
