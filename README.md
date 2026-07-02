@@ -75,7 +75,7 @@ Get a first impression of Neuro-Workflow in action:
 
 </div>
 
-Commands referenced in the tutorial:
+Commands referenced in the *Creating Nodes and Porting Your Model* tutorial:
 
 ```bash
 # Install Neuro-Workflow
