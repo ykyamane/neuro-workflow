@@ -13,6 +13,7 @@ from .views import (
     WorkflowRunDetailView,
     WorkflowRunListView,
     WorkflowRunCancelView,
+    WorkflowRunArtifactView,
     WorkflowResultsView,
     WorkflowReportView,
     WorkflowCodeView,
@@ -118,6 +119,11 @@ urlpatterns = [
         WorkflowRunCancelView.as_view(),
         name="workflow-run-cancel"
     ),  # POST (cancel a run)
+    path(
+        "<uuid:workflow_id>/runs/<uuid:run_id>/artifacts/",
+        WorkflowRunArtifactView.as_view(),
+        name="workflow-run-artifact"
+    ),  # GET(?path=... download one fetched result file)
     # Results listing
     path(
         "<uuid:workflow_id>/results/",

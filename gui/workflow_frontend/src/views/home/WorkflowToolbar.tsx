@@ -23,6 +23,7 @@ interface WorkflowToolbarProps {
   handleOpenJupyter: () => void;
   handleGenerateCode: () => void;
   handleExportFlowJSON: () => void;
+  onRunOnCluster: () => void;
 }
 
 export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
@@ -36,6 +37,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   handleOpenJupyter,
   handleGenerateCode,
   handleExportFlowJSON,
+  onRunOnCluster,
 }) => {
   // Subscribe only to the node count, not the full sharedNodes array, so the
   // toolbar does not re-render on every drag frame. Length changes only when
@@ -144,6 +146,24 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               {!selectedProject ? "Select Project First" :
               nodesCount === 0 ? "Add Nodes to Generate" :
               "📝 Generate Code"}
+            </Button>
+
+            <Button
+              colorScheme="teal"
+              variant="solid"
+              size="sm"
+              onClick={onRunOnCluster}
+              isDisabled={!selectedProject || nodesCount === 0}
+              _hover={{ bg: "teal.600", transform: "translateY(-1px)" }}
+              _disabled={{
+                opacity: 0.4,
+                cursor: "not-allowed"
+              }}
+              transition="all 0.2s"
+            >
+              {!selectedProject ? "Select Project First" :
+              nodesCount === 0 ? "Add Nodes to Run" :
+              "☁️ Run on Compute Cluster"}
             </Button>
 
             <Button

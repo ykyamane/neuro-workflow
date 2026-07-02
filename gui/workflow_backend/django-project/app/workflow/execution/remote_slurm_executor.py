@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -108,6 +109,8 @@ class RemoteSlurmExecutor(ExecutionBackend):
         self.python_module = os.getenv("SLURM_PYTHON_MODULE", "python/3.11.14")
         self.local_staging = Path(settings.BASE_DIR) / "run_staging"
         self.local_staging.mkdir(parents=True, exist_ok=True)
+        self.local_results = Path(settings.BASE_DIR) / "run_results"
+        self.local_results.mkdir(parents=True, exist_ok=True)
 
     # -- low-level helpers ---------------------------------------------------
 
@@ -117,8 +120,42 @@ class RemoteSlurmExecutor(ExecutionBackend):
     def _sync_to_remote(self, local: str, remote: str) -> None:
         _rsync(local, remote, self.host, self.user, self.key_path, to_remote=True)
 
+    def _sync_from_remote(self, remote: str, local: str) -> None:
+        _rsync(remote, local, self.host, self.user, self.key_path, to_remote=False)
+
     def _remote_run_dir(self, run_id: str) -> str:
         return f"{self.remote_dir}/{run_id}"
+
+    def _fetch_results(self, run_id: str, remote_run_dir: str) -> dict:
+        """Rsync the job's ``results/`` dir back to the app server and index it.
+
+        Returns an artifacts dict ``{"files": [{"path", "size"}, ...]}`` listing
+        every fetched file (recursively) relative to the local results dir.
+        Best-effort: returns ``{}`` if there are no results or the copy fails.
+        """
+        try:
+            self._ssh(f"test -d {remote_run_dir}/results")
+        except Exception:
+            return {}
+
+        local_dir = self.local_results / run_id
+        local_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self._sync_from_remote(f"{remote_run_dir}/results/", str(local_dir) + "/")
+        except Exception as exc:
+            logger.warning("Failed to fetch results for run %s: %s", run_id, exc)
+            return {}
+
+        files = []
+        for f in sorted(local_dir.rglob("*")):
+            if f.is_file():
+                files.append(
+                    {
+                        "path": str(f.relative_to(local_dir)),
+                        "size": f.stat().st_size,
+                    }
+                )
+        return {"files": files}
 
     def _build_sbatch_extras(self, rr: dict) -> str:
         """Translate a resource_requests dict into #SBATCH directive lines.
@@ -197,6 +234,19 @@ class RemoteSlurmExecutor(ExecutionBackend):
             )
         )
 
+        # Stage the node implementation package alongside the workflow so the
+        # generated script (which does ``from nodes.<cat>.<Node> import ...``)
+        # can import it on the compute node. When ``python workflow.py`` runs in
+        # the run dir, sys.path[0] is that dir, so ``<run_dir>/nodes`` resolves.
+        nodes_src = Path(settings.MEDIA_ROOT)
+        if nodes_src.is_dir():
+            shutil.copytree(
+                nodes_src,
+                local_dir / "nodes",
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                dirs_exist_ok=True,
+            )
+
         try:
             self._ssh(f"mkdir -p {remote_run_dir}")
             self._sync_to_remote(f"{local_dir}/", remote_run_dir + "/")
@@ -259,6 +309,15 @@ class RemoteSlurmExecutor(ExecutionBackend):
             except Exception:
                 pass
             result.finished_at = datetime.now(timezone.utc)
+
+        # On success, pull the result artifacts back to the app server. The
+        # DetailView only polls while the run is non-terminal, so this runs once
+        # (on the poll that first observes COMPLETED).
+        if result.status == ExecutionStatus.COMPLETED:
+            try:
+                result.artifacts = self._fetch_results(run_id, remote_run_dir)
+            except Exception as exc:
+                logger.warning("fetch_results failed for run %s: %s", run_id, exc)
 
         return result
 
