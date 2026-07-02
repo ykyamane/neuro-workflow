@@ -170,6 +170,18 @@ export const downloadArtifact = async (
   URL.revokeObjectURL(url);
 };
 
+export const deleteWorkflowRun = async (
+  workflowId: string,
+  runId: string
+): Promise<void> => {
+  const headers = await createAuthHeaders();
+  const res = await fetch(
+    `${API_PREFIX}/workflow/${workflowId}/runs/${runId}/`,
+    { method: "DELETE", headers }
+  );
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+};
+
 export const cancelWorkflowRun = async (
   workflowId: string,
   runId: string

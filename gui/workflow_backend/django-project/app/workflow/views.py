@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 
 from django.db import transaction
 from django.db.models import Q
@@ -1321,6 +1322,40 @@ class WorkflowRunDetailView(APIView):
                 logger.warning("Status poll failed for run %s: %s", run.id, exc)
 
         return Response(WorkflowRunSerializer(run).data)
+
+    def delete(self, request, workflow_id, run_id):
+        """Delete a run: its DB record, local results, and remote run dir.
+
+        Allowed for the run's creator or the project owner. If the run is still
+        active it is cancelled first; remote cleanup is best-effort so a
+        transient SSH failure never blocks removing the local record.
+        """
+        get_accessible_project(request, workflow_id, write=False)
+        run = get_object_or_404(
+            WorkflowRun.objects.filter(
+                Q(user=request.user) | Q(workflow__owner=request.user)
+            ),
+            id=run_id,
+            workflow_id=workflow_id,
+        )
+
+        executor = _get_executor(run.backend)
+        if run.status in (WorkflowRun.Status.PENDING, WorkflowRun.Status.RUNNING):
+            try:
+                executor.cancel(str(run.id), job_id=run.slurm_job_id or None)
+            except Exception as exc:
+                logger.warning("cancel before delete failed for run %s: %s", run.id, exc)
+        try:
+            executor.cleanup(str(run.id), remote_dir=run.remote_run_dir or None)
+        except Exception as exc:
+            logger.warning("remote cleanup failed for run %s: %s", run.id, exc)
+
+        local_dir = batch_run_dir(str(workflow_id), str(run.id))
+        if local_dir.exists():
+            shutil.rmtree(local_dir, ignore_errors=True)
+
+        run.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

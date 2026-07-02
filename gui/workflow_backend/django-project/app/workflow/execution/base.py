@@ -82,3 +82,11 @@ class ExecutionBackend(ABC):
     def cancel(self, run_id: str, *, job_id: Optional[str] = None) -> bool:
         """Attempt to cancel a running job. Returns True if cancelled."""
         ...
+
+    def cleanup(self, run_id: str, *, remote_dir: Optional[str] = None) -> None:
+        """Remove any remote working files for a run. Default: no-op.
+
+        Local backends keep everything on the app server, so there is nothing
+        remote to clean; the remote Slurm backend overrides this.
+        """
+        return None
