@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/box/", include("app.box.urls")),
     path("api/workflow/", include("app.workflow.urls")),
     path("api/metadata/", include("app.metadata.urls")),
+    path("api/catalog/", include("app.catalog.urls")),
     path("api/chat/", include("app.chat.urls")),
     path("api/viewer/<uuid:project_id>/<path:subpath>", viewer_file),
 ]

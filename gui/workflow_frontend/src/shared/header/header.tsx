@@ -192,6 +192,15 @@ const Header: React.FC = () => {
             >
               Custom Databases
             </MenuItem>
+            <MenuItem
+              as={RouterLink}
+              to="/settings/catalog"
+              bg={menuBg}
+              color={headerColor}
+              _hover={{ bg: menuHoverBg }}
+            >
+              Dataset Catalog
+            </MenuItem>
           </MenuList>
         </Menu>
 
