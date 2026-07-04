@@ -60,6 +60,7 @@ LOCAL_APPS = [
     "app.box.apps.BoxConfig",
     "app.workflow.apps.WorkflowConfig",
     "app.metadata.apps.MetadataConfig",
+    "app.catalog.apps.CatalogConfig",
     "app.chat.apps.ChatConfig",
 ]
 

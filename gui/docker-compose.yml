@@ -16,6 +16,8 @@ services:
   backend:
     build: ./workflow_backend
     command: bash -c "python3 django-project/manage.py migrate && python3 django-project/manage.py runserver 0.0.0.0:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./workflow_backend:/django-app
       - ${NODES_DIR}:/django-app/django-project/codes/nodes
@@ -36,6 +38,7 @@ services:
       - JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-dev-token-change-in-production}
       - JUPYTERHUB_BASE_URL=${JUPYTERHUB_BASE_URL:-/jupyter/}
       - JUPYTER_EXECUTION_USER=${JUPYTER_EXECUTION_USER:-user1}
+      - MDB_BASE_URL=${MDB_BASE_URL:-http://host.docker.internal:8004}
     depends_on:
       - db
     restart: unless-stopped
